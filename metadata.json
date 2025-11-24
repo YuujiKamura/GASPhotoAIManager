@@ -1,0 +1,7 @@
+{
+  "name": "Construction Photo AI Manager",
+  "description": "Upload a folder of construction photos. The AI performs OCR, deduces work types and station points, and generates a formatted photo album view and Excel export.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
