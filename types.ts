@@ -7,10 +7,7 @@ export interface PhotoMetadata {
 
 export interface AIAnalysisResult {
   fileName: string;
-  constructionType: string; // 工種 (New)
-  variety: string; // 種別 (New)
-  detail: string; // 細別 (New)
-  workType: string; // Legacy/Fallback
+  workType: string; // 工種
   station: string; // 測点
   remarks: string; // 備考 (黒板の記載内容の正規化)
   description: string; // 記事/説明
