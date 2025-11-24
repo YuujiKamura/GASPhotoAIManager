@@ -13,28 +13,31 @@ const analysisSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           fileName: { type: Type.STRING, description: "The original filename of the image." },
-          workType: { type: Type.STRING, description: "Inferred Work Type (工種). MUST be consistent with previous photos if not clearly visible." },
+          constructionType: { type: Type.STRING, description: "Construction Type (工種). Top level category (e.g. '道路土工', '舗装工')." },
+          variety: { type: Type.STRING, description: "Variety (種別). Second level category (e.g. '掘削工', '表層工')." },
+          detail: { type: Type.STRING, description: "Detail (細別). Third level category (e.g. '床掘', '敷均し')." },
+          workType: { type: Type.STRING, description: "Legacy Work Type. Use 'constructionType' instead if possible." },
           station: { type: Type.STRING, description: "Station point (測点). Infer from sequence if necessary." },
           remarks: { type: Type.STRING, description: "Remarks (備考). The short title on the board (e.g. '床掘状況') AND normalized specs (e.g. 't=50'). IGNORE rod product codes." },
           description: { type: Type.STRING, description: "Description (記事). A full natural language sentence explaining the work activity (口語)." },
           hasBoard: { type: Type.BOOLEAN, description: "True if a construction blackboard/sign is visible." },
           detectedText: { type: Type.STRING, description: "Raw OCR text detected." }
         },
-        required: ["fileName", "workType", "station", "remarks", "description", "hasBoard", "detectedText"]
+        required: ["fileName", "constructionType", "variety", "detail", "workType", "station", "remarks", "description", "hasBoard", "detectedText"]
       }
     }
   }
 };
 
 export const analyzePhotoBatch = async (
-  records: PhotoRecord[], 
+  records: PhotoRecord[],
   customInstruction?: string // New Argument for user refinement
 ): Promise<AIAnalysisResult[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Prepare parts: Image + Prompt
   const parts: any[] = [];
-  
+
   // Add images
   records.forEach((record) => {
     parts.push({
@@ -55,7 +58,10 @@ export const analyzePhotoBatch = async (
        - Infer the 'Station' (測点) based on the numerical sequence.
        
     2. **Extraction Fields**:
-       - **Work Type (工種)**: e.g., '道路土工', '排水構造物工'.
+       - **Construction Hierarchy (工種体系)**:
+         - **Construction Type (工種)**: Top level (e.g., '道路土工', '排水構造物工', '舗装工').
+         - **Variety (種別)**: Second level (e.g., '掘削工', '側溝工', '表層工').
+         - **Detail (細別)**: Third level (e.g., '床掘', '自由勾配側溝', '敷均し').
        
        - **Station (測点)**: e.g., 'No.1+10.0'.
          - **STRICT FILTER**: Only extract values that look like valid station numbers (usually starting with 'No.', 'STA.', 'SP', 'EP', 'BP', or containing '+').
@@ -116,7 +122,7 @@ export const analyzePhotoBatch = async (
 
     const text = response.text;
     if (!text) return [];
-    
+
     const json = JSON.parse(text);
     return json.results || [];
 

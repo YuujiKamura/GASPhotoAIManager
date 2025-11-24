@@ -17,7 +17,7 @@ import RefineModal from './components/RefineModal';
 declare const saveAs: any;
 
 const BATCH_SIZE = 6; // Reduced from 15 to 6 for stability
-const MAX_PHOTOS = 30; 
+const MAX_PHOTOS = 30;
 
 type PendingFile = { file: File, date: number };
 
@@ -30,7 +30,7 @@ export default function App() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
-  
+
   // Modals
   const [pendingFiles, setPendingFiles] = useState<PendingFile[] | null>(null);
   const [selectionStart, setSelectionStart] = useState(1);
@@ -98,7 +98,7 @@ export default function App() {
     setPendingFiles(null);
     setIsProcessing(true);
     setCurrentStep("Sorting...");
-    
+
     const fileList = Array.from(e.target.files) as File[];
     const imageFiles = fileList.filter(f => f.type.startsWith('image/'));
 
@@ -171,9 +171,9 @@ export default function App() {
       }
     }
 
-    await clearProjectData(); 
+    await clearProjectData();
     setPhotos(newRecords);
-    
+
     if (cachedCount > 0) {
       setSuccessMsg(txt.cacheHit(cachedCount));
     }
@@ -182,7 +182,7 @@ export default function App() {
     runAnalysis(newRecords);
   };
 
-  const runAnalysis = async (specificPhotos?: PhotoRecord[], customInstruction?: string) => {
+  const runAnalysis = async (specificPhotos?: PhotoRecord[], customInstruction?: string, batchSize: number = 6) => {
     if (!process.env.API_KEY) {
       setErrorMsg("Gemini API Key is missing.");
       return;
@@ -190,31 +190,31 @@ export default function App() {
 
     const currentPhotos = specificPhotos || photos;
     if (currentPhotos.length === 0) return;
-    
+
     setIsProcessing(true);
-    
+
     // Determine targets: Retry all if Custom Instruction, else only pending
     let targetPhotos: PhotoRecord[];
     if (customInstruction) {
-      targetPhotos = currentPhotos.filter(p => p.status !== 'error'); 
+      targetPhotos = currentPhotos.filter(p => p.status !== 'error');
     } else {
       targetPhotos = currentPhotos.filter(p => p.status === 'pending');
     }
-    
+
     if (targetPhotos.length === 0) {
-       setIsProcessing(false);
-       setCurrentStep("Analysis Complete");
-       return;
+      setIsProcessing(false);
+      setCurrentStep("Analysis Complete");
+      return;
     }
 
     // Reset stats
     if (customInstruction) {
       setStats({ total: currentPhotos.length, processed: 0, success: 0, failed: 0 });
     } else {
-       const alreadyDone = currentPhotos.length - targetPhotos.length;
-       setStats({ total: currentPhotos.length, processed: alreadyDone, success: alreadyDone, failed: 0 });
+      const alreadyDone = currentPhotos.length - targetPhotos.length;
+      setStats({ total: currentPhotos.length, processed: alreadyDone, success: alreadyDone, failed: 0 });
     }
-    
+
     let updatedPhotos = [...currentPhotos];
 
     const updatePhotoStatus = (fileName: string, status: PhotoRecord['status'], analysis?: AIAnalysisResult) => {
@@ -225,8 +225,8 @@ export default function App() {
     };
 
     try {
-      for (let i = 0; i < targetPhotos.length; i += BATCH_SIZE) {
-        const batch = targetPhotos.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < targetPhotos.length; i += batchSize) {
+        const batch = targetPhotos.slice(i, i + batchSize);
         setCurrentStep(`AI Analyzing... ${i + 1}/${targetPhotos.length}`);
 
         try {
@@ -236,23 +236,23 @@ export default function App() {
           const results = await analyzePhotoBatch(batch, customInstruction);
 
           await Promise.all(batch.map(async (photo, idx) => {
-             const result = results.find(r => r.fileName === photo.fileName) || results[idx];
-             if (result) {
-               updatePhotoStatus(photo.fileName, 'done', result);
-               setStats(prev => ({ ...prev, processed: prev.processed + 1, success: prev.success + 1 }));
-               if (photo.originalFile) await cacheAnalysis(photo.originalFile, result);
-             } else {
-               updatePhotoStatus(photo.fileName, 'error');
-               setStats(prev => ({ ...prev, processed: prev.processed + 1, failed: prev.failed + 1 }));
-             }
+            const result = results.find(r => r.fileName === photo.fileName) || results[idx];
+            if (result) {
+              updatePhotoStatus(photo.fileName, 'done', result);
+              setStats(prev => ({ ...prev, processed: prev.processed + 1, success: prev.success + 1 }));
+              if (photo.originalFile) await cacheAnalysis(photo.originalFile, result);
+            } else {
+              updatePhotoStatus(photo.fileName, 'error');
+              setStats(prev => ({ ...prev, processed: prev.processed + 1, failed: prev.failed + 1 }));
+            }
           }));
 
         } catch (err: any) {
           console.error("Batch failed", err);
           const errorMsgStr = (err.message || JSON.stringify(err) || "").toString();
           if (errorMsgStr.includes("403") || errorMsgStr.includes("PERMISSION_DENIED")) {
-             setErrorMsg(txt.permissionError);
-             throw new Error("PERMISSION_DENIED");
+            setErrorMsg(txt.permissionError);
+            throw new Error("PERMISSION_DENIED");
           }
           batch.forEach(p => updatePhotoStatus(p.fileName, 'error'));
           setStats(prev => ({ ...prev, processed: prev.processed + batch.length, failed: prev.failed + batch.length }));
@@ -295,16 +295,16 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleRefineRun = (instruction: string) => {
+  const handleRefineRun = (instruction: string, batchSize: number) => {
     setShowRefineModal(false);
-    runAnalysis(undefined, instruction);
+    runAnalysis(undefined, instruction, batchSize);
   };
 
   return (
     <>
       {/* Modal: Limit Selection */}
       {pendingFiles && (
-        <LimitModal 
+        <LimitModal
           lang={lang}
           totalFiles={pendingFiles.length}
           maxPhotos={MAX_PHOTOS}
@@ -319,7 +319,7 @@ export default function App() {
 
       {/* Modal: Refine Rules */}
       {showRefineModal && (
-        <RefineModal 
+        <RefineModal
           lang={lang}
           onClose={() => setShowRefineModal(false)}
           onRunAnalysis={handleRefineRun}
@@ -328,7 +328,7 @@ export default function App() {
 
       {/* Main Content / Preview Switcher */}
       {showPreview ? (
-        <PreviewView 
+        <PreviewView
           lang={lang}
           photos={photos}
           stats={stats}
@@ -342,7 +342,7 @@ export default function App() {
           onExportExcel={() => generateExcel(photos)}
         />
       ) : (
-        <UploadView 
+        <UploadView
           lang={lang}
           isProcessing={isProcessing}
           photos={photos}
