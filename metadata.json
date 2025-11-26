@@ -1,7 +1,5 @@
 {
-  "name": "Construction Photo AI Manager",
-  "description": "Upload a folder of construction photos. The AI performs OCR, deduces work types and station points, and generates a formatted photo album view and Excel export.",
-  "requestFramePermissions": [
-    "camera"
-  ]
+  "name": "Photo Archive AI",
+  "description": "Photo Archive AI. A minimalist tool for organizing and analyzing photos.",
+  "requestFramePermissions": []
 }

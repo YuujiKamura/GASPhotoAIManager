@@ -1,7 +1,9 @@
+
+
 import { PhotoRecord, AIAnalysisResult } from "../types";
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 3; // Version up for rules store
+const DB_VERSION = 3; // Version 3 handles File storage in Session Store implicitly
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // New: Store for custom prompt rules
@@ -11,6 +13,7 @@ export interface AnalysisRule {
   id: string;
   name: string;
   instruction: string;
+  tags?: string[];
 }
 
 const openDB = (): Promise<IDBDatabase> => {
@@ -51,17 +54,13 @@ const openDB = (): Promise<IDBDatabase> => {
 export const saveProjectData = async (photos: PhotoRecord[]): Promise<void> => {
   if (photos.length === 0) return;
   
-  // Strip non-serializable File objects
-  const serializablePhotos = photos.map(p => {
-    const { originalFile, ...rest } = p;
-    return rest;
-  });
-
+  // We NOW store the full record including the File object (supported by IDB).
+  // This ensures that on reload, the 'originalFile' is preserved.
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_SESSION, 'readwrite');
     const store = transaction.objectStore(STORE_SESSION);
-    const request = store.put(serializablePhotos, KEY_SESSION);
+    const request = store.put(photos, KEY_SESSION);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
@@ -91,17 +90,45 @@ export const clearProjectData = async (): Promise<void> => {
 
 // --- Persistent Analysis Cache (Data Pool) ---
 
-const getFileKey = (file: File): string => {
+/**
+ * Generates a unique key for the file based on its immutable properties.
+ * Can handle a raw File object OR a PhotoRecord with metadata.
+ */
+const getFileKey = (input: File | PhotoRecord): string => {
+  let name = "";
+  let size = 0;
+  let modified = 0;
+
+  // Priority 1: Raw File Object
+  if (input instanceof File) {
+    name = input.name;
+    size = input.size;
+    modified = input.lastModified;
+  } 
+  // Priority 2: PhotoRecord with originalFile (Ensures consistency if record missing explicit metadata)
+  else if (input.originalFile) {
+    name = input.fileName; // fileName matches originalFile.name
+    size = input.originalFile.size;
+    modified = input.originalFile.lastModified;
+  }
+  // Priority 3: PhotoRecord explicit metadata
+  else {
+    name = input.fileName;
+    // Fallback to 0 if not present (legacy data compatibility)
+    size = input.fileSize || 0;
+    modified = input.lastModified || 0;
+  }
+
   // Composite key: Name + Size + ModifiedTime ensures uniqueness for specific file versions
-  return `${file.name}_${file.size}_${file.lastModified}`;
+  return `${name}_${size}_${modified}`;
 };
 
-export const getCachedAnalysis = async (file: File): Promise<AIAnalysisResult | null> => {
+export const getCachedAnalysis = async (input: File | PhotoRecord): Promise<AIAnalysisResult | null> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_CACHE, 'readonly');
     const store = transaction.objectStore(STORE_CACHE);
-    const key = getFileKey(file);
+    const key = getFileKey(input);
     const request = store.get(key);
 
     request.onsuccess = () => {
@@ -114,14 +141,25 @@ export const getCachedAnalysis = async (file: File): Promise<AIAnalysisResult | 
   });
 };
 
-export const cacheAnalysis = async (file: File, result: AIAnalysisResult): Promise<void> => {
+export const cacheAnalysis = async (input: File | PhotoRecord, result: AIAnalysisResult): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_CACHE, 'readwrite');
     const store = transaction.objectStore(STORE_CACHE);
-    const key = getFileKey(file);
+    const key = getFileKey(input);
     const request = store.put(result, key);
 
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const clearAnalysisCache = async (): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_CACHE, 'readwrite');
+    const store = transaction.objectStore(STORE_CACHE);
+    const request = store.clear();
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });

@@ -1,7 +1,395 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PhotoRecord, AIAnalysisResult } from "../types";
+import { PhotoRecord, AIAnalysisResult, AppMode } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
+
+// --- CONSTANTS ---
+
+// Construction Hierarchy Master Data
+const CONSTRUCTION_HIERARCHY = {
+  "直接工事費": {
+    "施工状況写真": {
+      "構造物撤去工": {
+        "構造物取壊し工": {
+          "コンクリート構造物取壊し": {
+            "取壊し状況": {},
+            "コンクリート（有筋）処分前": {},
+            "コンクリート（有筋）処分中": {},
+            "コンクリート（有筋）処分後": {},
+            "処分前": {},
+            "処分中": {},
+            "処分後": {},
+            "積込状況": {}
+          }
+        }
+      },
+      "舗装工": {
+        "舗装打換え工": {
+          "舗装版切断": {
+            "As舗装版切断状況": {},
+            "既設舗装版切断状況": {}
+          },
+          "舗装版破砕": {
+            "剥取状況": {},
+            "積込状況": {},
+            "既設舗装厚さ確認": {}
+          },
+          "上層路盤工": {
+            "補足材搬入状況 M-40": {},
+            "不陸整正状況": {},
+            "転圧状況": {},
+            "路盤完了状況": {}
+          },
+          "表層工": {
+            "プライムコート乳剤散布状況": {},
+            "プライムコート養生砂散布状況": {},
+            "プライムコート養生砂清掃状況": {},
+            "端部乳剤塗布状況": {},
+            "舗設状況": {},
+            "初期転圧状況": {},
+            "2次転圧状況": {}
+          }
+        }
+      },
+      "区画線工": {
+        "区画線工": {
+          "溶融式区画線": {
+            "清掃状況": {},
+            "プライマー散布状況": {},
+            "区画線設置状況": {}
+          }
+        }
+      },
+      "排水構造物工": {
+        "作業土工": {
+          "床掘り": {
+            "掘削状況": {},
+            "掘削完了": {}
+          },
+          "埋戻し": {
+            "土砂埋戻し 転圧状況": {},
+            "敷均し、転圧状況": {},
+            "下層路盤 材料搬入状況 RC-40": {},
+            "下層路盤 転圧状況": {},
+            "上層路盤 敷均し状況": {},
+            "上層路盤M-40 転圧状況": {}
+          },
+          "基礎砕石工": {
+            "RC-40 搬入状況": {},
+            "基礎砕石敷均し状況": {},
+            "基礎砕石転圧状況": {}
+          },
+          "基礎コンクリート工": {
+            "型枠設置完了": {},
+            "打設前": {},
+            "打設完了": {},
+            "打設状況": {},
+            "打設厚さ確認": {},
+            "打設幅確認": {}
+          }
+        },
+        "集水桝工": {
+          "集水枡底版": {
+            "集水桝底版 打設前確認": {},
+            "底版コンクリート 打設前確認": {},
+            "底版コンクリート 打設完了": {}
+          },
+          "プレキャスト集水桝": {
+            "据付状況": {}
+          }
+        },
+        "側溝工": {
+          "側溝蓋": {
+            "側溝蓋 打設前確認": {},
+            "側溝蓋 打設完了": {},
+            "天端コンクリート 打設前確認": {},
+            "天端コンクリート 打設完了": {},
+            "天端コンクリート 打設状況": {}
+          },
+          "プレキャストU型側溝": {
+            "側溝300　据付状況": {},
+            "G付側溝300　据付状況": {},
+            "敷モルタル敷均し状況": {},
+            "据付状況": {}
+          }
+        },
+        "集水桝・マンホール工": {
+          "人孔蓋撤去": {
+            "鉄蓋処分状況": {},
+            "既設人孔撤去状況": {}
+          },
+          "人孔蓋据付": {
+            "調整ブロック設置状況": {},
+            "据付状況": {},
+            "高さ調整完了": {}
+          },
+          "人孔内部清掃": {
+            "清掃状況": {},
+            "清掃完了": {}
+          },
+          "調整蓋据付": {
+            "据付状況": {}
+          },
+          "調整リングブロック設置": {
+            "設置状況": {}
+          },
+          "転落防止蓋設置": {
+            "設置状況": {}
+          }
+        }
+      },
+      "人孔改良工": {
+        "集水桝・マンホール工": {
+          "人孔蓋撤去": {
+            "鉄蓋処分状況": {},
+            "既設人孔撤去状況": {}
+          },
+          "人孔蓋据付": {
+            "調整ブロック設置状況": {},
+            "据付状況": {},
+            "高さ調整完了": {}
+          },
+          "人孔内部清掃": {
+            "清掃状況": {},
+            "清掃完了": {}
+          },
+          "調整ブロック設置": {
+            "調整ブロック設置状況": {}
+          },
+          "調整部撤去": {
+            "調整部撤去状況": {}
+          },
+          "無収縮モルタル充填": {
+            "無収縮モルタル充填状況": {}
+          }
+        },
+        "舗装打換え工": {
+          "舗装板切断": {
+            "舗装板切断状況": {}
+          },
+          "舗装板破砕": {
+            "舗装板破砕状況": {}
+          },
+          "既設舗装版撤去": {
+            "既設舗装版撤去状況": {}
+          },
+          "上層路盤": {
+            "上層路盤施工状況": {}
+          },
+          "表層（プライムコート）": {
+            "プライムコート施工状況": {}
+          },
+          "表層（温度管理）": {
+            "温度管理状況": {}
+          },
+          "表層（舗設）": {
+            "舗設状況": {}
+          }
+        },
+        "人孔蓋据付撤去工": {
+          "既設人孔蓋撤去": {
+            "既設人孔撤去状況": {},
+            "撤去完了": {}
+          },
+          "既設受枠撤去": {
+            "既設受枠撤去状況": {},
+            "撤去完了": {}
+          },
+          "鉄蓋処分": {
+            "鉄蓋処分状況": {},
+            "処分完了": {}
+          },
+          "人孔蓋転落防止設置": {
+            "人孔蓋転落防止設置状況": {},
+            "設置完了": {}
+          },
+          "調整ブロック設置": {
+            "調整ブロック設置状況": {},
+            "設置完了": {}
+          },
+          "調整金具取付": {
+            "調整金具パッキン取付状況": {},
+            "調整金具パッキン使用": {},
+            "固定用ボルト設置状況": {},
+            "取付完了": {}
+          },
+          "人孔高さ調整": {
+            "人孔(上部)高さ調整完了": {},
+            "高さ調整状況": {}
+          },
+          "人孔内部清掃": {
+            "人孔内清掃前状況": {},
+            "人孔内清掃完了": {},
+            "人孔内コンクリート撤去清掃状況": {}
+          },
+          "舗装版切断": {
+            "舗装版切断状況": {}
+          },
+          "舗装版破砕積込": {
+            "舗装版破砕積込状況": {},
+            "積込完了": {}
+          },
+          "コンクリートはつり工": {
+            "はつり工状況": {},
+            "はつり工完了": {}
+          },
+          "汚泥吸排車": {
+            "汚泥吸排状況": {},
+            "汚泥吸排完了": {}
+          },
+          "表層工": {
+            "表層工施工状況": {},
+            "表層工完了": {}
+          }
+        }
+      },
+      "仮設工": {
+        "交通管理工": {
+          "交通誘導員配置": {
+            "誘導員配置状況": {},
+            "規制配置状況": {}
+          },
+          "保安施設設置": {
+            "保安施設設置状況": {},
+            "保安施設撤去状況": {}
+          }
+        }
+      }
+    },
+    "出来形管理写真": {
+      "舗装工": {
+        "舗装打換え工": {
+          "上層路盤工": {
+            "不陸整正出来形": {
+              "aliases": ["路盤出来形", "出来形検測", "路盤", "基準高下がり", "基準高"]
+            },
+            "不陸整正出来形・管理値": {},
+            "不陸整正出来形・接写": {},
+            "砕石厚測定": {}
+          }
+        }
+      },
+      "排水構造物工": {
+        "作業土工": {
+          "床掘り": {
+            "掘削工出来形測定": {}
+          },
+          "埋戻し": {
+            "土砂埋戻し出来形測定": {},
+            "下層路盤出来形測定": {},
+            "上層路盤出来形測定": {},
+            "路床出来形測定": {}
+          },
+          "基礎砕石工": {
+            "基礎砕石工出来形測定": {}
+          },
+          "基礎コンクリート工": {
+            "基礎コンクリート出来形測定": {}
+          }
+        },
+        "集水桝工": {
+          "集水枡底版": {
+            "集水桝底版出来形測定": {}
+          },
+          "プレキャスト集水桝": {
+            "プレキャスト集水桝出来形測定": {}
+          }
+        },
+        "側溝工": {
+          "側溝蓋": {
+            "側溝蓋出来形測定": {}
+          },
+          "プレキャストU型側溝": {
+            "プレキャストU型側溝出来形測定": {}
+          }
+        }
+      }
+    },
+    "品質管理写真": {
+      "舗装工": {
+        "舗装打換え工": {
+          "表層工": {
+            "As混合物 到着温度測定": {},
+            "As混合物 敷均し温度測定": {},
+            "As混合物 初期締固前温度測定": {},
+            "As混合物 開放温度測定": {}
+          }
+        }
+      }
+    },
+    "安全管理写真": {
+      "舗装工": {
+        "舗装打換え工": {
+          "安全管理": {
+            "朝礼・安全ミーティング実施状況": {},
+            "規制配置・誘導員配置状況": {}
+          }
+        }
+      },
+      "仮設工": {
+        "交通管理工": {
+          "交通誘導警備員": {
+            "交通誘導員配置状況": {},
+            "規制配置状況": {}
+          }
+        }
+      },
+      "全工種共通": {
+        "安全管理": {
+          "安全管理": {
+            "安全訓練実施状況": {}
+          }
+        }
+      }
+    },
+    "使用材料写真": {
+      "排水構造物工": {
+        "側溝工": {
+          "プレキャストU型側溝": {
+            "G付側溝300": {},
+            "側溝300x300": {},
+            "側溝300": {}
+          },
+          "側溝蓋": {
+            "蓋材料": {}
+          }
+        },
+        "集水桝工": {
+          "プレキャスト集水桝": {
+            "集水桝500x500x800": {},
+            "集水桝材料": {}
+          },
+          "集水桝底版": {
+            "底版材料": {}
+          }
+        },
+        "作業土工": {
+          "基礎砕石工": {
+            "砕石材料": {}
+          },
+          "基礎コンクリート工": {
+            "生コンクリート材料": {}
+          }
+        }
+      }
+    },
+    "着手前及び完成写真": {
+      "人孔改良工": {
+        "": {
+          "": {
+            "着手前": {},
+            "完成": {}
+          }
+        }
+      }
+    },
+    "その他": {
+      "人孔改良工": {
+        "使用機械": {}
+      }
+    }
+  }
+};
 
 // Response Schema
 const analysisSchema: Schema = {
@@ -13,10 +401,12 @@ const analysisSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           fileName: { type: Type.STRING, description: "The original filename of the image." },
-          workType: { type: Type.STRING, description: "Inferred Work Type (工種). MUST be consistent with previous photos if not clearly visible." },
-          station: { type: Type.STRING, description: "Station point (測点). Infer from sequence if necessary." },
-          remarks: { type: Type.STRING, description: "Remarks (備考). The short title on the board (e.g. '床掘状況') AND normalized specs (e.g. 't=50'). IGNORE rod product codes." },
-          description: { type: Type.STRING, description: "Description (記事). A full natural language sentence explaining the work activity (口語)." },
+          workType: { type: Type.STRING, description: "工種 (Construction Type) or Main Category." },
+          variety: { type: Type.STRING, description: "種別 (Variety) or Sub-category." },
+          detail: { type: Type.STRING, description: "細別 (Detail) or Detail tag." },
+          station: { type: Type.STRING, description: "測点 (Station) or Location/Date." },
+          remarks: { type: Type.STRING, description: "備考 (Remarks) normalized. Do not include Work Type name here." },
+          description: { type: Type.STRING, description: "記事 (Description) or Full Explanation." },
           hasBoard: { type: Type.BOOLEAN, description: "True if a construction blackboard/sign is visible." },
           detectedText: { type: Type.STRING, description: "Raw OCR text detected." }
         },
@@ -26,57 +416,212 @@ const analysisSchema: Schema = {
   }
 };
 
+/**
+ * Identifies which photos need to be re-analyzed based on the user's instruction.
+ * This saves tokens/time by filtering out photos that are not relevant to the change request.
+ */
+export const identifyTargetPhotos = async (
+  records: PhotoRecord[],
+  instruction: string
+): Promise<string[]> => {
+  // If instruction is empty or extremely generic, we might want to return all.
+  // But usually this function is called when there IS an instruction.
+  
+  // Filter only records that are already done or have some analysis.
+  // Pending records will be processed regardless.
+  const analyzedRecords = records.filter(r => r.status === 'done' && r.analysis);
+  
+  if (analyzedRecords.length === 0) return [];
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Create a lightweight summary of current state
+  const summary = analyzedRecords.map(r => ({
+    fileName: r.fileName,
+    workType: r.analysis?.workType,
+    remarks: r.analysis?.remarks,
+    description: r.analysis?.description
+  }));
+
+  const prompt = `
+  You are a smart filter for a photo processing batch.
+  
+  Current Photos Status:
+  ${JSON.stringify(summary, null, 2)}
+
+  User Instruction:
+  "${instruction}"
+
+  Task:
+  Identify which filenames from the list above need to be re-analyzed or updated to satisfy the User Instruction.
+  
+  Rules:
+  1. If the instruction applies to ALL photos (e.g., "Change all titles to X", "Translate everything"), return ALL filenames.
+  2. If the instruction applies to specific criteria (e.g., "Change Paving photos to...", "Fix the typo in 'Excavation'"), return ONLY the matching filenames.
+  3. If you are unsure, include the file to be safe.
+  
+  Output:
+  Return a JSON object with a single property "targetFilenames" containing the array of strings.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            targetFilenames: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
+          }
+        }
+      }
+    });
+
+    const json = JSON.parse(response.text || "{}");
+    return json.targetFilenames || [];
+  } catch (e) {
+    console.warn("Smart filter failed, defaulting to all photos.", e);
+    // Fallback: Return all filenames to be safe
+    return analyzedRecords.map(r => r.fileName);
+  }
+};
+
 export const analyzePhotoBatch = async (
   records: PhotoRecord[], 
-  customInstruction?: string // New Argument for user refinement
+  customInstruction?: string,
+  batchSize: number = 6,
+  appMode: AppMode = 'construction'
 ): Promise<AIAnalysisResult[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Prepare parts: Image + Prompt
   const parts: any[] = [];
   
+  // Create Metadata Block
+  let fileMetadataList = "";
+
   // Add images
-  records.forEach((record) => {
+  records.forEach((record, index) => {
     parts.push({
       inlineData: {
         mimeType: record.mimeType,
         data: extractBase64Data(record.base64)
       }
     });
+    
+    // Append context for this image
+    const dateStr = record.date 
+      ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
+      : "Unknown Date";
+      
+    fileMetadataList += `Image ${index + 1}: Filename="${record.fileName}", Date="${dateStr}"\n`;
   });
 
-  let prompt = `
+  const hierarchyJson = JSON.stringify(CONSTRUCTION_HIERARCHY, null, 2);
+
+  let prompt = "";
+
+  if (appMode === 'construction') {
+    // --- CONSTRUCTION MODE PROMPT ---
+    prompt = `
     Analyze this sequence of ${records.length} construction photos. They are sorted chronologically.
     
     CRITICAL INSTRUCTION: Analyze them as a GROUP to ensure consistency.
     
-    1. **Contextual Interpolation**: If a photo's blackboard is blurry, obscured, or missing text:
-       - Look at the photos BEFORE and AFTER it in this list.
-       - Infer the 'Station' (測点) based on the numerical sequence.
-       
-    2. **Extraction Fields**:
-       - **Work Type (工種)**: e.g., '道路土工', '排水構造物工'.
-       
-       - **Station (測点)**: e.g., 'No.1+10.0'.
-         - **STRICT FILTER**: Only extract values that look like valid station numbers (usually starting with 'No.', 'STA.', 'SP', 'EP', 'BP', or containing '+').
-         - **Ground Markings (CAUTION)**: Numbers spray-painted on the ground CAN be a **HINT** if the board is missing, but **CONSIDERATION IS NEEDED**.
-           - Distinguish Station numbers (e.g. "No.5", "BP") from construction indicators (e.g. "-30" for depth, "500" for offset).
-           - **VALIDATION**: Only adopt a ground number if it logically fits the numerical sequence of the surrounding photos.
-         - If you are not sure or the confidence is low, prefer to **INFER** from the previous photo's station or leave blank.
+    **DOMAIN KNOWLEDGE (Visual Reasoning):**
+    1. **Paving / Surface Treatment (舗装工):**
+       - **Emulsion Spraying (乳剤散布)** vs **Sand Scattering (養生砂散布)**:
+         - **Visual Cue**: If a worker holds a **wand/nozzle/sprayer** (often connected to a hose/engine), it is **Emulsion Spraying** (Liquid).
+         - **Visual Cue**: If a worker uses a **shovel** or hands to throw material, it is **Sand Scattering** (Solid).
+         - **Sequence**: Emulsion is sprayed FIRST. Sand is scattered SECOND.
+         - **Correction**: If the blackboard says "Emulsion Curing Sand" (ambiguous), check the tool. Sprayer = "Emulsion Spraying". Shovel = "Sand Scattering".
 
-       - **Remarks (備考)**: This field represents the DATA on the blackboard.
-         - 1. Extract the **Short Title** EXACTLY as written on the board (e.g., '床掘状況', '埋戻状況', '完了').
-           - **IMPORTANT**: Respect the blackboard text. Do NOT add inferred words or technical prefixes that are not visible (e.g. if board says '乳剤塗布', do NOT change it to '剥取端部乳剤塗布状況' based on visual guess). Keep it simple and faithful to the text.
-         - 2. Extract **Technical Specs/Dimensions** (e.g., 't=50', 'W=1500', 'L=20.0'). Normalize them (e.g. "Thickness 50" -> "t=50").
-         - **CRITICAL EXCLUSION**: IGNORE product codes printed on the measuring rods/poles themselves (e.g., 'N-50', 'N-100', 'R-50', 'High-Rod', 'Ribbon Rod'). These are tool identifiers, NOT measurement values. Only extract what is handwritten or printed on the BLACKBOARD.
+    2. **Extraction Fields & Hierarchy Classification**:
+       
+       **HIERARCHY MAPPING RULES (CRITICAL):**
+       Use the following JSON master data to classify the photo.
+       The JSON keys represent levels. You must traverse down to find the match.
+       
+       Structure Level Definitions:
+       - Level 1: Direct Construction Cost (e.g. 直接工事費)
+       - Level 2: Photo Classification (e.g. 施工状況写真)
+       - **Level 3 (Work Type / 工種)**: The key at this level (e.g. 舗装工, 排水構造物工).
+       - **Level 4 (Variety / 種別)**: The key under Level 3 (e.g. 舗装打換え工, 作業土工).
+       - **Level 5 (Detail / 細別)**: The key under Level 4 (e.g. 上層路盤工, 床掘り).
+       - **Level 6 (Specific Item / Leaf)**: Specific situations or titles under Level 5 (e.g. 不陸整正状況, 完了).
+       
+       DATA:
+       ${hierarchyJson}
+
+       **YOUR TASK:**
+       1. Identify the matching path in the JSON based on the blackboard text or visual content.
+       2. Extract the keys from the levels as follows:
+       
+       - **Work Type (工種)**: Output the key from **Level 3**.
+       - **Variety (種別)**: Output the key from **Level 4**.
+       - **Detail (細別)**: Output the key from **Level 5**.
+         - **IMPORTANT EXCLUSION**: The 'Detail' field MUST be a category noun (like '上層路盤工'). 
+         - **DO NOT** output Level 6 keys (situations ending in '状況', '完了', '確認') into the 'Detail' field.
+       
+       - **Remarks (備考) - NORMALIZATION REQUIRED**: 
+         - This field represents the specific situation (Level 6) or specific data.
+         - **REDUNDANCY REMOVAL**: If the blackboard says "路盤工　転圧状況" (Sub-base Work: Rolling Compaction), and the Detail (Level 5) is "上層路盤工" (Sub-base Work), **DO NOT** repeat "路盤工" in the Remarks.
+         - **CORRECT**: Remarks = "転圧状況"
+         - **INCORRECT**: Remarks = "路盤工 転圧状況"
+         - **RULE**: Remove words from Remarks that are already present in Work Type, Variety, or Detail fields.
+
+       - **Station (測点) - CONSISTENCY CHECK**: e.g., 'No.1+10.0'.
+         - **BATCH CONSISTENCY**: Look at ALL photos in the list.
+         - **OCR ERROR CORRECTION**: 
+           - If one photo says "No.0132.2" and others say "No.0+32.2", assume the "+" was misread as "1". Output "No.0+32.2".
+           - If one photo says "小山町ノ359" and another says "小山町1359", use the context to pick the correct address (likely "小山町1359").
+           - **Infer from Sequence**: If Board is missing, infer Station from the previous and next photos.
 
        - **Description (記事)**: This field is for HUMAN READABLE EXPLANATION.
          - Write a **natural, descriptive sentence** in Japanese (口語/Descriptive style).
-         - Describe the action simply.
-         - Example: "バックホウにより所定の深さまで掘削を行っている。" 
-         - Example: "検測ロッドを用いて幅員の出来形計測を行っている。"
-         - Example: "路盤材の敷均し完了後の全景。"
+         - **Context Aware**: Use the visual tool analysis (Sprayer vs Shovel) to describe the action accurately, even if the blackboard text is generic.
+         - Example: "エンジンスプレイヤーを使用し、アスファルト乳剤を散布している状況。"
+         - Example: "ロードローラーにより路盤の転圧を行っている状況。"
+    `;
+  } else {
+    // --- GENERAL ARCHIVE MODE PROMPT ---
+    prompt = `
+    Analyze this sequence of ${records.length} photos as a 'Photo Archive AI'.
+    You are an intelligent robot archivist. You process photos like folding laundry: neatly, efficiently, and with respect for the memories.
+    
+    **CONTEXT IS KEY (TIME & DATE):**
+    I have provided the capture timestamp for each image below. USE THIS.
+    - If the date says "December", look for winter cues (snow, coats) or events (Christmas).
+    - If the time says "19:00", expect a night scene.
+    - Mention the season or time of day in the description if relevant.
 
+    **IMAGE METADATA:**
+    ${fileMetadataList}
+
+    **Mapping Rules:**
+    - **Work Type**: Use this field for the **Main Category** (e.g., 'Kitchen', 'Landscape', 'Damaged Area', 'Item').
+    - **Variety**: Use this field for **Sub-Category** (e.g., 'Sink', 'Mountain', 'Wall Crack', 'Model A').
+    - **Detail**: Use this field for **Specific Detail** (e.g., 'Leaking', 'Snowy', 'Width 5mm').
+    - **Station**: Use this field for **LOCATION**. 
+      - Infer the specific location from visual cues (e.g., 'Living Room', 'Tokyo Station', 'North Side').
+      - Do NOT put the date here (it is displayed separately). JUST the location.
+    - **Remarks**: Use this field for **Title or Key Point** (e.g., 'Renovation Needed', 'Beautiful Sunset', 'Inventory Count').
+    - **Description**: Write a detailed, natural explanation of what is shown in the photo, incorporating the context of the date/time provided.
+    - **hasBoard**: True if any text signage or label is prominent.
+
+    **Style:**
+    - Be concise and organized.
+    - Use Japanese for all text output unless instructed otherwise.
+    `;
+  }
+
+  // Common footer
+  prompt += `
     IMPORTANT: The output JSON 'results' array MUST contain exactly ${records.length} items.
     Ensure every input image has a corresponding result, in the exact same order.
     The 'fileName' in the result must match the input filename: 
@@ -94,9 +639,7 @@ export const analyzePhotoBatch = async (
     
     "${customInstruction}"
     
-    **SAFEGUARD**: Even when applying the user's instruction, do NOT violate the core data integrity rules:
-    1. 'Remarks' (備考) MUST still primarily reflect the blackboard content. Do NOT fill it with long descriptive sentences or Work Type names unless explicitly told to "Replace Remarks with Work Type".
-    2. Do NOT hallucinate data not present in the image or the user instruction.
+    **SAFEGUARD**: Even when applying the user's instruction, do NOT violate the core data integrity rules.
     ----------------------------------------------------------------
     `;
   }
@@ -110,7 +653,9 @@ export const analyzePhotoBatch = async (
       config: {
         responseMimeType: "application/json",
         responseSchema: analysisSchema,
-        systemInstruction: "You are an expert construction site supervisor assistant. You prioritize OCR text fidelity for the 'Remarks' field. You adapt strictly to user provided Correction Rules."
+        systemInstruction: appMode === 'construction' 
+          ? "You are an expert construction site supervisor assistant." 
+          : "You are an intelligent photo archivist."
       }
     });
 

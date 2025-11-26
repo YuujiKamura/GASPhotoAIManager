@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Zap } from 'lucide-react';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, ProcessingStats } from '../types';
+import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
+import { generateZip } from '../utils/zipGenerator';
 
 // Declare html2pdf and saveAs
 declare const html2pdf: any;
@@ -14,6 +16,7 @@ interface PreviewViewProps {
   lang: 'en' | 'ja';
   photos: PhotoRecord[];
   stats: ProcessingStats;
+  appMode: AppMode;
   isProcessing: boolean;
   currentStep: string;
   errorMsg: string | null;
@@ -22,12 +25,14 @@ interface PreviewViewProps {
   onCloseProject: () => void;
   onRefine: () => void;
   onExportExcel: () => void;
+  onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
   lang,
   photos,
   stats,
+  appMode,
   isProcessing,
   currentStep,
   errorMsg,
@@ -35,12 +40,14 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onGoHome,
   onCloseProject,
   onRefine,
-  onExportExcel
+  onExportExcel,
+  onUpdatePhoto
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
   const [isFitMode, setIsFitMode] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isGeneratingZip, setIsGeneratingZip] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-Calculate Scale for Mobile
@@ -96,6 +103,21 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     });
   };
 
+  const handleDownloadZip = async () => {
+    if (photos.length === 0) return;
+    setIsGeneratingZip(true);
+    try {
+      const blob = await generateZip(photos);
+      const filename = `electronic_delivery_${new Date().toISOString().slice(0, 10)}.zip`;
+      saveAs(blob, filename);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to generate ZIP.");
+    } finally {
+      setIsGeneratingZip(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-gray-200 overflow-hidden flex flex-col">
       <div className="sticky top-0 z-[101] bg-slate-800 text-white p-3 shadow-md flex justify-between items-center">
@@ -105,10 +127,16 @@ const PreviewView: React.FC<PreviewViewProps> = ({
              <h2 className="font-bold text-lg hidden md:block">{txt.previewTitle}</h2>
            </div>
            
-           <div className="flex gap-2 text-xs md:text-sm bg-slate-700 px-2 py-1 rounded-lg flex-shrink 0 whitespace-nowrap">
+           <div className="flex gap-2 text-xs md:text-sm bg-slate-700 px-2 py-1 rounded-lg flex-shrink 0 whitespace-nowrap items-center">
               <span className="text-slate-300">{txt.total}: {stats.total}</span>
               <span className="text-green-400">{txt.done}: {stats.success}</span>
-              {isProcessing && <span className="text-amber-300 animate-pulse flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> {currentStep.split('(')[0]}</span>}
+              {/* Enhanced Cache Stat */}
+              {stats.cached > 0 && (
+                 <span className="text-green-300 flex items-center gap-1 border-l border-slate-600 pl-2 font-bold animate-in fade-in">
+                    <Database className="w-3 h-3" /> Cached: {stats.cached}
+                 </span>
+              )}
+              {isProcessing && <span className="text-amber-300 animate-pulse flex items-center gap-1 border-l border-slate-600 pl-2"><Loader2 className="w-3 h-3 animate-spin"/> {currentStep.split('(')[0]}</span>}
            </div>
          </div>
 
@@ -139,7 +167,14 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               <button onClick={onExportExcel} disabled={isProcessing} className="p-2 md:px-4 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-2" title={txt.exportExcel}>
                   <Download className="w-4 h-4" /> <span className="hidden md:inline">{txt.exportExcel}</span>
               </button>
-              <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-4 md:py-2 bg-amber-500 hover:bg-amber-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-2" title={txt.exportPDF}>
+              
+              {appMode === 'construction' && (
+                <button onClick={handleDownloadZip} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-4 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-2" title="Electronic Delivery (XML/ZIP)">
+                  {isGeneratingZip ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />} <span className="hidden md:inline">XML/ZIP</span>
+                </button>
+              )}
+
+              <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-4 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-2" title={txt.exportPDF}>
                 {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} <span className="hidden md:inline">{isGeneratingPdf ? "..." : txt.exportPDF}</span>
               </button>
             </div>
@@ -160,7 +195,12 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 
       <div id="print-area" ref={previewContainerRef} className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-auto bg-gray-200 w-full">
          <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: scale < 1 ? `-${(1 - scale) * 50}%` : '0', minWidth: '210mm' }}>
-            <PhotoAlbumView records={photos} />
+            <PhotoAlbumView 
+              records={photos} 
+              appMode={appMode} 
+              lang={lang} 
+              onUpdatePhoto={onUpdatePhoto}
+            />
          </div>
       </div>
     </div>

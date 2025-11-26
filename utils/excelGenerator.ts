@@ -1,4 +1,5 @@
-import { PhotoRecord } from "../types";
+
+import { PhotoRecord, AppMode } from "../types";
 import { extractBase64Data } from "./imageUtils";
 
 // Declare global variables for loaded scripts
@@ -15,7 +16,7 @@ const getImageDimensions = (base64: string): Promise<{ w: number; h: number }> =
   });
 };
 
-export const generateExcel = async (records: PhotoRecord[]) => {
+export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = 'construction') => {
   if (typeof ExcelJS === 'undefined') {
     alert("Excel generation library is not loaded.");
     return;
@@ -41,7 +42,7 @@ export const generateExcel = async (records: PhotoRecord[]) => {
   const PIXELS_PER_COL_UNIT = 7.1; // Tuned for ExcelJS default font
   
   const ROW_HEIGHT_PTS = 21; 
-  const PIXELS_PER_PT = 1.333; 
+  const PIXELS_PER_PT = 96.0 / 72.0; // Standard DPI conversion
   
   // 12 Rows per photo block
   const ROWS_PER_PHOTO = 12;
@@ -60,6 +61,13 @@ export const generateExcel = async (records: PhotoRecord[]) => {
   });
 
   let currentRow = 1;
+
+  // Header Labels based on Mode
+  const labelWorkType = appMode === 'construction' ? "工種" : "カテゴリ";
+  const labelStation = appMode === 'construction' ? "測点" : "場所";
+  const labelRemarks = appMode === 'construction' ? "備考" : "タイトル";
+  const labelDescription = "記事";
+  const labelDate = appMode === 'construction' ? "撮影日時" : "日時";
 
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
@@ -112,15 +120,18 @@ export const generateExcel = async (records: PhotoRecord[]) => {
       const xOffsetPx = (BOX_WIDTH_PX - finalW) / 2;
       const yOffsetPx = (BOX_HEIGHT_PX - finalH) / 2;
 
-      // 4. Convert Offsets to Excel Coordinates (Col/Row units)
-      const colOffset = xOffsetPx / BOX_WIDTH_PX; // Fraction of Col A width
-      const rowOffset = (yOffsetPx / BOX_HEIGHT_PX) * ROWS_PER_PHOTO; // Fraction of total rows
+      // 4. Place Image using Absolute Positioning (Pixels)
+      // User request: "Don't move or size with cells" (editAs: 'absolute')
+      // Requires x, y in pixels.
+      const absX = xOffsetPx; // Column A starts at 0px
+      const absY = ((startRow - 1) * ROW_HEIGHT_PTS * PIXELS_PER_PT) + yOffsetPx;
 
-      // 5. Place Image using 'tl' + 'ext'
       sheet.addImage(imageId, {
-        tl: { col: 0 + colOffset, row: (startRow - 1) + rowOffset },
-        ext: { width: finalW, height: finalH },
-        editAs: 'oneCell' // Moves with cells but doesn't resize with them
+        x: absX,
+        y: absY,
+        width: finalW,
+        height: finalH,
+        editAs: 'absolute' // "セルに合わせて移動もサイズ変更もしない"
       });
 
     } catch (e) {
@@ -129,7 +140,7 @@ export const generateExcel = async (records: PhotoRecord[]) => {
       sheet.addImage(imageId, {
         tl: { col: 0.05, row: startRow - 1 + 0.5 },
         ext: { width: 400, height: 300 }, 
-        editAs: 'oneCell'
+        editAs: 'oneCell' // Fallback to standard anchoring if pixel calc fails
       });
     }
 
@@ -165,18 +176,26 @@ export const generateExcel = async (records: PhotoRecord[]) => {
       }
     };
 
+    // Format Date String
+    const dateStr = record.date 
+      ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
+      : "";
+    
     // Layout Logic (Total 12 Rows)
-    // 1. 工種 (2 rows)
-    createField(startRow, "工種", record.analysis?.workType || "", 2);
+    // 1. Work Type (1 row) [Row 1]
+    createField(startRow, labelWorkType, record.analysis?.workType || "", 1);
+
+    // 2. Station (1 row) [Row 2] -- SEPARATED
+    createField(startRow + 1, labelStation, record.analysis?.station || "", 1);
     
-    // 2. 測点 (2 rows)
-    createField(startRow + 2, "測点", record.analysis?.station || "", 2);
+    // 3. Remarks (3 rows) [Rows 3-5]
+    createField(startRow + 2, labelRemarks, record.analysis?.remarks || "", 3);
     
-    // 3. 備考/黒板 (3 rows) - New Field
-    createField(startRow + 4, "備考", record.analysis?.remarks || "", 3);
-    
-    // 4. 記事 (5 rows) - Description takes remaining space
-    createField(startRow + 7, "記事", record.analysis?.description || "", 5);
+    // 4. Description (5 rows) [Rows 6-10]
+    createField(startRow + 5, labelDescription, record.analysis?.description || "", 5);
+
+    // 5. Date (2 rows) [Rows 11-12]
+    createField(startRow + 10, labelDate, dateStr, 2);
 
     currentRow = endRow + 2; 
   }
@@ -185,7 +204,7 @@ export const generateExcel = async (records: PhotoRecord[]) => {
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const dateStr = new Date().toISOString().slice(0, 10);
-    saveAs(blob, `工事写真帳_${dateStr}.xlsx`);
+    saveAs(blob, `PhotoAlbum_${dateStr}.xlsx`);
   } catch (error) {
     console.error("Excel generation failed:", error);
     alert("Excel file generation failed.");

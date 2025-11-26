@@ -1,10 +1,11 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { PhotoRecord, ProcessingStats, AIAnalysisResult } from './types';
+import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos } from './services/geminiService';
 import { generateExcel } from './utils/excelGenerator';
-import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson } from './utils/storage';
+import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
 import { TRANS } from './utils/translations';
 
 // Components
@@ -16,7 +17,7 @@ import RefineModal from './components/RefineModal';
 // Declare saveAs for export
 declare const saveAs: any;
 
-const BATCH_SIZE = 6; // Reduced from 15 to 6 for stability
+const DEFAULT_BATCH_SIZE = 6;
 const MAX_PHOTOS = 30; 
 
 type PendingFile = { file: File, date: number };
@@ -25,17 +26,20 @@ export default function App() {
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState<string>("");
-  const [stats, setStats] = useState<ProcessingStats>({ total: 0, processed: 0, success: 0, failed: 0 });
+  const [stats, setStats] = useState<ProcessingStats>({ total: 0, processed: 0, success: 0, failed: 0, cached: 0 });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+  const [appMode, setAppMode] = useState<AppMode>('construction');
   
   // Modals
   const [pendingFiles, setPendingFiles] = useState<PendingFile[] | null>(null);
   const [selectionStart, setSelectionStart] = useState(1);
   const [selectionCount, setSelectionCount] = useState(MAX_PHOTOS);
   const [showRefineModal, setShowRefineModal] = useState(false);
+  // Store initial instruction if files are pending selection
+  const [pendingInstruction, setPendingInstruction] = useState<string>("");
 
   // Language
   const [lang, setLang] = useState<'en' | 'ja'>('en');
@@ -55,7 +59,9 @@ export default function App() {
           setPhotos(savedPhotos);
           const success = savedPhotos.filter(p => p.status === 'done').length;
           const failed = savedPhotos.filter(p => p.status === 'error').length;
-          setStats({ total: savedPhotos.length, processed: success + failed, success, failed });
+          const cached = savedPhotos.filter(p => p.fromCache).length;
+          setStats({ total: savedPhotos.length, processed: success + failed, success, failed, cached });
+          setShowPreview(true); // Restore view if data exists
         }
       } catch (err) {
         console.error("Failed to load session", err);
@@ -73,7 +79,7 @@ export default function App() {
       if (photos.length > 0) {
         saveProjectData(photos).catch(console.error);
       }
-    }, 1000);
+    }, 500); // Reduced to 500ms for snappier saves
     return () => clearTimeout(timer);
   }, [photos, isStorageLoaded]);
 
@@ -82,7 +88,7 @@ export default function App() {
   const handleCloseProject = async () => {
     if (window.confirm(txt.resetConfirm)) {
       setPhotos([]);
-      setStats({ total: 0, processed: 0, success: 0, failed: 0 });
+      setStats({ total: 0, processed: 0, success: 0, failed: 0, cached: 0 });
       setErrorMsg(null);
       setSuccessMsg(null);
       setShowPreview(false);
@@ -91,15 +97,20 @@ export default function App() {
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
+  const handleClearCache = async () => {
+    if (window.confirm(lang === 'ja' ? "キャッシュを削除しますか？\n次回以降、同じ写真でも再解析が行われます。" : "Clear analysis cache?\nPhotos will be re-analyzed next time.")) {
+      await clearAnalysisCache();
+      alert(lang === 'ja' ? "キャッシュを削除しました。" : "Cache cleared.");
+    }
+  };
+
+  const processFiles = async (fileList: File[], instruction: string = "") => {
     setErrorMsg(null);
     setSuccessMsg(null);
     setPendingFiles(null);
     setIsProcessing(true);
     setCurrentStep("Sorting...");
     
-    const fileList = Array.from(e.target.files) as File[];
     const imageFiles = fileList.filter(f => f.type.startsWith('image/'));
 
     if (imageFiles.length === 0) {
@@ -119,12 +130,17 @@ export default function App() {
       setIsProcessing(false);
       setCurrentStep("");
       setPendingFiles(filesWithDate);
+      setPendingInstruction(instruction);
       setSelectionStart(1);
       setSelectionCount(MAX_PHOTOS);
       return;
     }
 
-    startProcessing(filesWithDate);
+    startProcessing(filesWithDate, instruction);
+  };
+
+  const handleStartProcessing = (files: File[], instruction: string) => {
+    processFiles(files, instruction);
   };
 
   const handleSelectionConfirm = () => {
@@ -133,20 +149,25 @@ export default function App() {
     const endIdx = Math.min(pendingFiles.length, startIdx + selectionCount);
     const selectedFiles = pendingFiles.slice(startIdx, endIdx);
     setPendingFiles(null);
-    startProcessing(selectedFiles);
+    // Use the instruction that was stored when files were dropped
+    startProcessing(selectedFiles, pendingInstruction);
   };
 
-  const startProcessing = async (filesToProcess: PendingFile[]) => {
+  const startProcessing = async (filesToProcess: PendingFile[], instruction: string = "") => {
     setIsProcessing(true);
     setCurrentStep("Checking cache...");
 
     const newRecords: PhotoRecord[] = [];
     let cachedCount = 0;
 
-    for (const { file } of filesToProcess) {
+    for (const { file, date } of filesToProcess) {
       try {
         const { base64, mimeType } = await processImageForAI(file);
+        
+        // We use the file object to check cache.
+        // The cache key relies on name + size + lastModified.
         const cachedResult = await getCachedAnalysis(file);
+        
         if (cachedResult) {
           cachedCount++;
           newRecords.push({
@@ -155,7 +176,11 @@ export default function App() {
             base64,
             mimeType,
             status: 'done',
-            analysis: cachedResult
+            analysis: cachedResult,
+            date: date,
+            fileSize: file.size,
+            lastModified: file.lastModified,
+            fromCache: true // Flag as cached
           });
         } else {
           newRecords.push({
@@ -163,7 +188,11 @@ export default function App() {
             originalFile: file,
             base64,
             mimeType,
-            status: 'pending'
+            status: 'pending',
+            date: date,
+            fileSize: file.size,
+            lastModified: file.lastModified,
+            fromCache: false
           });
         }
       } catch (err) {
@@ -174,15 +203,24 @@ export default function App() {
     await clearProjectData(); 
     setPhotos(newRecords);
     
+    // Initial stats reflect what we found in cache
+    setStats({ 
+      total: newRecords.length, 
+      processed: cachedCount, // "Processed" effectively means done
+      success: cachedCount, 
+      failed: 0,
+      cached: cachedCount
+    });
+
     if (cachedCount > 0) {
       setSuccessMsg(txt.cacheHit(cachedCount));
     }
 
     setShowPreview(true);
-    runAnalysis(newRecords);
+    runAnalysis(newRecords, instruction);
   };
 
-  const runAnalysis = async (specificPhotos?: PhotoRecord[], customInstruction?: string) => {
+  const runAnalysis = async (specificPhotos?: PhotoRecord[], customInstruction?: string, batchSize: number = DEFAULT_BATCH_SIZE) => {
     if (!process.env.API_KEY) {
       setErrorMsg("Gemini API Key is missing.");
       return;
@@ -193,12 +231,49 @@ export default function App() {
     
     setIsProcessing(true);
     
-    // Determine targets: Retry all if Custom Instruction, else only pending
     let targetPhotos: PhotoRecord[];
-    if (customInstruction) {
-      targetPhotos = currentPhotos.filter(p => p.status !== 'error'); 
+
+    // --- RE-ANALYSIS LOGIC ("Refine" Mode) ---
+    if (!specificPhotos && customInstruction) {
+       const pendingPhotos = currentPhotos.filter(p => p.status === 'pending');
+       setCurrentStep(txt.identifyingTargets || "Identifying targets...");
+       
+       try {
+         const targetFilenames = await identifyTargetPhotos(currentPhotos, customInstruction);
+         const reanalysisTargets = currentPhotos.filter(p => 
+           p.status !== 'pending' &&
+           p.status !== 'error' &&
+           targetFilenames.includes(p.fileName)
+         );
+         
+         targetPhotos = [...pendingPhotos, ...reanalysisTargets];
+         
+         if (targetPhotos.length === 0) {
+            setSuccessMsg("No photos matched the criteria for update.");
+            setIsProcessing(false);
+            setCurrentStep("");
+            return;
+         }
+
+       } catch (e) {
+         console.warn("Smart filter failed, defaulting to all non-error photos.", e);
+         targetPhotos = currentPhotos.filter(p => p.status !== 'error');
+       }
+
     } else {
-      targetPhotos = currentPhotos.filter(p => p.status === 'pending');
+       // --- INITIAL LOAD or NO INSTRUCTION ---
+       // Only process photos that are NOT done (i.e. not retrieved from cache)
+       targetPhotos = currentPhotos.filter(p => p.status === 'pending' || p.status === 'error');
+       
+       // Note: If all photos were cached (status='done'), targetPhotos is empty.
+       // This correctly skips API calls.
+       
+       // Fallback for edge case: If specificPhotos was NOT passed (e.g. manual retry button)
+       // and targetPhotos is empty, maybe we want to force retry all? 
+       // But for initial load, empty targetPhotos means "All Done", which is good.
+       if (targetPhotos.length === 0 && !specificPhotos) {
+          targetPhotos = currentPhotos; 
+       }
     }
     
     if (targetPhotos.length === 0) {
@@ -207,13 +282,18 @@ export default function App() {
        return;
     }
 
-    // Reset stats
-    if (customInstruction) {
-      setStats({ total: currentPhotos.length, processed: 0, success: 0, failed: 0 });
-    } else {
-       const alreadyDone = currentPhotos.length - targetPhotos.length;
-       setStats({ total: currentPhotos.length, processed: alreadyDone, success: alreadyDone, failed: 0 });
-    }
+    // Reset stats for the UI, keeping cached count valid
+    const cachedTotal = currentPhotos.filter(p => p.fromCache).length;
+    const completedTotal = currentPhotos.filter(p => p.status === 'done').length;
+    
+    // We start "processing" the target count, but we preserve the done count visually
+    setStats({ 
+      total: currentPhotos.length, 
+      processed: completedTotal, 
+      success: completedTotal, 
+      failed: 0,
+      cached: cachedTotal
+    });
     
     let updatedPhotos = [...currentPhotos];
 
@@ -225,22 +305,28 @@ export default function App() {
     };
 
     try {
-      for (let i = 0; i < targetPhotos.length; i += BATCH_SIZE) {
-        const batch = targetPhotos.slice(i, i + BATCH_SIZE);
-        setCurrentStep(`AI Analyzing... ${i + 1}/${targetPhotos.length}`);
+      for (let i = 0; i < targetPhotos.length; i += batchSize) {
+        const batch = targetPhotos.slice(i, i + batchSize);
+        setCurrentStep(`${txt.analyzing} ${i + 1}/${targetPhotos.length} (Targeted)`);
 
         try {
           batch.forEach(p => updatePhotoStatus(p.fileName, 'processing'));
           setPhotos([...updatedPhotos]);
 
-          const results = await analyzePhotoBatch(batch, customInstruction);
+          const results = await analyzePhotoBatch(batch, customInstruction, batchSize, appMode);
 
           await Promise.all(batch.map(async (photo, idx) => {
              const result = results.find(r => r.fileName === photo.fileName) || results[idx];
              if (result) {
                updatePhotoStatus(photo.fileName, 'done', result);
                setStats(prev => ({ ...prev, processed: prev.processed + 1, success: prev.success + 1 }));
-               if (photo.originalFile) await cacheAnalysis(photo.originalFile, result);
+               // Cache the result using the photo record (which contains metadata)
+               const currentRecord = updatedPhotos.find(p => p.fileName === photo.fileName);
+               if (currentRecord) {
+                 // Important: When we analyze via API, it is NOT from cache anymore.
+                 currentRecord.fromCache = false; 
+                 await cacheAnalysis(currentRecord, result);
+               }
              } else {
                updatePhotoStatus(photo.fileName, 'error');
                setStats(prev => ({ ...prev, processed: prev.processed + 1, failed: prev.failed + 1 }));
@@ -287,7 +373,8 @@ export default function App() {
         setSuccessMsg("Imported successfully!");
         setShowPreview(true);
         const success = importedData.filter(p => p.status === 'done').length;
-        setStats({ total: importedData.length, processed: importedData.length, success, failed: importedData.length - success });
+        const cached = importedData.filter(p => p.fromCache).length; // Usually undefined on import unless strictly mapped
+        setStats({ total: importedData.length, processed: importedData.length, success, failed: importedData.length - success, cached });
       } catch (err) {
         setErrorMsg("Invalid JSON format.");
       }
@@ -295,9 +382,35 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleRefineRun = (instruction: string) => {
+  const handleRefineRun = (instruction: string, batchSize: number) => {
     setShowRefineModal(false);
-    runAnalysis(undefined, instruction);
+    runAnalysis(undefined, instruction, batchSize);
+  };
+
+  const handleUpdatePhoto = async (fileName: string, field: keyof AIAnalysisResult, value: string) => {
+    setPhotos(prev => {
+      const newPhotos = [...prev];
+      const idx = newPhotos.findIndex(p => p.fileName === fileName);
+      if (idx === -1) return prev;
+      
+      const target = { ...newPhotos[idx] };
+      if (!target.analysis) return prev;
+      
+      target.analysis = { ...target.analysis, [field]: value };
+      newPhotos[idx] = target;
+      
+      // Update persistent cache immediately so corrections are "learned" for this specific file.
+      // IMPORTANT: Ensure metadata exists for cache key before saving.
+      // If data is legacy (missing fileSize), try to populate from originalFile if available.
+      if (!target.fileSize && target.originalFile) {
+        target.fileSize = target.originalFile.size;
+        target.lastModified = target.originalFile.lastModified;
+      }
+
+      cacheAnalysis(target, target.analysis).catch(console.error);
+      
+      return newPhotos;
+    });
   };
 
   return (
@@ -321,6 +434,7 @@ export default function App() {
       {showRefineModal && (
         <RefineModal 
           lang={lang}
+          photos={photos}
           onClose={() => setShowRefineModal(false)}
           onRunAnalysis={handleRefineRun}
         />
@@ -332,6 +446,7 @@ export default function App() {
           lang={lang}
           photos={photos}
           stats={stats}
+          appMode={appMode}
           isProcessing={isProcessing}
           currentStep={currentStep}
           errorMsg={errorMsg}
@@ -339,18 +454,22 @@ export default function App() {
           onGoHome={() => setShowPreview(false)}
           onCloseProject={handleCloseProject}
           onRefine={() => setShowRefineModal(true)}
-          onExportExcel={() => generateExcel(photos)}
+          onExportExcel={() => generateExcel(photos, appMode)}
+          onUpdatePhoto={handleUpdatePhoto}
         />
       ) : (
         <UploadView 
           lang={lang}
           isProcessing={isProcessing}
           photos={photos}
-          onFileSelect={handleFileSelect}
+          appMode={appMode}
+          setAppMode={setAppMode}
+          onStartProcessing={handleStartProcessing}
           onResume={() => setShowPreview(true)}
           onCloseProject={handleCloseProject}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
+          onClearCache={handleClearCache}
         />
       )}
     </>
