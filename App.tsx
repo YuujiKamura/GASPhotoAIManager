@@ -1,7 +1,5 @@
-
-
 import React, { useState, useEffect } from 'react';
-import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode } from './types';
+import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos } from './services/geminiService';
 import { generateExcel } from './utils/excelGenerator';
@@ -17,7 +15,7 @@ import RefineModal from './components/RefineModal';
 // Declare saveAs for export
 declare const saveAs: any;
 
-const DEFAULT_BATCH_SIZE = 6;
+const DEFAULT_BATCH_SIZE = 3; // Reverted to 3 for better RPM/Quota efficiency
 const MAX_PHOTOS = 30; 
 
 type PendingFile = { file: File, date: number };
@@ -32,6 +30,9 @@ export default function App() {
   const [showPreview, setShowPreview] = useState(false);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>('construction');
+  
+  // Console Logs
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   
   // Modals
   const [pendingFiles, setPendingFiles] = useState<PendingFile[] | null>(null);
@@ -83,6 +84,15 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [photos, isStorageLoaded]);
 
+  // --- Helpers ---
+  
+  const addLog = (message: string, type: LogEntry['type'] = 'info', details?: any) => {
+    const timestamp = new Date().toLocaleTimeString('ja-JP', { hour12: false });
+    setLogs(prev => [...prev, { timestamp, message, type, details }]);
+  };
+
+  const clearLogs = () => setLogs([]);
+
   // --- Logic Controllers ---
 
   const handleCloseProject = async () => {
@@ -93,354 +103,292 @@ export default function App() {
       setSuccessMsg(null);
       setShowPreview(false);
       setPendingFiles(null);
+      clearLogs();
       await clearProjectData();
     }
   };
 
   const handleClearCache = async () => {
-    if (window.confirm(lang === 'ja' ? "キャッシュを削除しますか？\n次回以降、同じ写真でも再解析が行われます。" : "Clear analysis cache?\nPhotos will be re-analyzed next time.")) {
+    const msg = lang === 'ja' 
+      ? "解析済みのキャッシュデータを削除しますか？\n（現在表示中のデータは消えませんが、次回以降の解析でAPIが使用されます）" 
+      : "Clear analysis cache?\n(Current view is not affected, but next analysis will use API)";
+      
+    if (window.confirm(msg)) {
       await clearAnalysisCache();
+      setStats(prev => ({ ...prev, cached: 0 }));
+      setPhotos(prev => prev.map(p => ({ ...p, fromCache: false })));
       alert(lang === 'ja' ? "キャッシュを削除しました。" : "Cache cleared.");
+      addLog("Cache cleared by user.", 'info');
     }
   };
 
-  const processFiles = async (fileList: File[], instruction: string = "") => {
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    setPendingFiles(null);
-    setIsProcessing(true);
-    setCurrentStep("Sorting...");
-    
-    const imageFiles = fileList.filter(f => f.type.startsWith('image/'));
-
-    if (imageFiles.length === 0) {
-      setErrorMsg(txt.noImages);
-      setIsProcessing(false);
-      return;
+  const handleDeletePhoto = (fileName: string) => {
+    if (window.confirm(lang === 'ja' ? "この写真を削除してもよろしいですか？" : "Are you sure you want to delete this photo?")) {
+      const updatedPhotos = photos.filter(p => p.fileName !== fileName);
+      setPhotos(updatedPhotos);
+      
+      // Re-calculate stats
+      const success = updatedPhotos.filter(p => p.status === 'done').length;
+      const failed = updatedPhotos.filter(p => p.status === 'error').length;
+      const cached = updatedPhotos.filter(p => p.fromCache).length;
+      setStats({ total: updatedPhotos.length, processed: success + failed, success, failed, cached });
+      addLog(`Deleted photo: ${fileName}`, 'info');
     }
+  };
 
-    const filesWithDate = await Promise.all(imageFiles.map(async (file) => {
-      const date = await getPhotoDate(file);
-      return { file, date };
+  const handleUpdatePhoto = (fileName: string, field: keyof AIAnalysisResult, value: string) => {
+    setPhotos(prev => prev.map(p => {
+      if (p.fileName === fileName && p.analysis) {
+        return {
+          ...p,
+          analysis: { ...p.analysis, [field]: value }
+        };
+      }
+      return p;
     }));
+  };
 
-    filesWithDate.sort((a, b) => a.date - b.date);
+  const handleResume = () => {
+    setShowPreview(true);
+  };
 
-    if (filesWithDate.length > MAX_PHOTOS) {
-      setIsProcessing(false);
-      setCurrentStep("");
-      setPendingFiles(filesWithDate);
+  const handleStartProcessing = async (files: File[], instruction: string) => {
+    const enrichedFiles: PendingFile[] = await Promise.all(files.map(async f => ({
+      file: f,
+      date: await getPhotoDate(f)
+    })));
+
+    enrichedFiles.sort((a, b) => a.date - b.date);
+
+    if (enrichedFiles.length > MAX_PHOTOS) {
+      setPendingFiles(enrichedFiles);
       setPendingInstruction(instruction);
-      setSelectionStart(1);
       setSelectionCount(MAX_PHOTOS);
-      return;
+      setSelectionStart(1);
+    } else {
+      startAnalysisPipeline(enrichedFiles, instruction);
     }
-
-    startProcessing(filesWithDate, instruction);
   };
 
-  const handleStartProcessing = (files: File[], instruction: string) => {
-    processFiles(files, instruction);
-  };
-
-  const handleSelectionConfirm = () => {
+  const handleConfirmLimit = () => {
     if (!pendingFiles) return;
-    const startIdx = Math.max(0, selectionStart - 1);
-    const endIdx = Math.min(pendingFiles.length, startIdx + selectionCount);
-    const selectedFiles = pendingFiles.slice(startIdx, endIdx);
+    const startIndex = Math.max(0, selectionStart - 1);
+    const selected = pendingFiles.slice(startIndex, startIndex + selectionCount);
     setPendingFiles(null);
-    // Use the instruction that was stored when files were dropped
-    startProcessing(selectedFiles, pendingInstruction);
+    startAnalysisPipeline(selected, pendingInstruction);
   };
 
-  const startProcessing = async (filesToProcess: PendingFile[], instruction: string = "") => {
+  const startAnalysisPipeline = async (filesWithDate: PendingFile[], instruction: string) => {
     setIsProcessing(true);
-    setCurrentStep("Checking cache...");
+    setShowPreview(true);
+    setErrorMsg(null);
+    setCurrentStep(txt.analyzing);
+    clearLogs();
+    addLog(`Starting analysis for ${filesWithDate.length} photos...`, 'info');
 
-    const newRecords: PhotoRecord[] = [];
+    // 1. Create Records & Check Cache
+    const initialRecords: PhotoRecord[] = [];
     let cachedCount = 0;
 
-    for (const { file, date } of filesToProcess) {
-      try {
-        const { base64, mimeType } = await processImageForAI(file);
-        
-        // We use the file object to check cache.
-        // The cache key relies on name + size + lastModified.
-        const cachedResult = await getCachedAnalysis(file);
-        
-        if (cachedResult) {
-          cachedCount++;
-          newRecords.push({
-            fileName: file.name,
-            originalFile: file,
-            base64,
-            mimeType,
-            status: 'done',
-            analysis: cachedResult,
-            date: date,
-            fileSize: file.size,
-            lastModified: file.lastModified,
-            fromCache: true // Flag as cached
-          });
-        } else {
-          newRecords.push({
-            fileName: file.name,
-            originalFile: file,
-            base64,
-            mimeType,
-            status: 'pending',
-            date: date,
-            fileSize: file.size,
-            lastModified: file.lastModified,
-            fromCache: false
-          });
-        }
-      } catch (err) {
-        console.error(`Failed to load ${file.name}`, err);
-      }
+    for (const item of filesWithDate) {
+       const { base64, mimeType } = await processImageForAI(item.file);
+       
+       // Create temp record for cache lookup
+       const tempRecord: PhotoRecord = {
+         fileName: item.file.name,
+         originalFile: item.file,
+         base64: "", // Don't use heavy base64 for key if file obj works
+         mimeType,
+         fileSize: item.file.size,
+         lastModified: item.file.lastModified,
+         date: item.date,
+         status: 'pending'
+       };
+
+       const cached = await getCachedAnalysis(tempRecord);
+       
+       if (cached) {
+         cachedCount++;
+         addLog(`Cache hit for ${item.file.name}`, 'success');
+       }
+
+       initialRecords.push({
+         ...tempRecord,
+         base64, // Restore base64
+         analysis: cached || undefined,
+         status: cached ? 'done' : 'pending',
+         fromCache: !!cached
+       });
     }
 
-    await clearProjectData(); 
-    setPhotos(newRecords);
-    
-    // Initial stats reflect what we found in cache
+    setPhotos(initialRecords);
     setStats({ 
-      total: newRecords.length, 
-      processed: cachedCount, // "Processed" effectively means done
-      success: cachedCount, 
-      failed: 0,
-      cached: cachedCount
+       total: initialRecords.length, 
+       processed: cachedCount, 
+       success: cachedCount, 
+       failed: 0, 
+       cached: cachedCount 
     });
 
-    if (cachedCount > 0) {
-      setSuccessMsg(txt.cacheHit(cachedCount));
-    }
+    // 2. Identify Pending
+    const pendingRecords = initialRecords.filter(r => r.status === 'pending');
 
-    setShowPreview(true);
-    runAnalysis(newRecords, instruction);
-  };
-
-  const runAnalysis = async (specificPhotos?: PhotoRecord[], customInstruction?: string, batchSize: number = DEFAULT_BATCH_SIZE) => {
-    if (!process.env.API_KEY) {
-      setErrorMsg("Gemini API Key is missing.");
-      return;
-    }
-
-    const currentPhotos = specificPhotos || photos;
-    if (currentPhotos.length === 0) return;
-    
-    setIsProcessing(true);
-    
-    let targetPhotos: PhotoRecord[];
-
-    // --- RE-ANALYSIS LOGIC ("Refine" Mode) ---
-    if (!specificPhotos && customInstruction) {
-       const pendingPhotos = currentPhotos.filter(p => p.status === 'pending');
-       setCurrentStep(txt.identifyingTargets || "Identifying targets...");
-       
-       try {
-         const targetFilenames = await identifyTargetPhotos(currentPhotos, customInstruction);
-         const reanalysisTargets = currentPhotos.filter(p => 
-           p.status !== 'pending' &&
-           p.status !== 'error' &&
-           targetFilenames.includes(p.fileName)
-         );
-         
-         targetPhotos = [...pendingPhotos, ...reanalysisTargets];
-         
-         if (targetPhotos.length === 0) {
-            setSuccessMsg("No photos matched the criteria for update.");
-            setIsProcessing(false);
-            setCurrentStep("");
-            return;
-         }
-
-       } catch (e) {
-         console.warn("Smart filter failed, defaulting to all non-error photos.", e);
-         targetPhotos = currentPhotos.filter(p => p.status !== 'error');
-       }
-
-    } else {
-       // --- INITIAL LOAD or NO INSTRUCTION ---
-       // Only process photos that are NOT done (i.e. not retrieved from cache)
-       targetPhotos = currentPhotos.filter(p => p.status === 'pending' || p.status === 'error');
-       
-       // Note: If all photos were cached (status='done'), targetPhotos is empty.
-       // This correctly skips API calls.
-       
-       // Fallback for edge case: If specificPhotos was NOT passed (e.g. manual retry button)
-       // and targetPhotos is empty, maybe we want to force retry all? 
-       // But for initial load, empty targetPhotos means "All Done", which is good.
-       if (targetPhotos.length === 0 && !specificPhotos) {
-          targetPhotos = currentPhotos; 
-       }
-    }
-    
-    if (targetPhotos.length === 0) {
+    if (pendingRecords.length === 0) {
        setIsProcessing(false);
-       setCurrentStep("Analysis Complete");
+       setSuccessMsg(lang === 'ja' ? "キャッシュからすべて復元しました。" : "All restored from cache.");
+       addLog("All items restored from cache. No API calls needed.", 'success');
        return;
     }
 
-    // Reset stats for the UI, keeping cached count valid
-    const cachedTotal = currentPhotos.filter(p => p.fromCache).length;
-    const completedTotal = currentPhotos.filter(p => p.status === 'done').length;
-    
-    // We start "processing" the target count, but we preserve the done count visually
-    setStats({ 
-      total: currentPhotos.length, 
-      processed: completedTotal, 
-      success: completedTotal, 
-      failed: 0,
-      cached: cachedTotal
-    });
-    
-    let updatedPhotos = [...currentPhotos];
-
-    const updatePhotoStatus = (fileName: string, status: PhotoRecord['status'], analysis?: AIAnalysisResult) => {
-      const idx = updatedPhotos.findIndex(p => p.fileName === fileName);
-      if (idx !== -1) {
-        updatedPhotos[idx] = { ...updatedPhotos[idx], status, analysis };
-      }
-    };
-
-    try {
-      for (let i = 0; i < targetPhotos.length; i += batchSize) {
-        const batch = targetPhotos.slice(i, i + batchSize);
-        setCurrentStep(`${txt.analyzing} ${i + 1}/${targetPhotos.length} (Targeted)`);
-
-        try {
-          batch.forEach(p => updatePhotoStatus(p.fileName, 'processing'));
-          setPhotos([...updatedPhotos]);
-
-          const results = await analyzePhotoBatch(batch, customInstruction, batchSize, appMode);
-
-          await Promise.all(batch.map(async (photo, idx) => {
-             const result = results.find(r => r.fileName === photo.fileName) || results[idx];
-             if (result) {
-               updatePhotoStatus(photo.fileName, 'done', result);
-               setStats(prev => ({ ...prev, processed: prev.processed + 1, success: prev.success + 1 }));
-               // Cache the result using the photo record (which contains metadata)
-               const currentRecord = updatedPhotos.find(p => p.fileName === photo.fileName);
-               if (currentRecord) {
-                 // Important: When we analyze via API, it is NOT from cache anymore.
-                 currentRecord.fromCache = false; 
-                 await cacheAnalysis(currentRecord, result);
-               }
-             } else {
-               updatePhotoStatus(photo.fileName, 'error');
-               setStats(prev => ({ ...prev, processed: prev.processed + 1, failed: prev.failed + 1 }));
-             }
-          }));
-
-        } catch (err: any) {
-          console.error("Batch failed", err);
-          const errorMsgStr = (err.message || JSON.stringify(err) || "").toString();
-          if (errorMsgStr.includes("403") || errorMsgStr.includes("PERMISSION_DENIED")) {
-             setErrorMsg(txt.permissionError);
-             throw new Error("PERMISSION_DENIED");
-          }
-          batch.forEach(p => updatePhotoStatus(p.fileName, 'error'));
-          setStats(prev => ({ ...prev, processed: prev.processed + batch.length, failed: prev.failed + batch.length }));
-        }
-        setPhotos([...updatedPhotos]);
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    } catch (e: any) {
-      if (!e.message.includes("PERMISSION_DENIED")) setErrorMsg(`API Error: ${e.message}`);
-    } finally {
-      setIsProcessing(false);
-      setCurrentStep("Analysis Complete");
-    }
+    // 3. Run Analysis on Pending
+    runAnalysis(initialRecords, instruction, pendingRecords);
   };
 
-  // --- Handlers for Import/Export ---
+  const handleRefineAnalysis = async (instruction: string, batchSize: number) => {
+    setIsProcessing(true);
+    setErrorMsg(null);
+    addLog(`Refining analysis with instruction: "${instruction}"`, 'info');
+    
+    // Identify targets?
+    setCurrentStep(txt.identifyingTargets);
+    const targetFilenames = await identifyTargetPhotos(photos, instruction);
+    addLog(`Targeted ${targetFilenames.length} photos for refinement.`, 'info', targetFilenames);
+    
+    if (targetFilenames.length === 0) {
+      setIsProcessing(false);
+      alert(lang === 'ja' ? "対象となる写真が見つかりませんでした。" : "No matching photos found.");
+      return;
+    }
+
+    // Reset status for targets
+    const updatedPhotos = photos.map(p => {
+       if (targetFilenames.includes(p.fileName)) {
+         return { ...p, status: 'pending' as const }; // force re-process
+       }
+       return p;
+    });
+    setPhotos(updatedPhotos);
+
+    // Filter pending
+    const pending = updatedPhotos.filter(p => p.status === 'pending');
+    runAnalysis(updatedPhotos, instruction, pending, batchSize);
+    setShowRefineModal(false);
+  };
+
+  const runAnalysis = async (
+    allPhotos: PhotoRecord[], 
+    instruction: string, 
+    pendingSubset: PhotoRecord[],
+    batchSize: number = DEFAULT_BATCH_SIZE
+  ) => {
+    let currentPhotos = [...allPhotos];
+    let processedCount = stats.processed;
+    let successCount = stats.success;
+    let failedCount = stats.failed;
+
+    // Split pending into batches
+    for (let i = 0; i < pendingSubset.length; i += batchSize) {
+       const batch = pendingSubset.slice(i, i + batchSize);
+       setCurrentStep(`${txt.analyzing} (${i + 1}/${pendingSubset.length})`);
+       
+       addLog(`Processing batch ${Math.floor(i/batchSize) + 1} (${batch.length} photos)...`, 'info');
+
+       try {
+         // Update Status to Processing
+         currentPhotos = currentPhotos.map(p => batch.find(b => b.fileName === p.fileName) ? { ...p, status: 'processing' } : p);
+         setPhotos(currentPhotos);
+
+         const results = await analyzePhotoBatch(batch, instruction, batchSize, appMode, addLog);
+
+         // Apply Results
+         results.forEach(res => {
+            currentPhotos = currentPhotos.map(p => {
+               if (p.fileName === res.fileName) {
+                 // Save to Cache
+                 cacheAnalysis(p, res);
+                 return { ...p, analysis: res, status: 'done', fromCache: false };
+               }
+               return p;
+            });
+         });
+
+         // Mark any in batch that didn't get a result as error
+         const batchFilenames = batch.map(b => b.fileName);
+         const resultFilenames = results.map(r => r.fileName);
+         const missing = batchFilenames.filter(f => !resultFilenames.includes(f));
+         
+         if (missing.length > 0) {
+            currentPhotos = currentPhotos.map(p => missing.includes(p.fileName) ? { ...p, status: 'error' } : p);
+            failedCount += missing.length;
+            addLog(`Failed to get results for: ${missing.join(', ')}`, 'error');
+         }
+
+         successCount += results.length;
+         processedCount += batch.length;
+
+         setPhotos([...currentPhotos]); // Trigger update
+         setStats(prev => ({ ...prev, processed: processedCount, success: successCount, failed: failedCount }));
+
+         // Pause between batches
+         if (i + batchSize < pendingSubset.length) {
+            addLog("Pausing for 3s to respect API limits...", 'info');
+            await new Promise(r => setTimeout(r, 3000)); // 3s delay for safe RPM
+         }
+
+       } catch (e: any) {
+         console.error("Batch failed", e);
+         const isQuota = e.message?.includes("429");
+         
+         // Mark batch as error
+         currentPhotos = currentPhotos.map(p => batch.find(b => b.fileName === p.fileName) ? { ...p, status: 'error' } : p);
+         failedCount += batch.length;
+         processedCount += batch.length;
+         setPhotos([...currentPhotos]);
+         setStats(prev => ({ ...prev, processed: processedCount, failed: failedCount }));
+         
+         if (isQuota) {
+            setErrorMsg(lang === 'ja' ? "API制限に達しました。しばらく待ってから再試行してください。" : "API Rate Limit Exceeded. Please wait.");
+            addLog("Processing stopped due to Rate Limit.", 'error');
+            setIsProcessing(false);
+            return; // Stop processing loop
+         }
+       }
+    }
+
+    setIsProcessing(false);
+    setCurrentStep("");
+    addLog("Analysis pipeline completed.", 'success');
+  };
+
   const handleExportJson = () => {
-    const jsonStr = exportDataToJson(photos);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    saveAs(blob, `construction_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    const json = exportDataToJson(photos);
+    const blob = new Blob([json], { type: 'application/json' });
+    saveAs(blob, `photo_project_${new Date().toISOString().slice(0, 10)}.json`);
   };
 
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
     const reader = new FileReader();
-    reader.onload = async (ev) => {
+    reader.onload = (ev) => {
       try {
-        const importedData = importDataFromJson(ev.target?.result as string);
-        await clearProjectData();
-        setPhotos(importedData);
-        setSuccessMsg("Imported successfully!");
+        const data = importDataFromJson(ev.target?.result as string);
+        setPhotos(data);
+        const success = data.filter(p => p.status === 'done').length;
+        const failed = data.filter(p => p.status === 'error').length;
+        const cached = data.filter(p => p.fromCache).length;
+        setStats({ total: data.length, processed: success + failed, success, failed, cached });
         setShowPreview(true);
-        const success = importedData.filter(p => p.status === 'done').length;
-        const cached = importedData.filter(p => p.fromCache).length; // Usually undefined on import unless strictly mapped
-        setStats({ total: importedData.length, processed: importedData.length, success, failed: importedData.length - success, cached });
+        addLog(`Imported ${data.length} records from JSON.`, 'success');
       } catch (err) {
-        setErrorMsg("Invalid JSON format.");
+        alert("Failed to import JSON.");
       }
     };
     reader.readAsText(file);
   };
 
-  const handleRefineRun = (instruction: string, batchSize: number) => {
-    setShowRefineModal(false);
-    runAnalysis(undefined, instruction, batchSize);
-  };
-
-  const handleUpdatePhoto = async (fileName: string, field: keyof AIAnalysisResult, value: string) => {
-    setPhotos(prev => {
-      const newPhotos = [...prev];
-      const idx = newPhotos.findIndex(p => p.fileName === fileName);
-      if (idx === -1) return prev;
-      
-      const target = { ...newPhotos[idx] };
-      if (!target.analysis) return prev;
-      
-      target.analysis = { ...target.analysis, [field]: value };
-      newPhotos[idx] = target;
-      
-      // Update persistent cache immediately so corrections are "learned" for this specific file.
-      // IMPORTANT: Ensure metadata exists for cache key before saving.
-      // If data is legacy (missing fileSize), try to populate from originalFile if available.
-      if (!target.fileSize && target.originalFile) {
-        target.fileSize = target.originalFile.size;
-        target.lastModified = target.originalFile.lastModified;
-      }
-
-      cacheAnalysis(target, target.analysis).catch(console.error);
-      
-      return newPhotos;
-    });
-  };
-
   return (
     <>
-      {/* Modal: Limit Selection */}
-      {pendingFiles && (
-        <LimitModal 
-          lang={lang}
-          totalFiles={pendingFiles.length}
-          maxPhotos={MAX_PHOTOS}
-          selectionStart={selectionStart}
-          selectionCount={selectionCount}
-          onStartChange={setSelectionStart}
-          onCountChange={setSelectionCount}
-          onCancel={() => setPendingFiles(null)}
-          onConfirm={handleSelectionConfirm}
-        />
-      )}
-
-      {/* Modal: Refine Rules */}
-      {showRefineModal && (
-        <RefineModal 
-          lang={lang}
-          photos={photos}
-          onClose={() => setShowRefineModal(false)}
-          onRunAnalysis={handleRefineRun}
-        />
-      )}
-
-      {/* Main Content / Preview Switcher */}
       {showPreview ? (
         <PreviewView 
           lang={lang}
@@ -451,11 +399,14 @@ export default function App() {
           currentStep={currentStep}
           errorMsg={errorMsg}
           successMsg={successMsg}
+          logs={logs}
+          onClearLogs={clearLogs}
           onGoHome={() => setShowPreview(false)}
           onCloseProject={handleCloseProject}
           onRefine={() => setShowRefineModal(true)}
           onExportExcel={() => generateExcel(photos, appMode)}
           onUpdatePhoto={handleUpdatePhoto}
+          onDeletePhoto={handleDeletePhoto}
         />
       ) : (
         <UploadView 
@@ -465,11 +416,34 @@ export default function App() {
           appMode={appMode}
           setAppMode={setAppMode}
           onStartProcessing={handleStartProcessing}
-          onResume={() => setShowPreview(true)}
+          onResume={handleResume}
           onCloseProject={handleCloseProject}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onClearCache={handleClearCache}
+        />
+      )}
+
+      {pendingFiles && (
+        <LimitModal 
+          totalFiles={pendingFiles.length}
+          maxPhotos={MAX_PHOTOS}
+          selectionStart={selectionStart}
+          selectionCount={selectionCount}
+          lang={lang}
+          onStartChange={setSelectionStart}
+          onCountChange={setSelectionCount}
+          onCancel={() => setPendingFiles(null)}
+          onConfirm={handleConfirmLimit}
+        />
+      )}
+
+      {showRefineModal && (
+        <RefineModal 
+          lang={lang}
+          photos={photos}
+          onClose={() => setShowRefineModal(false)}
+          onRunAnalysis={handleRefineAnalysis}
         />
       )}
     </>

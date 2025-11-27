@@ -37,3 +37,10 @@ export interface ProcessingStats {
   failed: number;
   cached: number; // Count of records retrieved from cache
 }
+
+export interface LogEntry {
+  timestamp: string;
+  message: string;
+  type: 'info' | 'success' | 'error' | 'json';
+  details?: any; // For JSON objects
+}

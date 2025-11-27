@@ -1,14 +1,21 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PhotoRecord, AIAnalysisResult, AppMode } from "../types";
+import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 
 // --- CONSTANTS ---
+const API_KEY = process.env.API_KEY;
 
 // Construction Hierarchy Master Data
 const CONSTRUCTION_HIERARCHY = {
   "直接工事費": {
     "施工状況写真": {
+      "道路土工": {
+        "作業土工": {
+          "掘削工（表土）": {
+            "鋤取り・積込状況": {}
+          }
+        }
+      },
       "構造物撤去工": {
         "構造物取壊し工": {
           "コンクリート構造物取壊し": {
@@ -48,6 +55,37 @@ const CONSTRUCTION_HIERARCHY = {
             "舗設状況": {},
             "初期転圧状況": {},
             "2次転圧状況": {}
+          }
+        },
+        "未舗装部舗装工": {
+          "上層路盤工": {
+            "補足材搬入状況 M-40": {},
+            "不陸整正状況": {},
+            "転圧状況": {},
+            "路盤完了状況": {}
+          },
+          "表層工": {
+            "プライムコート乳剤散布状況": {},
+            "プライムコート養生砂散布状況": {},
+            "プライムコート養生砂清掃状況": {},
+            "端部乳剤塗布状況": {},
+            "舗設状況": {},
+            "初期転圧状況": {},
+            "2次転圧状況": {}
+          }
+        },
+        "瀝青安定処理路盤工": {
+          "上層路盤工": {
+            "補足材搬入状況 M-40": {},
+            "不陸整正状況": {},
+            "転圧状況": {},
+            "路盤完了状況": {}
+          },
+          "表層工": {
+            "プライムコート乳剤散布状況": {},
+            "プライムコート養生砂散布状況": {},
+            "プライムコート養生砂清掃状況": {},
+            "端部乳剤塗布状況": {}
           }
         }
       },
@@ -433,7 +471,7 @@ export const identifyTargetPhotos = async (
   
   if (analyzedRecords.length === 0) return [];
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   
   // Create a lightweight summary of current state
   const summary = analyzedRecords.map(r => ({
@@ -491,13 +529,112 @@ export const identifyTargetPhotos = async (
   }
 };
 
+/**
+ * NORMALIZATION & CONSISTENCY PASS
+ * Runs after all photos are processed to fix inconsistencies across the whole batch.
+ */
+export const normalizeDataConsistency = async (
+  records: PhotoRecord[],
+  onLog?: (msg: string, type: LogEntry['type'], details?: any) => void
+): Promise<PhotoRecord[]> => {
+  // Only process 'done' records
+  const validRecords = records.filter(r => r.status === 'done' && r.analysis);
+  if (validRecords.length < 2) return records; // Need at least 2 to compare
+
+  if (onLog) onLog("Running final consistency check...", 'info');
+
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+  // Prepare minimal data for context
+  const inputData = validRecords.map(r => ({
+    fileName: r.fileName,
+    station: r.analysis!.station,
+    date: r.date
+  }));
+
+  const prompt = `
+    You are a Data Consistency Specialist for construction photos.
+    
+    INPUT DATA (Chronological):
+    ${JSON.stringify(inputData, null, 2)}
+
+    TASK:
+    1. **Normalize Station Names (測点)**: 
+       - Fix OCR errors (e.g., "No.0132.2" -> "No.0+32.2").
+       - Unify formats (e.g., if most are "No.X+XX", change "No.X.XX" to match).
+       - Unify location names (e.g., "小山町1359" vs "小山町ノ359" -> Pick the most common/correct one).
+    2. **Infer Missing Stations**:
+       - If a station is empty or "Unknown", infer it from the previous/next photos based on the sequence.
+
+    OUTPUT:
+    Return a JSON object with "corrections": an array of objects { "fileName": "...", "station": "..." }.
+    Only include items that CHANGED.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            corrections: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  fileName: { type: Type.STRING },
+                  station: { type: Type.STRING }
+                },
+                required: ["fileName", "station"]
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const json = JSON.parse(response.text || "{}");
+    const corrections = json.corrections || [];
+
+    if (onLog) onLog(`Consistency check finished. Applying ${corrections.length} corrections.`, 'success', corrections);
+
+    // Apply corrections
+    const updatedRecords = records.map(r => {
+      const fix = corrections.find((c: any) => c.fileName === r.fileName);
+      if (fix && r.analysis) {
+        return {
+          ...r,
+          analysis: {
+            ...r.analysis,
+            station: fix.station
+          }
+        };
+      }
+      return r;
+    });
+
+    return updatedRecords;
+
+  } catch (e) {
+    console.error("Consistency check failed", e);
+    if (onLog) onLog("Consistency check failed. Skipping.", 'error');
+    return records;
+  }
+};
+
 export const analyzePhotoBatch = async (
   records: PhotoRecord[], 
   customInstruction?: string,
-  batchSize: number = 6,
-  appMode: AppMode = 'construction'
+  batchSize: number = 3,
+  appMode: AppMode = 'construction',
+  onLog?: (msg: string, type: LogEntry['type'], details?: any) => void
 ): Promise<AIAnalysisResult[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+  if (onLog) onLog(`Preparing batch of ${records.length} photos...`, 'info');
 
   // Prepare parts: Image + Prompt
   const parts: any[] = [];
@@ -534,13 +671,14 @@ export const analyzePhotoBatch = async (
     CRITICAL INSTRUCTION: Analyze them as a GROUP to ensure consistency.
     
     **DOMAIN KNOWLEDGE (Visual Reasoning):**
-    1. **Paving / Surface Treatment (舗装工):**
-       - **Emulsion Spraying (乳剤散布)** vs **Sand Scattering (養生砂散布)**:
-         - **Visual Cue**: If a worker holds a **wand/nozzle/sprayer** (often connected to a hose/engine), it is **Emulsion Spraying** (Liquid).
-         - **Visual Cue**: If a worker uses a **shovel** or hands to throw material, it is **Sand Scattering** (Solid).
-         - **Sequence**: Emulsion is sprayed FIRST. Sand is scattered SECOND.
-         - **Correction**: If the blackboard says "Emulsion Curing Sand" (ambiguous), check the tool. Sprayer = "Emulsion Spraying". Shovel = "Sand Scattering".
-
+    
+    1. **PAVING DISAMBIGUATION RULES (CRITICAL):**
+       - **Prime Coat (Emulsion vs Sand)**:
+         - **Visual Cue (Liquid/Spray)**: If the worker is holding a **long nozzle/wand** connected to a hose or backpack, or if you see a **mist/spray**, this is **"プライムコート乳剤散布状況"** (Emulsion Spraying).
+         - **Visual Cue (Solid/Shovel)**: If the worker is holding a **shovel/scoop** or throwing material by **hand** (from a bucket or pile), this is **"プライムコート養生砂散布状況"** (Sand Scattering).
+         - **Color Cue**: Emulsion turns the road **black/wet**. Sand is **beige/gray/white** and covers the black surface.
+         - **Sequence**: If multiple photos are provided, Spraying (Black) always happens *before* Sanding (Beige).
+    
     2. **Extraction Fields & Hierarchy Classification**:
        
        **HIERARCHY MAPPING RULES (CRITICAL):**
@@ -559,7 +697,7 @@ export const analyzePhotoBatch = async (
        ${hierarchyJson}
 
        **YOUR TASK:**
-       1. Identify the matching path in the JSON based on the blackboard text or visual content.
+       1. Identify the matching path in the JSON based on the blackboard text OR visual content.
        2. Extract the keys from the levels as follows:
        
        - **Work Type (工種)**: Output the key from **Level 3**.
@@ -587,6 +725,7 @@ export const analyzePhotoBatch = async (
          - **Context Aware**: Use the visual tool analysis (Sprayer vs Shovel) to describe the action accurately, even if the blackboard text is generic.
          - Example: "エンジンスプレイヤーを使用し、アスファルト乳剤を散布している状況。"
          - Example: "ロードローラーにより路盤の転圧を行っている状況。"
+         - Example: "人力により養生砂を散布している状況。"
     `;
   } else {
     // --- GENERAL ARCHIVE MODE PROMPT ---
@@ -646,27 +785,56 @@ export const analyzePhotoBatch = async (
 
   parts.push({ text: prompt });
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: { parts },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: analysisSchema,
-        systemInstruction: appMode === 'construction' 
-          ? "You are an expert construction site supervisor assistant." 
-          : "You are an intelligent photo archivist."
+  // Retry Logic for Rate Limits
+  let retries = 5;
+  let delay = 20000; // Start with 20 seconds delay if hit 429
+
+  while (true) {
+    try {
+      if (onLog) onLog(`Sending Request to Gemini 2.5 Flash... (Attempt ${6 - retries}/5)`, 'info');
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: { parts },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: analysisSchema,
+          systemInstruction: appMode === 'construction' 
+            ? "You are an expert construction site supervisor assistant." 
+            : "You are an intelligent photo archivist."
+        }
+      });
+
+      const text = response.text;
+      if (!text) {
+        if (onLog) onLog("Received empty response from API.", 'error');
+        return [];
       }
-    });
+      
+      const json = JSON.parse(text);
 
-    const text = response.text;
-    if (!text) return [];
-    
-    const json = JSON.parse(text);
-    return json.results || [];
+      if (onLog) {
+         onLog(`Received Response (${json.results?.length || 0} items):`, 'json', json);
+      }
+      
+      return json.results || [];
 
-  } catch (error) {
-    console.error("Gemini Batch Error:", error);
-    throw error;
+    } catch (error: any) {
+      const errMsg = error.message || JSON.stringify(error) || "";
+      const isQuota = errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota");
+      
+      if (onLog) onLog(`API Error: ${errMsg}`, 'error');
+
+      if (isQuota && retries > 0) {
+        if (onLog) onLog(`Quota Exceeded. Pausing for ${delay/1000}s...`, 'info');
+        console.warn(`Gemini Quota Exceeded. Retrying in ${delay}ms. Retries left: ${retries}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retries--;
+        delay *= 2; // Exponential Backoff: 20s -> 40s -> 80s -> 160s -> 320s
+      } else {
+        console.error("Gemini Batch Error:", error);
+        throw error;
+      }
+    }
   }
 };

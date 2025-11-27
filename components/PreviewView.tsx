@@ -1,9 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Zap } from 'lucide-react';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult } from '../types';
+import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
+import ConsolePanel from './ConsolePanel';
 import { generateZip } from '../utils/zipGenerator';
 
 // Declare html2pdf and saveAs
@@ -21,11 +21,14 @@ interface PreviewViewProps {
   currentStep: string;
   errorMsg: string | null;
   successMsg: string | null;
+  logs: LogEntry[];
+  onClearLogs: () => void;
   onGoHome: () => void;
   onCloseProject: () => void;
   onRefine: () => void;
   onExportExcel: () => void;
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
+  onDeletePhoto: (fileName: string) => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -37,17 +40,21 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   currentStep,
   errorMsg,
   successMsg,
+  logs,
+  onClearLogs,
   onGoHome,
   onCloseProject,
   onRefine,
   onExportExcel,
-  onUpdatePhoto
+  onUpdatePhoto,
+  onDeletePhoto
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
   const [isFitMode, setIsFitMode] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
+  const [showConsole, setShowConsole] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-Calculate Scale for Mobile
@@ -193,15 +200,24 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          </div>
       )}
 
-      <div id="print-area" ref={previewContainerRef} className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-auto bg-gray-200 w-full">
+      <div id="print-area" ref={previewContainerRef} className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-auto bg-gray-200 w-full relative">
          <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: scale < 1 ? `-${(1 - scale) * 50}%` : '0', minWidth: '210mm' }}>
             <PhotoAlbumView 
               records={photos} 
               appMode={appMode} 
               lang={lang} 
               onUpdatePhoto={onUpdatePhoto}
+              onDeletePhoto={onDeletePhoto}
             />
          </div>
+         
+         {/* Console Panel Component */}
+         <ConsolePanel 
+           logs={logs}
+           isOpen={showConsole}
+           onToggle={() => setShowConsole(!showConsole)}
+           onClear={onClearLogs}
+         />
       </div>
     </div>
   );

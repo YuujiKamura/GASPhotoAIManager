@@ -1,6 +1,9 @@
 
-import { PhotoRecord, AppMode } from "../types";
+
+import { PhotoRecord, AppMode, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "./imageUtils";
+import { LAYOUT_FIELDS, ROWS_PER_PHOTO } from "./layoutConfig";
+import { TRANS } from "./translations";
 
 // Declare global variables for loaded scripts
 declare const ExcelJS: any;
@@ -22,9 +25,12 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
     return;
   }
 
+  // Use current language for headers, or default to JA since this is primarily Japanese layout
+  const txt = TRANS['ja']; 
+
   // Create a new workbook
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('工事写真帳', {
+  const sheet = workbook.addWorksheet(appMode === 'construction' ? '工事写真帳' : 'Photo Album', {
     pageSetup: { 
       paperSize: 9, // 9 = A4
       orientation: 'portrait',
@@ -44,16 +50,16 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
   const ROW_HEIGHT_PTS = 21; 
   const PIXELS_PER_PT = 96.0 / 72.0; // Standard DPI conversion
   
-  // 12 Rows per photo block
-  const ROWS_PER_PHOTO = 12;
-
   const BOX_WIDTH_PX = COL_A_WIDTH_CHARS * PIXELS_PER_COL_UNIT; 
   const BOX_HEIGHT_PX = ROWS_PER_PHOTO * ROW_HEIGHT_PTS * PIXELS_PER_PT; 
 
   // Setup Column Widths
-  sheet.getColumn('A').width = COL_A_WIDTH_CHARS; 
-  sheet.getColumn('B').width = 8; // Label column
-  sheet.getColumn('C').width = 25; // Value column
+  // initializing columns array directly is safer than getColumn(n).width
+  sheet.columns = [
+    { width: COL_A_WIDTH_CHARS }, // Column A
+    { width: 8 },  // Column B
+    { width: 25 }  // Column C
+  ];
 
   // Set default font
   sheet.eachRow((row: any) => {
@@ -61,13 +67,6 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
   });
 
   let currentRow = 1;
-
-  // Header Labels based on Mode
-  const labelWorkType = appMode === 'construction' ? "工種" : "カテゴリ";
-  const labelStation = appMode === 'construction' ? "測点" : "場所";
-  const labelRemarks = appMode === 'construction' ? "備考" : "タイトル";
-  const labelDescription = "記事";
-  const labelDate = appMode === 'construction' ? "撮影日時" : "日時";
 
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
@@ -87,8 +86,9 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
     }
 
     // --- 1. Image Section (Column A) ---
-    sheet.mergeCells(`A${startRow}:A${endRow}`);
-    const imgCell = sheet.getCell(`A${startRow}`);
+    // Merge Column A for the image
+    sheet.mergeCells(startRow, 1, endRow, 1); // A{startRow}:A{endRow}
+    const imgCell = sheet.getCell(startRow, 1);
     imgCell.border = {
       top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
       left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
@@ -107,8 +107,6 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
       const { w: imgW, h: imgH } = await getImageDimensions(record.base64);
       
       // 2. Calculate Scale to Fit Box (Contain)
-      // Use 'ext' (explicit width/height) instead of 'br' to prevent stretching.
-      
       const scaleW = (BOX_WIDTH_PX * 0.96) / imgW; // 96% to leave small padding
       const scaleH = (BOX_HEIGHT_PX * 0.96) / imgH;
       const scale = Math.min(scaleW, scaleH); // Contain logic
@@ -121,8 +119,6 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
       const yOffsetPx = (BOX_HEIGHT_PX - finalH) / 2;
 
       // 4. Place Image using Absolute Positioning (Pixels)
-      // User request: "Don't move or size with cells" (editAs: 'absolute')
-      // Requires x, y in pixels.
       const absX = xOffsetPx; // Column A starts at 0px
       const absY = ((startRow - 1) * ROW_HEIGHT_PTS * PIXELS_PER_PT) + yOffsetPx;
 
@@ -131,24 +127,23 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
         y: absY,
         width: finalW,
         height: finalH,
-        editAs: 'absolute' // "セルに合わせて移動もサイズ変更もしない"
+        editAs: 'absolute'
       });
 
     } catch (e) {
       console.warn("Could not calculate image dimensions, falling back.", e);
-      // Fallback
       sheet.addImage(imageId, {
         tl: { col: 0.05, row: startRow - 1 + 0.5 },
         ext: { width: 400, height: 300 }, 
-        editAs: 'oneCell' // Fallback to standard anchoring if pixel calc fails
+        editAs: 'oneCell' 
       });
     }
 
     // --- 2. Info Section (Columns B & C) ---
     // Helper function for creating fields
     const createField = (r: number, label: string, value: string, rowSpan: number) => {
-      // Label Cell (Col B)
-      const labelCell = sheet.getCell(`B${r}`);
+      // Label Cell (Col 2 / B)
+      const labelCell = sheet.getCell(r, 2);
       labelCell.value = label;
       labelCell.font = { bold: true, size: 9, color: { argb: 'FF555555' } };
       labelCell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -160,10 +155,11 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
         bottom: { style: 'hair', color: { argb: 'FFAAAAAA' } }
       };
 
-      // Value Cell (Col C)
-      const valueCell = sheet.getCell(`C${r}`);
+      // Value Cell (Col 3 / C)
+      const valueCell = sheet.getCell(r, 3);
       valueCell.value = value;
       valueCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      valueCell.font = { size: 11 }; // Slightly larger font for readability
       valueCell.border = {
         top: { style: 'hair', color: { argb: 'FFCCCCCC' } },
         right: { style: 'hair', color: { argb: 'FFCCCCCC' } },
@@ -171,31 +167,32 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
       };
 
       if (rowSpan > 1) {
-        sheet.mergeCells(`B${r}:B${r + rowSpan - 1}`);
-        sheet.mergeCells(`C${r}:C${r + rowSpan - 1}`);
+        // Merge cells vertically
+        sheet.mergeCells(r, 2, r + rowSpan - 1, 2); // B{r}:B{r+span-1}
+        sheet.mergeCells(r, 3, r + rowSpan - 1, 3); // C{r}:C{r+span-1}
       }
     };
 
-    // Format Date String
-    const dateStr = record.date 
-      ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
-      : "";
+    // Iterate through Shared Layout Configuration
+    let currentFieldRow = startRow;
     
-    // Layout Logic (Total 12 Rows)
-    // 1. Work Type (1 row) [Row 1]
-    createField(startRow, labelWorkType, record.analysis?.workType || "", 1);
+    LAYOUT_FIELDS.forEach((field) => {
+      // Resolve Value
+      let val = "";
+      if (field.key === 'date') {
+         val = record.date 
+           ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
+           : "";
+      } else {
+         val = record.analysis ? (record.analysis[field.key as keyof AIAnalysisResult] as string || "") : "";
+      }
 
-    // 2. Station (1 row) [Row 2] -- SEPARATED
-    createField(startRow + 1, labelStation, record.analysis?.station || "", 1);
-    
-    // 3. Remarks (3 rows) [Rows 3-5]
-    createField(startRow + 2, labelRemarks, record.analysis?.remarks || "", 3);
-    
-    // 4. Description (5 rows) [Rows 6-10]
-    createField(startRow + 5, labelDescription, record.analysis?.description || "", 5);
+      // Resolve Label
+      const label = txt[field.labelKey as keyof typeof txt] as string;
 
-    // 5. Date (2 rows) [Rows 11-12]
-    createField(startRow + 10, labelDate, dateStr, 2);
+      createField(currentFieldRow, label, val, field.rowSpan);
+      currentFieldRow += field.rowSpan;
+    });
 
     currentRow = endRow + 2; 
   }

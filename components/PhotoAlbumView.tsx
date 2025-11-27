@@ -1,14 +1,15 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { Database } from 'lucide-react';
+import { Database, Trash2 } from 'lucide-react';
+import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 
 interface Props {
   records: PhotoRecord[];
   appMode: AppMode;
   lang: 'en' | 'ja';
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
+  onDeletePhoto?: (fileName: string) => void;
 }
 
 /**
@@ -71,7 +72,7 @@ interface InfoRowProps {
   children?: React.ReactNode; 
 }
 
-const InfoRow = ({ label, value, className = "", onChange, align, multiline = false, readOnly = false, children }: InfoRowProps) => (
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, className = "", onChange, align, multiline = false, readOnly = false, children }) => (
   // Use className for height control
   <div className={`flex border-b border-gray-300 last:border-b-0 box-border w-full ${className}`}>
     {/* Label: Fixed width w-12 (48px) - Just enough for 2 chars */}
@@ -97,10 +98,43 @@ const InfoRow = ({ label, value, className = "", onChange, align, multiline = fa
   </div>
 );
 
-const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto }) => {
+type ContextMenuState = {
+  x: number;
+  y: number;
+  targetFileName: string;
+} | null;
+
+const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto, onDeletePhoto }) => {
   const txt = TRANS[lang];
   const PHOTOS_PER_PAGE = 3;
   const totalPages = Math.ceil(records.length / PHOTOS_PER_PAGE);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    window.addEventListener('scroll', handleClickOutside);
+    return () => {
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', handleClickOutside);
+    };
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent, fileName: string) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetFileName: fileName
+    });
+  };
+
+  const executeDelete = () => {
+    if (contextMenu && onDeletePhoto) {
+      onDeletePhoto(contextMenu.targetFileName);
+      setContextMenu(null);
+    }
+  };
 
   return (
     <div id="album-content" className="w-full">
@@ -127,12 +161,12 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
                  return <div key={`empty-${slotIndex}`} className="flex-1 border-b border-gray-300 last:border-b-0 flex"></div>;
                }
 
-               const dateStr = record.date 
-                 ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
-                 : '';
-
                return (
-                 <div key={record.fileName} className="flex-1 border-b border-gray-300 last:border-b-0 flex h-[33.33%] box-border min-h-0">
+                 <div 
+                    key={record.fileName} 
+                    className="flex-1 border-b border-gray-300 last:border-b-0 flex h-[33.33%] box-border min-h-0"
+                    onContextMenu={(e) => handleContextMenu(e, record.fileName)}
+                  >
                    {/* Left: Image (65%) */}
                    <div className="w-[65%] border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group">
                       <img src={record.base64} alt={record.fileName} className="max-w-full max-h-full object-contain" />
@@ -145,70 +179,40 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
                       )}
                    </div>
 
-                   {/* Right: Info (35%) - Flex Column */}
+                   {/* Right: Info (35%) - Generated from Common Layout Config */}
                    <div className="w-[35%] flex flex-col h-full bg-white">
-                      
-                      {/* 1. Date (Top) - Ultra Compact 28px */}
-                      <InfoRow 
-                         label={txt.labelDate} 
-                         value={dateStr} 
-                         className="h-[28px] flex-shrink-0"
-                         onChange={() => {}} 
-                         readOnly
-                      >
-                         {record.fromCache && (
+                      {LAYOUT_FIELDS.map((field) => {
+                         // Resolve value
+                         let val = "";
+                         if (field.key === 'date') {
+                            val = record.date 
+                             ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
+                             : '';
+                         } else {
+                            val = record.analysis ? (record.analysis[field.key as keyof AIAnalysisResult] as string || "") : "";
+                         }
+
+                         // Resolve extra UI for date (Cache icon)
+                         const extraUI = field.key === 'date' && record.fromCache ? (
                             <div className="flex items-center gap-1 text-[10px] text-green-600 font-bold bg-green-50 px-1 rounded border border-green-200" title="Restored from local cache">
                                <Database className="w-3 h-3" />
                             </div>
-                         )}
-                      </InfoRow>
+                         ) : null;
 
-                      {/* 2. Work Type */}
-                      <InfoRow 
-                         label={txt.labelWorkType} 
-                         value={record.analysis?.workType || ''} 
-                         className="h-[28px] flex-shrink-0"
-                         onChange={(v) => onUpdatePhoto(record.fileName, 'workType', v)}
-                      />
-                      {/* 3. Variety */}
-                      <InfoRow 
-                         label={txt.labelVariety} 
-                         value={record.analysis?.variety || ''} 
-                         className="h-[28px] flex-shrink-0"
-                         onChange={(v) => onUpdatePhoto(record.fileName, 'variety', v)}
-                      />
-                      {/* 4. Detail */}
-                      <InfoRow 
-                         label={txt.labelDetail} 
-                         value={record.analysis?.detail || ''} 
-                         className="h-[28px] flex-shrink-0"
-                         onChange={(v) => onUpdatePhoto(record.fileName, 'detail', v)}
-                      />
-                      {/* 5. Station */}
-                      <InfoRow 
-                         label={txt.labelStation} 
-                         value={record.analysis?.station || ''} 
-                         className="h-[28px] flex-shrink-0"
-                         onChange={(v) => onUpdatePhoto(record.fileName, 'station', v)}
-                      />
-                      
-                      {/* 6. Remarks - Expanded to 64px (approx 3 lines) */}
-                      <InfoRow 
-                         label={txt.labelRemarks} 
-                         value={record.analysis?.remarks || ''} 
-                         className="h-[64px] flex-shrink-0"
-                         onChange={(v) => onUpdatePhoto(record.fileName, 'remarks', v)}
-                         multiline
-                      />
-                      
-                      {/* 7. Description - Takes ALL remaining space (approx 150px+) */}
-                      <InfoRow 
-                         label={txt.labelDescription} 
-                         value={record.analysis?.description || ''} 
-                         className="flex-1 min-h-0 border-b-0"
-                         onChange={(v) => onUpdatePhoto(record.fileName, 'description', v)}
-                         multiline
-                      />
+                         return (
+                            <InfoRow 
+                               key={field.id}
+                               label={txt[field.labelKey as keyof typeof txt] as string}
+                               value={val}
+                               className={`${field.heightClass} ${field.key === 'description' ? 'min-h-0 border-b-0' : 'flex-shrink-0'}`}
+                               onChange={(v) => field.key !== 'date' && onUpdatePhoto(record.fileName, field.key as keyof AIAnalysisResult, v)}
+                               readOnly={field.readOnly}
+                               multiline={field.multiline}
+                            >
+                               {extraUI}
+                            </InfoRow>
+                         );
+                      })}
                    </div>
                  </div>
                );
@@ -216,6 +220,24 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
            </div>
          </div>
        ))}
+
+      {/* Custom Context Menu */}
+      {contextMenu && (
+        <div 
+          className="fixed z-[999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[150px] animate-in fade-in zoom-in duration-100"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button 
+            onClick={executeDelete}
+            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            {lang === 'ja' ? '削除する' : 'Delete'}
+          </button>
+        </div>
+      )}
+
     </div>
   );
 };
