@@ -1,0 +1,77 @@
+{
+  "name": "GASPhotoAIManager",
+  "description": "建設工事写真のAI解析・管理アプリケーション",
+  "version": "1.0.0",
+  "structure": {
+    "entryPoints": [
+      "App.tsx",
+      "main.tsx"
+    ],
+    "components": [
+      "components/*.tsx"
+    ],
+    "services": [
+      "services/*.ts"
+    ],
+    "utilities": [
+      "utils/*.ts"
+    ],
+    "types": [
+      "types.ts",
+      "types/*.ts"
+    ],
+    "styles": [
+      "index.css"
+    ],
+    "config": [
+      "vite.config.ts",
+      "tsconfig.json",
+      "tailwind.config.js",
+      "postcss.config.js"
+    ]
+  },
+  "ignore": [
+    "node_modules",
+    "dist",
+    ".git",
+    ".env",
+    "*.log",
+    "test-*.mjs",
+    "debug-*"
+  ],
+  "aiStudio": {
+    "supportsFolderUpload": true,
+    "preferredEditor": "monaco",
+    "language": "typescript-react",
+    "framework": "react-vite",
+    "features": [
+      "typescript",
+      "tailwindcss",
+      "gemini-api",
+      "indexeddb"
+    ]
+  },
+  "quickStart": {
+    "install": "npm install",
+    "dev": "npm run dev",
+    "build": "npm run build",
+    "preview": "npm run preview"
+  },
+  "environment": {
+    "required": [
+      {
+        "key": "VITE_GOOGLE_API_KEY",
+        "description": "Google Gemini API key for AI analysis",
+        "example": "AIzaSy..."
+      }
+    ]
+  },
+  "mainFolders": {
+    "/": "プロジェクトルート",
+    "/components": "Reactコンポーネント",
+    "/services": "AIサービス・ビジネスロジック",
+    "/utils": "ユーティリティ関数",
+    "/types": "TypeScript型定義",
+    "/scripts": "ビルド・デプロイスクリプト"
+  }
+}
