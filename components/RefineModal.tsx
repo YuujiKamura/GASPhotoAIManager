@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Save, PlusCircle, Edit2, CheckSquare, Square, Trash2, X, Play, Download, Upload, Tag, Lightbulb, Search, Library } from 'lucide-react';
+import { Wand2, Save, PlusCircle, Edit2, CheckSquare, Square, Trash2, X, Play, Download, Upload, Tag, Lightbulb, Search, Library, RefreshCw } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { AnalysisRule, getRules, saveRule, deleteRule, exportRulesToJson, importRulesFromJson } from '../utils/storage';
 import { PhotoRecord } from '../types';
@@ -14,6 +13,8 @@ interface RefineModalProps {
   onClose: () => void;
   onRunAnalysis: (instruction: string, batchSize: number) => void;
 }
+
+const STORAGE_KEY_PROMPT = 'gemini_last_refine_prompt';
 
 const PRESET_RULES: Partial<AnalysisRule>[] = [
   {
@@ -52,12 +53,48 @@ const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunA
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Load rules and perform auto-matching
+    // 1. Restore last used prompt from storage
+    const lastPrompt = localStorage.getItem(STORAGE_KEY_PROMPT) || "";
+    if (lastPrompt) {
+      setCustomPrompt(lastPrompt);
+    }
+
+    // 2. Load rules and auto-match
     getRules().then(rules => {
       setSavedRules(rules);
-      autoSelectRules(rules);
+      
+      // Only auto-fill if prompt is empty to avoid overwriting user's ongoing work
+      if (!lastPrompt) {
+        autoSelectRules(rules);
+      } else {
+        // Still calculate match count for notification
+        const count = countMatches(rules);
+        setAutoMatchedCount(count);
+      }
     });
   }, []); // Run once on mount
+
+  // Save prompt to storage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_PROMPT, customPrompt);
+  }, [customPrompt]);
+
+  const countMatches = (rules: AnalysisRule[]): number => {
+    const contextText = photos.map(p => 
+      `${p.fileName} ${p.analysis?.workType || ''} ${p.analysis?.remarks || ''} ${p.analysis?.description || ''}`
+    ).join(' ').toLowerCase();
+
+    let count = 0;
+    rules.forEach(rule => {
+      if (!rule.tags || rule.tags.length === 0) return;
+      const isMatch = rule.tags.some(tag => {
+        const cleanTag = tag.trim().toLowerCase();
+        return cleanTag && contextText.includes(cleanTag);
+      });
+      if (isMatch) count++;
+    });
+    return count;
+  };
 
   // "Smart" Auto-Selection Logic
   const autoSelectRules = (rules: AnalysisRule[]) => {
@@ -245,6 +282,14 @@ const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunA
     }
 
     onRunAnalysis(customPrompt, batchSize);
+  };
+
+  const handleReanalyzeAll = () => {
+    if (confirm(lang === 'ja' 
+      ? "現在表示中のすべての写真を再解析しますか？\n手動で修正した箇所は維持されますが、それ以外の項目は最新のAIロジックで上書きされます。" 
+      : "Re-analyze all photos?\nManual edits will be preserved, but other fields will be overwritten by the latest AI logic.")) {
+       onRunAnalysis("__REANALYZE__", batchSize);
+    }
   };
 
   // Filter rules based on search
@@ -448,6 +493,16 @@ const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunA
                </button>
                <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImportRules} />
             </div>
+         </div>
+         
+         {/* Re-analyze Button */}
+         <div className="mb-4">
+            <button 
+              onClick={handleReanalyzeAll}
+              className="w-full py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" /> {txt.btnReanalyzeAll}
+            </button>
          </div>
 
          <div className="flex gap-3">

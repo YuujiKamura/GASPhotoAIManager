@@ -1,5 +1,3 @@
-
-
 import { PhotoRecord, AppMode, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "./imageUtils";
 import { LAYOUT_FIELDS, ROWS_PER_PHOTO } from "./layoutConfig";
@@ -19,7 +17,11 @@ const getImageDimensions = (base64: string): Promise<{ w: number; h: number }> =
   });
 };
 
-export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = 'construction') => {
+export const generateExcel = async (
+  records: PhotoRecord[], 
+  appMode: AppMode = 'construction',
+  photosPerPage: 2 | 3 = 3
+) => {
   if (typeof ExcelJS === 'undefined') {
     alert("Excel generation library is not loaded.");
     return;
@@ -44,22 +46,40 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
   });
 
   // --- Layout Constants ---
-  const COL_A_WIDTH_CHARS = 65; 
+  const isTwoUp = photosPerPage === 2;
+  
+  // Adjusted column widths for 2-up to maximize photo size
+  // 3-up (Standard): A=65, B=8, C=25 (Total approx 98)
+  // 2-up (Large Photo): A=80, B=6, C=14 (Total approx 100)
+  const COL_A_WIDTH_CHARS = isTwoUp ? 80 : 65; 
+  
   const PIXELS_PER_COL_UNIT = 7.1; // Tuned for ExcelJS default font
   
   const ROW_HEIGHT_PTS = 21; 
   const PIXELS_PER_PT = 96.0 / 72.0; // Standard DPI conversion
   
+  // Calculate Rows per Photo Block based on layout
+  // 3-up = 12 rows (default)
+  // 2-up = 18 rows (approx 1.5x height to fill page)
+  const rowsPerBlock = photosPerPage === 2 ? 18 : ROWS_PER_PHOTO;
+  
   const BOX_WIDTH_PX = COL_A_WIDTH_CHARS * PIXELS_PER_COL_UNIT; 
-  const BOX_HEIGHT_PX = ROWS_PER_PHOTO * ROW_HEIGHT_PTS * PIXELS_PER_PT; 
+  const BOX_HEIGHT_PX = rowsPerBlock * ROW_HEIGHT_PTS * PIXELS_PER_PT; 
 
   // Setup Column Widths
-  // initializing columns array directly is safer than getColumn(n).width
-  sheet.columns = [
-    { width: COL_A_WIDTH_CHARS }, // Column A
-    { width: 8 },  // Column B
-    { width: 25 }  // Column C
-  ];
+  if (isTwoUp) {
+    sheet.columns = [
+      { width: 80 }, // Column A (Image) - Wider for 2-up
+      { width: 6 },  // Column B (Label) - Narrower
+      { width: 14 }  // Column C (Value) - Narrower
+    ];
+  } else {
+    sheet.columns = [
+      { width: 65 }, // Column A
+      { width: 8 },  // Column B
+      { width: 25 }  // Column C
+    ];
+  }
 
   // Set default font
   sheet.eachRow((row: any) => {
@@ -71,14 +91,14 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
 
-    // Page Break Logic: Every 3 photos
-    if (i > 0 && i % 3 === 0) {
+    // Page Break Logic
+    if (i > 0 && i % photosPerPage === 0) {
       sheet.getRow(currentRow).addPageBreak();
       currentRow++; // Spacer row
     }
 
     const startRow = currentRow;
-    const endRow = startRow + ROWS_PER_PHOTO - 1; 
+    const endRow = startRow + rowsPerBlock - 1; 
 
     // Explicitly set row heights
     for (let r = startRow; r <= endRow; r++) {
@@ -142,6 +162,23 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
     // --- 2. Info Section (Columns B & C) ---
     // Helper function for creating fields
     const createField = (r: number, label: string, value: string, rowSpan: number) => {
+      // Scale rowSpan if using 2-up layout to fill vertical space
+      // 3-up total row span = 12. 
+      // 2-up total row span = 18. Scale factor = 1.5.
+      let finalRowSpan = rowSpan;
+      if (photosPerPage === 2) {
+         // Distribute extra rows to Remarks (often longer) and Description
+         // Base Layout: Date(1), Type(1), Variety(1), Detail(1), Station(1), Remarks(2), Desc(5) = 12
+         // 2-up Layout target: 18.
+         // Mapping:
+         // Date(1), Type(1), Variety(1), Detail(1), Station(1) -> Keep 1 (Total 5)
+         // Remarks(2) -> 4
+         // Description(5) -> 9
+         // Total: 5 + 4 + 9 = 18.
+         if (label === txt.labelRemarks) finalRowSpan = 4;
+         if (label === txt.labelDescription) finalRowSpan = 9;
+      }
+
       // Label Cell (Col 2 / B)
       const labelCell = sheet.getCell(r, 2);
       labelCell.value = label;
@@ -159,18 +196,20 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
       const valueCell = sheet.getCell(r, 3);
       valueCell.value = value;
       valueCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-      valueCell.font = { size: 11 }; // Slightly larger font for readability
+      valueCell.font = { size: 11 }; 
       valueCell.border = {
         top: { style: 'hair', color: { argb: 'FFCCCCCC' } },
         right: { style: 'hair', color: { argb: 'FFCCCCCC' } },
         bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } }
       };
 
-      if (rowSpan > 1) {
+      if (finalRowSpan > 1) {
         // Merge cells vertically
-        sheet.mergeCells(r, 2, r + rowSpan - 1, 2); // B{r}:B{r+span-1}
-        sheet.mergeCells(r, 3, r + rowSpan - 1, 3); // C{r}:C{r+span-1}
+        sheet.mergeCells(r, 2, r + finalRowSpan - 1, 2); 
+        sheet.mergeCells(r, 3, r + finalRowSpan - 1, 3); 
       }
+      
+      return finalRowSpan;
     };
 
     // Iterate through Shared Layout Configuration
@@ -190,8 +229,8 @@ export const generateExcel = async (records: PhotoRecord[], appMode: AppMode = '
       // Resolve Label
       const label = txt[field.labelKey as keyof typeof txt] as string;
 
-      createField(currentFieldRow, label, val, field.rowSpan);
-      currentFieldRow += field.rowSpan;
+      const usedSpan = createField(currentFieldRow, label, val, field.rowSpan);
+      currentFieldRow += usedSpan;
     });
 
     currentRow = endRow + 2; 

@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Zap } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -22,13 +23,16 @@ interface PreviewViewProps {
   errorMsg: string | null;
   successMsg: string | null;
   logs: LogEntry[];
+  initialLayout?: 2 | 3;
   onClearLogs: () => void;
   onGoHome: () => void;
   onCloseProject: () => void;
   onRefine: () => void;
-  onExportExcel: () => void;
+  onExportExcel: (photosPerPage: 2 | 3) => void;
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto: (fileName: string) => void;
+  onAutoPair: () => void;
+  onSortByDate: () => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -41,21 +45,30 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   errorMsg,
   successMsg,
   logs,
+  initialLayout = 3,
   onClearLogs,
   onGoHome,
   onCloseProject,
   onRefine,
   onExportExcel,
   onUpdatePhoto,
-  onDeletePhoto
+  onDeletePhoto,
+  onAutoPair,
+  onSortByDate
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
   const [isFitMode, setIsFitMode] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
-  const [showConsole, setShowConsole] = useState(false);
+  const [showConsole, setShowConsole] = useState(true); // Default to True
+  const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  // Sync photosPerPage if initialLayout changes (e.g. after auto-pair finishes)
+  useEffect(() => {
+    setPhotosPerPage(initialLayout);
+  }, [initialLayout]);
 
   // Auto-Calculate Scale for Mobile
   useEffect(() => {
@@ -125,6 +138,14 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     }
   };
 
+  const handleAutoPairClick = () => {
+    // Automatically switch to 2-up view for pairs as it's the intended layout for before/after
+    if (photosPerPage !== 2) {
+      setPhotosPerPage(2);
+    }
+    onAutoPair();
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-gray-200 overflow-hidden flex flex-col">
       <div className="sticky top-0 z-[101] bg-slate-800 text-white p-3 shadow-md flex justify-between items-center">
@@ -137,7 +158,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
            <div className="flex gap-2 text-xs md:text-sm bg-slate-700 px-2 py-1 rounded-lg flex-shrink 0 whitespace-nowrap items-center">
               <span className="text-slate-300">{txt.total}: {stats.total}</span>
               <span className="text-green-400">{txt.done}: {stats.success}</span>
-              {/* Enhanced Cache Stat */}
               {stats.cached > 0 && (
                  <span className="text-green-300 flex items-center gap-1 border-l border-slate-600 pl-2 font-bold animate-in fade-in">
                     <Database className="w-3 h-3" /> Cached: {stats.cached}
@@ -148,6 +168,46 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          </div>
 
          <div className="flex gap-2 items-center">
+            {/* Sort by Date (Local) */}
+            <button 
+              onClick={onSortByDate}
+              className="p-2 bg-slate-600 hover:bg-slate-500 rounded text-slate-200 shadow-sm flex items-center gap-2"
+              disabled={isProcessing}
+              title={lang === 'ja' ? "日時順に並び替え（API不使用）" : "Sort by Date (Local)"}
+            >
+              <CalendarClock className="w-4 h-4" /> <span className="text-xs font-bold hidden lg:inline">{lang === 'ja' ? "日時順" : "Date"}</span>
+            </button>
+
+            {/* Auto Pair Button */}
+            {appMode === 'construction' && (
+              <button 
+                onClick={handleAutoPairClick}
+                className="p-2 bg-indigo-600 hover:bg-indigo-500 rounded text-white shadow-sm flex items-center gap-2"
+                disabled={isProcessing}
+                title={txt.btnPairing}
+              >
+                <GitCompare className="w-4 h-4" /> <span className="text-xs font-bold hidden md:inline">{lang === 'ja' ? "AIペアリング" : "AI Pair"}</span>
+              </button>
+            )}
+
+            {/* Layout Toggle (2/3) */}
+            <div className="bg-slate-700 rounded p-0.5 flex items-center mr-2">
+               <button 
+                 onClick={() => setPhotosPerPage(2)}
+                 className={`p-1.5 rounded transition-colors ${photosPerPage === 2 ? 'bg-slate-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                 title={txt.layout2up}
+               >
+                 <span className="text-xs font-bold">2up</span>
+               </button>
+               <button 
+                 onClick={() => setPhotosPerPage(3)}
+                 className={`p-1.5 rounded transition-colors ${photosPerPage === 3 ? 'bg-slate-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                 title={txt.layout3up}
+               >
+                 <span className="text-xs font-bold">3up</span>
+               </button>
+            </div>
+
             {/* Refine Button */}
             <button 
               onClick={onRefine}
@@ -171,7 +231,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             </button>
 
             <div className="flex gap-1 ml-1">
-              <button onClick={onExportExcel} disabled={isProcessing} className="p-2 md:px-4 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-2" title={txt.exportExcel}>
+              <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-4 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-2" title={txt.exportExcel}>
                   <Download className="w-4 h-4" /> <span className="hidden md:inline">{txt.exportExcel}</span>
               </button>
               
@@ -206,6 +266,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               records={photos} 
               appMode={appMode} 
               lang={lang} 
+              photosPerPage={photosPerPage}
               onUpdatePhoto={onUpdatePhoto}
               onDeletePhoto={onDeletePhoto}
             />

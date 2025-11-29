@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch, identifyTargetPhotos } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext } from './services/geminiService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
 import { TRANS } from './utils/translations';
@@ -15,12 +16,18 @@ import RefineModal from './components/RefineModal';
 // Declare saveAs for export
 declare const saveAs: any;
 
-const DEFAULT_BATCH_SIZE = 3; // Reverted to 3 for better RPM/Quota efficiency
+const DEFAULT_BATCH_SIZE = 3; 
 const MAX_PHOTOS = 30; 
+const LOCAL_STORAGE_KEY = 'gemini_api_key';
 
 type PendingFile = { file: File, date: number };
 
 export default function App() {
+  // API Key Management: Env -> LocalStorage -> Empty
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return process.env.API_KEY || localStorage.getItem(LOCAL_STORAGE_KEY) || "";
+  });
+
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState<string>("");
@@ -30,6 +37,7 @@ export default function App() {
   const [showPreview, setShowPreview] = useState(false);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>('construction');
+  const [initialLayout, setInitialLayout] = useState<2 | 3>(3); // Default to 3-up
   
   // Console Logs
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -41,6 +49,7 @@ export default function App() {
   const [showRefineModal, setShowRefineModal] = useState(false);
   // Store initial instruction if files are pending selection
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
+  const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
 
   // Language
   const [lang, setLang] = useState<'en' | 'ja'>('en');
@@ -50,6 +59,13 @@ export default function App() {
   useEffect(() => {
     if (navigator.language.startsWith('ja')) setLang('ja');
   }, []);
+
+  // Save API Key to local storage when updated
+  useEffect(() => {
+    if (apiKey) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, apiKey);
+    }
+  }, [apiKey]);
 
   // Load data
   useEffect(() => {
@@ -63,6 +79,7 @@ export default function App() {
           const cached = savedPhotos.filter(p => p.fromCache).length;
           setStats({ total: savedPhotos.length, processed: success + failed, success, failed, cached });
           setShowPreview(true); // Restore view if data exists
+          addLog("Restored previous session data.", 'success');
         }
       } catch (err) {
         console.error("Failed to load session", err);
@@ -139,9 +156,24 @@ export default function App() {
   const handleUpdatePhoto = (fileName: string, field: keyof AIAnalysisResult, value: string) => {
     setPhotos(prev => prev.map(p => {
       if (p.fileName === fileName && p.analysis) {
+        // Track which fields are manually edited
+        const editedFields = p.analysis.editedFields ? [...p.analysis.editedFields] : [];
+        if (!editedFields.includes(field as string)) {
+          editedFields.push(field as string);
+        }
+
+        const updatedAnalysis: AIAnalysisResult = { 
+          ...p.analysis, 
+          [field]: value,
+          editedFields: editedFields 
+        };
+        
+        // Update persistent cache immediately so future loads reflect manual edits
+        cacheAnalysis(p, updatedAnalysis).catch(e => console.error("Cache update failed", e));
+        
         return {
           ...p,
-          analysis: { ...p.analysis, [field]: value }
+          analysis: updatedAnalysis
         };
       }
       return p;
@@ -152,277 +184,620 @@ export default function App() {
     setShowPreview(true);
   };
 
-  const handleStartProcessing = async (files: File[], instruction: string) => {
-    const enrichedFiles: PendingFile[] = await Promise.all(files.map(async f => ({
-      file: f,
-      date: await getPhotoDate(f)
-    })));
+  // --- Sorting Logic ---
 
-    enrichedFiles.sort((a, b) => a.date - b.date);
-
-    if (enrichedFiles.length > MAX_PHOTOS) {
-      setPendingFiles(enrichedFiles);
-      setPendingInstruction(instruction);
-      setSelectionCount(MAX_PHOTOS);
-      setSelectionStart(1);
-    } else {
-      startAnalysisPipeline(enrichedFiles, instruction);
+  const normalizeStationName = (raw: string | undefined): string => {
+    if (!raw) return "";
+    let s = raw.trim();
+    if (!s) return "";
+    s = s.replace(/[！-～]/g, r => String.fromCharCode(r.charCodeAt(0) - 0xFEE0));
+    s = s.replace(/\s+/g, "");
+    // Remove "No." "NO" prefixes to match just the number if possible, or normalize valid prefixes
+    if (/^(no|number|nu|nm)[^a-z]/i.test(s)) {
+       s = s.replace(/^(no|number|nu|nm)\.?/i, "No.");
     }
+    return s.toUpperCase();
   };
 
-  const handleConfirmLimit = () => {
-    if (!pendingFiles) return;
-    const startIndex = Math.max(0, selectionStart - 1);
-    const selected = pendingFiles.slice(startIndex, startIndex + selectionCount);
-    setPendingFiles(null);
-    startAnalysisPipeline(selected, pendingInstruction);
+  const getPhaseScore = (r: PhotoRecord): number => {
+    // Use AI determined phase if available
+    if (r.analysis?.phase === 'before') return 0;
+    if (r.analysis?.phase === 'status') return 1;
+    if (r.analysis?.phase === 'after') return 2;
+
+    // Fallback to text heuristics
+    const text = ((r.analysis?.remarks || "") + (r.analysis?.variety || "") + (r.analysis?.workType || "")).toLowerCase();
+    if (text.includes("着手前") || text.includes("before") || text.includes("pre")) return 0;
+    if (text.includes("完了") || text.includes("竣工") || text.includes("after") || text.includes("done")) return 2;
+    return 1;
   };
 
-  const startAnalysisPipeline = async (filesWithDate: PendingFile[], instruction: string) => {
-    setIsProcessing(true);
-    setShowPreview(true);
-    setErrorMsg(null);
-    setCurrentStep(txt.analyzing);
-    clearLogs();
-    addLog(`Starting analysis for ${filesWithDate.length} photos...`, 'info');
+  /**
+   * Sorts photos based on Scene ID or Station.
+   * This is the "Loose" sort used for initial display.
+   */
+  const sortPhotosLogical = (records: PhotoRecord[]): PhotoRecord[] => {
+    const groups: { [key: string]: PhotoRecord[] } = {};
+    const orphans: PhotoRecord[] = [];
 
-    // 1. Create Records & Check Cache
-    const initialRecords: PhotoRecord[] = [];
-    let cachedCount = 0;
+    records.forEach(r => {
+      let key = r.analysis?.sceneId;
+      if (!key) {
+        const station = normalizeStationName(r.analysis?.station);
+        if (station && station !== "UNKNOWN") {
+          key = "STATION_" + station;
+        }
+      }
 
-    for (const item of filesWithDate) {
-       const { base64, mimeType } = await processImageForAI(item.file);
-       
-       // Create temp record for cache lookup
-       const tempRecord: PhotoRecord = {
-         fileName: item.file.name,
-         originalFile: item.file,
-         base64: "", // Don't use heavy base64 for key if file obj works
-         mimeType,
-         fileSize: item.file.size,
-         lastModified: item.file.lastModified,
-         date: item.date,
-         status: 'pending'
-       };
-
-       const cached = await getCachedAnalysis(tempRecord);
-       
-       if (cached) {
-         cachedCount++;
-         addLog(`Cache hit for ${item.file.name}`, 'success');
-       }
-
-       initialRecords.push({
-         ...tempRecord,
-         base64, // Restore base64
-         analysis: cached || undefined,
-         status: cached ? 'done' : 'pending',
-         fromCache: !!cached
-       });
-    }
-
-    setPhotos(initialRecords);
-    setStats({ 
-       total: initialRecords.length, 
-       processed: cachedCount, 
-       success: cachedCount, 
-       failed: 0, 
-       cached: cachedCount 
+      if (key) {
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(r);
+      } else {
+        orphans.push(r);
+      }
     });
 
-    // 2. Identify Pending
-    const pendingRecords = initialRecords.filter(r => r.status === 'pending');
+    const sortGroup = (group: PhotoRecord[]) => {
+      return group.sort((a, b) => {
+        const scoreA = getPhaseScore(a);
+        const scoreB = getPhaseScore(b);
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return (a.date || 0) - (b.date || 0);
+      });
+    };
 
-    if (pendingRecords.length === 0) {
-       setIsProcessing(false);
-       setSuccessMsg(lang === 'ja' ? "キャッシュからすべて復元しました。" : "All restored from cache.");
-       addLog("All items restored from cache. No API calls needed.", 'success');
-       return;
-    }
+    Object.keys(groups).forEach(key => {
+      groups[key] = sortGroup(groups[key]);
+    });
 
-    // 3. Run Analysis on Pending
-    runAnalysis(initialRecords, instruction, pendingRecords);
+    const groupKeys = Object.keys(groups).sort((keyA, keyB) => {
+      const groupA = groups[keyA];
+      const groupB = groups[keyB];
+      const maxDateA = Math.max(...groupA.map(r => r.date || 0));
+      const maxDateB = Math.max(...groupB.map(r => r.date || 0));
+      return maxDateA - maxDateB;
+    });
+
+    const sorted: PhotoRecord[] = [];
+    groupKeys.forEach(key => {
+      sorted.push(...groups[key]);
+    });
+    sorted.push(...orphans.sort((a, b) => (a.date || 0) - (b.date || 0)));
+
+    return sorted;
   };
 
-  const handleRefineAnalysis = async (instruction: string, batchSize: number) => {
+  /**
+   * STRICT Pairing for 2-up Layout.
+   * Strategy:
+   * 1. Group by SceneID/Station (Using Visual Anchors/Text).
+   * 2. Within each group, sort by DATE.
+   * 3. Take Earliest (Before) and Latest (After).
+   * 4. OMIT anything else (middle photos, single photos).
+   * 5. Return only the paired list.
+   */
+  const arrangePairsStrictly = (records: PhotoRecord[]): { sorted: PhotoRecord[], pairCount: number, omittedCount: number } => {
+    const groups: { [key: string]: PhotoRecord[] } = {};
+    let omittedCount = 0;
+
+    // 1. Grouping
+    records.forEach(r => {
+      let key = r.analysis?.sceneId;
+      if (!key) {
+        const station = normalizeStationName(r.analysis?.station);
+        if (station && station !== "UNKNOWN") key = "STATION_" + station;
+      }
+
+      if (key) {
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(r);
+      } else {
+        omittedCount++; // Orphans are omitted
+      }
+    });
+
+    const pairedList: PhotoRecord[] = [];
+    const groupKeys = Object.keys(groups);
+
+    groupKeys.forEach(key => {
+      const group = groups[key];
+      
+      // If less than 2 photos, we can't make a pair. Omit.
+      if (group.length < 2) {
+        omittedCount += group.length;
+        return;
+      }
+
+      // Sort by Date Ascending
+      group.sort((a, b) => (a.date || 0) - (b.date || 0));
+
+      // STRICT PAIR: Earliest and Latest
+      const beforePhoto = group[0];
+      const afterPhoto = group[group.length - 1];
+
+      // Any photos in between are omitted
+      const middleCount = group.length - 2;
+      if (middleCount > 0) omittedCount += middleCount;
+
+      pairedList.push(beforePhoto);
+      pairedList.push(afterPhoto);
+    });
+
+    // Sort the PAIRS by the date of their "After" photo (Construction Sequence)
+    // We treat every 2 items as a pair block.
+    // However, JS sort doesn't work on blocks. We can sort the pairedList logic if needed.
+    // For now, let's keep it simple: The group processing order is random-ish, we should sort pairs.
+    
+    // We can't easily sort a flat list of pairs without grouping them back. 
+    // Let's rely on the group iteration order? No, object keys are unordered.
+    // Let's construct a tuple list, sort that, then flatten.
+    
+    const pairs: PhotoRecord[][] = [];
+    for (let i = 0; i < pairedList.length; i += 2) {
+      pairs.push([pairedList[i], pairedList[i+1]]);
+    }
+
+    pairs.sort((a, b) => {
+      // Sort by the date of the "After" photo (index 1)
+      const dateA = a[1].date || 0;
+      const dateB = b[1].date || 0;
+      return dateA - dateB;
+    });
+
+    const finalSort = pairs.flat();
+    
+    return { sorted: finalSort, pairCount: pairs.length, omittedCount };
+  };
+
+  /**
+   * Hybrid Pairing with Persistence
+   */
+  const handleAutoPair = async () => {
+    if (!apiKey) {
+      alert(txt.permissionError);
+      return;
+    }
+    
     setIsProcessing(true);
-    setErrorMsg(null);
-    addLog(`Refining analysis with instruction: "${instruction}"`, 'info');
-    
-    // Identify targets?
-    setCurrentStep(txt.identifyingTargets);
-    const targetFilenames = await identifyTargetPhotos(photos, instruction);
-    addLog(`Targeted ${targetFilenames.length} photos for refinement.`, 'info', targetFilenames);
-    
-    if (targetFilenames.length === 0) {
+    setCurrentStep(txt.pairingProcessing);
+    setInitialLayout(2); 
+
+    try {
+      const records = [...photos];
+      
+      // 1. Separate: Already Paired vs Needs Pairing
+      const needsAI: PhotoRecord[] = [];
+      const hasStation: PhotoRecord[] = [];
+      const alreadyPaired: PhotoRecord[] = [];
+
+      records.forEach(r => {
+        if (r.analysis?.sceneId && r.analysis.sceneId.startsWith("AI_S")) {
+           alreadyPaired.push(r); 
+        } else {
+           const station = normalizeStationName(r.analysis?.station);
+           if (station && station !== "UNKNOWN") {
+             hasStation.push(r);
+           } else {
+             needsAI.push(r);
+           }
+        }
+      });
+
+      // 2. Assign Logical IDs to Station photos (Instant)
+      const updatedHasStation = hasStation.map(r => {
+        const station = normalizeStationName(r.analysis?.station);
+        // Force logical pairing based on station name equality
+        return {
+           ...r,
+           analysis: {
+             ...r.analysis!,
+             sceneId: `LOGICAL_${station}`,
+             // Phase is actually irrelevant for grouping in strict mode, but good for display
+             phase: ((r.analysis?.remarks || "").includes("着手前") ? 'before' : (r.analysis?.remarks || "").includes("完了") ? 'after' : 'status') as any
+           }
+        };
+      });
+
+      // 3. Process Visual Candidates (AI)
+      let updatedVisual: PhotoRecord[] = [...alreadyPaired];
+      
+      if (needsAI.length > 1) { 
+         try {
+           // Use Gemini 3 Pro to group by visual anchors
+           const assignments = await assignSceneIds(needsAI, apiKey, addLog);
+           const assignmentMap = new Map(assignments.map(a => [a.fileName, a]));
+           
+           const processedAI = needsAI.map(r => {
+              const assign = assignmentMap.get(r.fileName);
+              if (assign) {
+                 return {
+                    ...r,
+                    analysis: {
+                       ...r.analysis!,
+                       sceneId: `AI_${assign.sceneId}`,
+                       phase: assign.phase,
+                       visualAnchors: assign.visualAnchors 
+                    }
+                 };
+              }
+              return r; 
+           });
+           
+           updatedVisual = [...updatedVisual, ...processedAI];
+           addLog(`Visual pairing created anchors for ${assignments.length} photos.`, 'success');
+
+         } catch (e) {
+           console.error("Visual pairing failed", e);
+           addLog("Visual pairing failed - falling back to timestamp sort.", 'error');
+           updatedVisual = [...updatedVisual, ...needsAI]; 
+         }
+      } else {
+         updatedVisual = [...updatedVisual, ...needsAI];
+      }
+
+      // 4. Merge and Save to Cache
+      const allUpdated = [...updatedHasStation, ...updatedVisual];
+      
+      allUpdated.forEach(r => {
+         if (r.analysis) {
+            cacheAnalysis(r, r.analysis).catch(console.error);
+         }
+      });
+
+      // 5. STRICT SORTING for 2-up Layout (OMITTING UNPAIRED)
+      const { sorted, pairCount, omittedCount } = arrangePairsStrictly(allUpdated);
+      
+      setPhotos(sorted);
+      setSuccessMsg(lang === 'ja' 
+        ? `${pairCount}箇所のペアを作成しました（${omittedCount}枚を除外）` 
+        : `Created ${pairCount} pairs (Omitted ${omittedCount} photos)`);
+
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg("Pairing failed: " + err.message);
+      addLog("Pairing fatal error", 'error', err);
+    } finally {
       setIsProcessing(false);
-      alert(lang === 'ja' ? "対象となる写真が見つかりませんでした。" : "No matching photos found.");
+      setCurrentStep("");
+    }
+  };
+
+  const handleSmartSort = () => {
+    // Just sort by logical station/date without the strict pairing requirement
+    const sorted = sortPhotosLogical([...photos]);
+    setPhotos(sorted);
+    setInitialLayout(2);
+    setSuccessMsg(lang === 'ja' ? "測点・シーン情報に基づいて並び替えました" : "Sorted by Scene & Phase");
+  };
+
+  // --- Pipeline Steps ---
+
+  const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean) => {
+    if (!files || files.length === 0) return;
+
+    // 1. Initial Validation
+    if (files.length > MAX_PHOTOS) {
+      const pending: PendingFile[] = [];
+      for (const f of files) {
+        pending.push({ file: f, date: await getPhotoDate(f) });
+      }
+      pending.sort((a, b) => a.date - b.date);
+      setPendingFiles(pending);
+      setSelectionCount(Math.min(pending.length, MAX_PHOTOS));
+      setPendingInstruction(userInstruction);
+      setPendingUseCache(useCache);
       return;
     }
 
-    // Reset status for targets
-    const updatedPhotos = photos.map(p => {
-       if (targetFilenames.includes(p.fileName)) {
-         return { ...p, status: 'pending' as const }; // force re-process
-       }
-       return p;
-    });
-    setPhotos(updatedPhotos);
-
-    // Filter pending
-    const pending = updatedPhotos.filter(p => p.status === 'pending');
-    runAnalysis(updatedPhotos, instruction, pending, batchSize);
-    setShowRefineModal(false);
+    setPendingInstruction(userInstruction);
+    setPendingUseCache(useCache);
+    await startAnalysisPipeline(files, userInstruction, useCache);
   };
 
-  const runAnalysis = async (
-    allPhotos: PhotoRecord[], 
-    instruction: string, 
-    pendingSubset: PhotoRecord[],
-    batchSize: number = DEFAULT_BATCH_SIZE
-  ) => {
-    let currentPhotos = [...allPhotos];
-    let processedCount = stats.processed;
-    let successCount = stats.success;
-    let failedCount = stats.failed;
+  const confirmLimitSelection = () => {
+    if (!pendingFiles) return;
+    const startIndex = selectionStart - 1;
+    const selected = pendingFiles.slice(startIndex, startIndex + selectionCount).map(p => p.file);
+    setPendingFiles(null);
+    startAnalysisPipeline(selected, pendingInstruction, pendingUseCache);
+  };
 
-    // Split pending into batches
-    for (let i = 0; i < pendingSubset.length; i += batchSize) {
-       const batch = pendingSubset.slice(i, i + batchSize);
-       setCurrentStep(`${txt.analyzing} (${i + 1}/${pendingSubset.length})`);
-       
-       addLog(`Processing batch ${Math.floor(i/batchSize) + 1} (${batch.length} photos)...`, 'info');
+  const startAnalysisPipeline = async (files: File[], instruction: string, useCache: boolean) => {
+    setIsProcessing(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    clearLogs();
 
-       try {
-         // Update Status to Processing
-         currentPhotos = currentPhotos.map(p => batch.find(b => b.fileName === p.fileName) ? { ...p, status: 'processing' } : p);
-         setPhotos(currentPhotos);
+    try {
+      // 1. Prepare Records & Check Cache
+      setCurrentStep(lang === 'ja' ? "画像を準備中..." : "Preparing images...");
+      
+      const newRecords: PhotoRecord[] = [];
+      let cachedCount = 0;
 
-         const results = await analyzePhotoBatch(batch, instruction, batchSize, appMode, addLog);
+      for (const file of files) {
+        const date = await getPhotoDate(file);
+        const tempRecord: PhotoRecord = {
+          fileName: file.name,
+          base64: '', 
+          mimeType: file.type,
+          fileSize: file.size,
+          lastModified: file.lastModified,
+          originalFile: file, 
+          status: 'pending',
+          date: date,
+          fromCache: false
+        };
 
-         // Apply Results
-         results.forEach(res => {
-            currentPhotos = currentPhotos.map(p => {
-               if (p.fileName === res.fileName) {
-                 // Save to Cache
-                 cacheAnalysis(p, res);
-                 return { ...p, analysis: res, status: 'done', fromCache: false };
+        let cachedAnalysis: AIAnalysisResult | null = null;
+        if (useCache) {
+           cachedAnalysis = await getCachedAnalysis(file);
+        }
+
+        if (cachedAnalysis) {
+          const { base64, mimeType } = await processImageForAI(file);
+          newRecords.push({
+            ...tempRecord,
+            base64,
+            mimeType,
+            analysis: cachedAnalysis,
+            status: 'done',
+            fromCache: true
+          });
+          cachedCount++;
+        } else {
+          const { base64, mimeType } = await processImageForAI(file);
+          newRecords.push({
+            ...tempRecord,
+            base64,
+            mimeType,
+            status: 'pending',
+            fromCache: false
+          });
+        }
+      }
+
+      if (cachedCount > 0) {
+        addLog(txt.cacheHit(cachedCount), 'success');
+      }
+
+      // Initial Sort (Logical - using cached sceneIds if available)
+      const initialSorted = sortPhotosLogical(newRecords);
+      setPhotos(initialSorted);
+      setStats({ total: initialSorted.length, processed: cachedCount, success: cachedCount, failed: 0, cached: cachedCount });
+      setShowPreview(true);
+
+      // 2. Identify Batch for API
+      const pendingPhotos = initialSorted.filter(p => p.status === 'pending');
+      
+      if (pendingPhotos.length > 0) {
+        addLog(`Starting analysis for ${pendingPhotos.length} new photos.`, 'info');
+        
+        const batchSize = DEFAULT_BATCH_SIZE; 
+        for (let i = 0; i < pendingPhotos.length; i += batchSize) {
+          const batch = pendingPhotos.slice(i, i + batchSize);
+          setCurrentStep(`${txt.analyzing} (${i + 1}/${pendingPhotos.length})`);
+          
+          try {
+             const results = await analyzePhotoBatch(batch, instruction, batchSize, appMode, apiKey, addLog);
+             
+             const updatedBatch = batch.map(record => {
+               const res = results.find(r => r.fileName === record.fileName);
+               if (res) {
+                 cacheAnalysis(record, res).catch(console.error);
+                 return { ...record, analysis: res, status: 'done' as const };
+               }
+               return { ...record, status: 'error' as const };
+             });
+
+             setPhotos(prev => prev.map(p => {
+               const updated = updatedBatch.find(u => u.fileName === p.fileName);
+               return updated || p;
+             }));
+             
+             // Update Stats
+             const success = photos.filter(p => p.status === 'done').length + updatedBatch.filter(p => p.status === 'done').length; // approx
+             setStats(prev => ({ ...prev, processed: prev.processed + batch.length }));
+
+          } catch (e: any) {
+             console.error("Batch failed", e);
+             addLog(`Batch analysis failed: ${e.message}`, 'error');
+             setPhotos(prev => prev.map(p => {
+               if (batch.find(b => b.fileName === p.fileName)) {
+                 return { ...p, status: 'error' as const };
                }
                return p;
-            });
-         });
-
-         // Mark any in batch that didn't get a result as error
-         const batchFilenames = batch.map(b => b.fileName);
-         const resultFilenames = results.map(r => r.fileName);
-         const missing = batchFilenames.filter(f => !resultFilenames.includes(f));
-         
-         if (missing.length > 0) {
-            currentPhotos = currentPhotos.map(p => missing.includes(p.fileName) ? { ...p, status: 'error' } : p);
-            failedCount += missing.length;
-            addLog(`Failed to get results for: ${missing.join(', ')}`, 'error');
-         }
-
-         successCount += results.length;
-         processedCount += batch.length;
-
-         setPhotos([...currentPhotos]); // Trigger update
-         setStats(prev => ({ ...prev, processed: processedCount, success: successCount, failed: failedCount }));
-
-         // Pause between batches
-         if (i + batchSize < pendingSubset.length) {
-            addLog("Pausing for 3s to respect API limits...", 'info');
-            await new Promise(r => setTimeout(r, 3000)); // 3s delay for safe RPM
-         }
-
-       } catch (e: any) {
-         console.error("Batch failed", e);
-         const isQuota = e.message?.includes("429");
-         
-         // Mark batch as error
-         currentPhotos = currentPhotos.map(p => batch.find(b => b.fileName === p.fileName) ? { ...p, status: 'error' } : p);
-         failedCount += batch.length;
-         processedCount += batch.length;
-         setPhotos([...currentPhotos]);
-         setStats(prev => ({ ...prev, processed: processedCount, failed: failedCount }));
-         
-         if (isQuota) {
-            setErrorMsg(lang === 'ja' ? "API制限に達しました。しばらく待ってから再試行してください。" : "API Rate Limit Exceeded. Please wait.");
-            addLog("Processing stopped due to Rate Limit.", 'error');
-            setIsProcessing(false);
-            return; // Stop processing loop
-         }
-       }
-    }
-
-    setIsProcessing(false);
-    setCurrentStep("");
-    addLog("Analysis pipeline completed.", 'success');
-  };
-
-  const handleExportJson = () => {
-    const json = exportDataToJson(photos);
-    const blob = new Blob([json], { type: 'application/json' });
-    saveAs(blob, `photo_project_${new Date().toISOString().slice(0, 10)}.json`);
-  };
-
-  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = importDataFromJson(ev.target?.result as string);
-        setPhotos(data);
-        const success = data.filter(p => p.status === 'done').length;
-        const failed = data.filter(p => p.status === 'error').length;
-        const cached = data.filter(p => p.fromCache).length;
-        setStats({ total: data.length, processed: success + failed, success, failed, cached });
-        setShowPreview(true);
-        addLog(`Imported ${data.length} records from JSON.`, 'success');
-      } catch (err) {
-        alert("Failed to import JSON.");
+             }));
+          }
+        }
       }
-    };
-    reader.readAsText(file);
+
+      // 3. Normalize Consistency (Only for NEW records)
+      const newlyAnalyzed = photos.filter(p => !p.fromCache && p.status === 'done');
+      if (newlyAnalyzed.length > 0) {
+        setCurrentStep("Finalizing data consistency...");
+        const normalizedNew = await normalizeDataConsistency(newlyAnalyzed, apiKey, addLog);
+        
+        setPhotos(prev => prev.map(p => {
+          const norm = normalizedNew.find(n => n.fileName === p.fileName);
+          if (norm && norm.analysis) {
+             cacheAnalysis(norm, norm.analysis).catch(console.error);
+             return norm;
+          }
+          return p;
+        }));
+      }
+
+      // 4. Final Sort (Logical)
+      // This will use cached sceneIds from previous sessions if they exist!
+      setPhotos(prev => sortPhotosLogical(prev));
+      
+      if (appMode === 'construction') {
+         setInitialLayout(2);
+      } else {
+         setInitialLayout(3);
+      }
+
+      setSuccessMsg(txt.done);
+
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Unknown error occurred");
+      addLog("Pipeline fatal error", 'error', err);
+    } finally {
+      setIsProcessing(false);
+      setCurrentStep("");
+    }
   };
+
+  const handleRefineAnalysis = async (instruction: string, batchSize: number) => {
+    setShowRefineModal(false);
+    setIsProcessing(true);
+    setCurrentStep("Refining analysis...");
+    clearLogs();
+
+    try {
+      let targetFileNames: string[] = [];
+
+      if (instruction === "__REANALYZE__") {
+        targetFileNames = photos.map(p => p.fileName);
+        addLog("Re-analyzing ALL photos.", 'info');
+      } else {
+        setCurrentStep(txt.identifyingTargets);
+        targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey);
+      }
+
+      if (targetFileNames.length === 0) {
+        setSuccessMsg("No matching photos found to update.");
+        setIsProcessing(false);
+        return;
+      }
+
+      const targets = photos.filter(p => targetFileNames.includes(p.fileName));
+      let updatedTargets: PhotoRecord[] = [];
+      
+      for (let i = 0; i < targets.length; i += batchSize) {
+        const batch = targets.slice(i, i + batchSize);
+        setCurrentStep(`${txt.analyzing} (${i + 1}/${targets.length})`);
+        
+        try {
+           const results = await analyzePhotoBatch(batch, instruction === "__REANALYZE__" ? "" : instruction, batchSize, appMode, apiKey, addLog);
+           
+           const processedBatch = batch.map(record => {
+             const res = results.find(r => r.fileName === record.fileName);
+             if (res) {
+               let finalAnalysis = res;
+               
+               // Preserve Edited Fields
+               if (record.analysis?.editedFields) {
+                  finalAnalysis = { ...res, editedFields: record.analysis.editedFields };
+                  record.analysis.editedFields.forEach(field => {
+                     // @ts-ignore
+                     finalAnalysis[field] = record.analysis![field]; 
+                  });
+               }
+               // Preserve SceneID if it exists (so we don't break pairing)
+               if (record.analysis?.sceneId) {
+                  finalAnalysis.sceneId = record.analysis.sceneId;
+                  finalAnalysis.phase = record.analysis.phase;
+                  finalAnalysis.visualAnchors = record.analysis.visualAnchors; // Preserve anchors
+               }
+
+               cacheAnalysis(record, finalAnalysis).catch(console.error);
+               return { ...record, analysis: finalAnalysis, status: 'done' as const };
+             }
+             return record;
+           });
+           updatedTargets = [...updatedTargets, ...processedBatch];
+
+        } catch (e: any) {
+           addLog(`Refine batch failed: ${e.message}`, 'error');
+           updatedTargets = [...updatedTargets, ...batch];
+        }
+      }
+
+      const otherPhotos = photos.filter(p => !targetFileNames.includes(p.fileName));
+      const merged = [...otherPhotos, ...updatedTargets];
+      const sorted = sortPhotosLogical(merged);
+      
+      setPhotos(sorted);
+      setSuccessMsg(`Updated ${updatedTargets.length} photos.`);
+
+    } catch (e: any) {
+      console.error(e);
+      setErrorMsg("Refine failed: " + e.message);
+    } finally {
+      setIsProcessing(false);
+      setCurrentStep("");
+    }
+  };
+
+  // --- Render ---
+
+  if (!showPreview) {
+    return (
+      <UploadView 
+        lang={lang}
+        isProcessing={isProcessing}
+        photos={photos}
+        appMode={appMode}
+        apiKey={apiKey}
+        setApiKey={setApiKey}
+        setAppMode={setAppMode}
+        onStartProcessing={handleStartProcessing}
+        onResume={handleResume}
+        onCloseProject={handleCloseProject}
+        onExportJson={() => {
+          const json = exportDataToJson(photos);
+          const blob = new Blob([json], { type: 'application/json' });
+          saveAs(blob, `photo_archive_backup_${new Date().toISOString().slice(0, 10)}.json`);
+        }}
+        onImportJson={(e) => {
+          if (!e.target.files || e.target.files.length === 0) return;
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            try {
+              const imported = importDataFromJson(ev.target?.result as string);
+              setPhotos(imported);
+              const success = imported.filter(p => p.status === 'done').length;
+              setStats({ total: imported.length, processed: success, success, failed: 0, cached: 0 });
+              saveProjectData(imported);
+              setShowPreview(true);
+            } catch (err) {
+              alert("Invalid JSON file");
+            }
+          };
+          reader.readAsText(file);
+        }}
+        onClearCache={handleClearCache}
+      />
+    );
+  }
 
   return (
     <>
-      {showPreview ? (
-        <PreviewView 
-          lang={lang}
-          photos={photos}
-          stats={stats}
-          appMode={appMode}
-          isProcessing={isProcessing}
-          currentStep={currentStep}
-          errorMsg={errorMsg}
-          successMsg={successMsg}
-          logs={logs}
-          onClearLogs={clearLogs}
-          onGoHome={() => setShowPreview(false)}
-          onCloseProject={handleCloseProject}
-          onRefine={() => setShowRefineModal(true)}
-          onExportExcel={() => generateExcel(photos, appMode)}
-          onUpdatePhoto={handleUpdatePhoto}
-          onDeletePhoto={handleDeletePhoto}
-        />
-      ) : (
-        <UploadView 
-          lang={lang}
-          isProcessing={isProcessing}
-          photos={photos}
-          appMode={appMode}
-          setAppMode={setAppMode}
-          onStartProcessing={handleStartProcessing}
-          onResume={handleResume}
-          onCloseProject={handleCloseProject}
-          onExportJson={handleExportJson}
-          onImportJson={handleImportJson}
-          onClearCache={handleClearCache}
-        />
-      )}
+      <PreviewView 
+        lang={lang}
+        photos={photos}
+        stats={stats}
+        appMode={appMode}
+        isProcessing={isProcessing}
+        currentStep={currentStep}
+        errorMsg={errorMsg}
+        successMsg={successMsg}
+        logs={logs}
+        initialLayout={initialLayout}
+        onClearLogs={clearLogs}
+        onGoHome={() => setShowPreview(false)}
+        onCloseProject={handleCloseProject}
+        onRefine={() => setShowRefineModal(true)}
+        onExportExcel={generateExcel}
+        onUpdatePhoto={handleUpdatePhoto}
+        onDeletePhoto={handleDeletePhoto}
+        onAutoPair={handleAutoPair}
+        onSortByDate={handleSmartSort}
+      />
 
       {pendingFiles && (
         <LimitModal 
@@ -432,9 +807,9 @@ export default function App() {
           selectionCount={selectionCount}
           lang={lang}
           onStartChange={setSelectionStart}
-          onCountChange={setSelectionCount}
+          onCountChange={(val) => setSelectionCount(Math.min(val, MAX_PHOTOS))}
           onCancel={() => setPendingFiles(null)}
-          onConfirm={handleConfirmLimit}
+          onConfirm={confirmLimitSelection}
         />
       )}
 

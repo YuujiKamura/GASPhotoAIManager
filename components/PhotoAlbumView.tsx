@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
 import { Database, Trash2 } from 'lucide-react';
@@ -8,6 +9,7 @@ interface Props {
   records: PhotoRecord[];
   appMode: AppMode;
   lang: 'en' | 'ja';
+  photosPerPage: 2 | 3;
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto?: (fileName: string) => void;
 }
@@ -20,15 +22,17 @@ const EditableField = ({
   value, 
   onChange, 
   multiline = false, 
-  align = 'left' 
+  align = 'left',
+  textClass = "text-lg text-gray-900"
 }: {
   value: string;
   onChange: (val: string) => void;
   multiline?: boolean;
   align?: 'left' | 'center';
+  textClass?: string;
 }) => {
   // Unified typography: text-lg, text-gray-900, tight leading
-  const baseClass = "w-full h-full bg-transparent border-none outline-none focus:bg-yellow-50 focus:ring-1 focus:ring-amber-300 text-gray-900 hover:bg-black/5 rounded-sm transition-colors text-lg leading-tight font-normal block";
+  const baseClass = `w-full h-full bg-transparent border-none outline-none focus:bg-yellow-50 focus:ring-1 focus:ring-amber-300 hover:bg-black/5 rounded-sm transition-colors leading-tight font-normal block ${textClass}`;
   const alignClass = align === 'center' ? 'text-center' : 'text-left';
   // Minimal padding to fit text-lg in h-[28px] rows
   const paddingClass = multiline ? 'p-1' : 'px-1 py-0.5'; 
@@ -54,7 +58,7 @@ const EditableField = ({
       </div>
 
       {/* PDF/Print Mode: Static Text */}
-      <div className={`pdf-visible hidden w-full h-full text-lg text-gray-900 leading-tight break-words whitespace-pre-wrap font-normal ${alignClass} ${paddingClass}`}>
+      <div className={`pdf-visible hidden w-full h-full leading-tight break-words whitespace-pre-wrap font-normal ${alignClass} ${paddingClass} ${textClass}`}>
         {value}
       </div>
     </div>
@@ -69,16 +73,20 @@ interface InfoRowProps {
   align?: 'left' | 'center';
   multiline?: boolean;
   readOnly?: boolean;
+  hideLabel?: boolean; // New prop to toggle label visibility
+  textClass?: string;
   children?: React.ReactNode; 
 }
 
-const InfoRow: React.FC<InfoRowProps> = ({ label, value, className = "", onChange, align, multiline = false, readOnly = false, children }) => (
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, className = "", onChange, align = 'left', multiline = false, readOnly = false, hideLabel = false, textClass, children }) => (
   // Use className for height control
   <div className={`flex border-b border-gray-300 last:border-b-0 box-border w-full ${className}`}>
-    {/* Label: Fixed width w-12 (48px) - Just enough for 2 chars */}
-    <div className={`w-12 flex justify-center text-lg text-gray-900 font-normal flex-shrink-0 leading-tight px-0.5 text-center select-none bg-gray-50/50 border-r border-gray-300 ${multiline ? 'items-start pt-1' : 'items-center'}`}>
-       {label}
-    </div>
+    {/* Label: Fixed width w-12 (48px) - Only render if not hidden */}
+    {!hideLabel && (
+      <div className={`w-12 flex justify-center text-lg text-gray-900 font-normal flex-shrink-0 leading-tight px-0.5 text-center select-none bg-gray-50/50 border-r border-gray-300 ${multiline ? 'items-start pt-1' : 'items-center'}`}>
+         {label}
+      </div>
+    )}
     {/* Content Area */}
     <div className="flex-1 relative min-w-0 bg-white h-full overflow-hidden">
        {readOnly ? (
@@ -91,7 +99,8 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, className = "", onChang
             value={value} 
             onChange={onChange} 
             multiline={multiline} 
-            align={align} 
+            align={align as 'left' | 'center'} 
+            textClass={textClass}
          />
        )}
     </div>
@@ -104,19 +113,18 @@ type ContextMenuState = {
   targetFileName: string;
 } | null;
 
-const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto, onDeletePhoto }) => {
+const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto }) => {
   const txt = TRANS[lang];
-  const PHOTOS_PER_PAGE = 3;
-  const totalPages = Math.ceil(records.length / PHOTOS_PER_PAGE);
+  const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
     window.addEventListener('click', handleClickOutside);
-    window.addEventListener('scroll', handleClickOutside);
+    window.addEventListener('resize', handleClickOutside); // Close on resize too
     return () => {
       window.removeEventListener('click', handleClickOutside);
-      window.removeEventListener('scroll', handleClickOutside);
+      window.removeEventListener('resize', handleClickOutside);
     };
   }, []);
 
@@ -136,6 +144,18 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
     }
   };
 
+  const isTwoUp = photosPerPage === 2;
+
+  // Fields Config
+  // 3-up: All Fields
+  // 2-up: Only Remarks, Station (in that order)
+  const visibleFields = isTwoUp
+    ? [
+        LAYOUT_FIELDS.find(f => f.key === 'remarks')!,
+        LAYOUT_FIELDS.find(f => f.key === 'station')!
+      ].filter(Boolean)
+    : LAYOUT_FIELDS;
+
   return (
     <div id="album-content" className="w-full">
        {Array.from({ length: totalPages }).map((_, pageIndex) => (
@@ -153,22 +173,45 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
 
            {/* Main Content Border Box - Flex 1 ensures it fills the page */}
            <div className="flex flex-col flex-1 border border-gray-400 bg-white min-h-0">
-             {Array.from({ length: PHOTOS_PER_PAGE }).map((_, slotIndex) => {
-               const photoIndex = pageIndex * PHOTOS_PER_PAGE + slotIndex;
+             {Array.from({ length: photosPerPage }).map((_, slotIndex) => {
+               const photoIndex = pageIndex * photosPerPage + slotIndex;
                const record = records[photoIndex];
                
+               // Dynamic Layout Classes
+               
+               // Slot Container
+               // 3-up: Row Layout, 33% Height
+               // 2-up: Col Layout, 50% Height
+               const slotClass = isTwoUp 
+                  ? "flex-1 border-b border-gray-300 last:border-b-0 flex flex-col box-border min-h-0 hover:bg-gray-50 transition-colors h-[50%]"
+                  : "flex-1 border-b border-gray-300 last:border-b-0 flex flex-row box-border min-h-0 hover:bg-gray-50 transition-colors h-[33.33%]";
+
+               // Image Container
+               // 3-up: 65% width, Right Border, Normal Padding
+               // 2-up: 100% width, Flex-1 (Takes remaining height), Bottom Border, Minimal Padding (0.5) to maximize image
+               const imageContainerClass = isTwoUp
+                  ? "w-full flex-1 border-r-0 border-b border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu p-0.5"
+                  : "w-[65%] border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu";
+
+               // Info Container
+               // 3-up: 35% width
+               // 2-up: 100% width, Auto Height (fits content), minimal padding
+               const infoContainerClass = isTwoUp
+                  ? "w-full h-auto bg-white flex flex-col justify-center py-0.5 px-4 gap-0"
+                  : "w-[35%] flex flex-col h-full bg-white";
+
                if (!record) {
-                 return <div key={`empty-${slotIndex}`} className="flex-1 border-b border-gray-300 last:border-b-0 flex"></div>;
+                 return <div key={`empty-${slotIndex}`} className={slotClass}></div>;
                }
 
                return (
                  <div 
                     key={record.fileName} 
-                    className="flex-1 border-b border-gray-300 last:border-b-0 flex h-[33.33%] box-border min-h-0"
+                    className={slotClass}
                     onContextMenu={(e) => handleContextMenu(e, record.fileName)}
                   >
-                   {/* Left: Image (65%) */}
-                   <div className="w-[65%] border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group">
+                   {/* Image Section */}
+                   <div className={imageContainerClass}>
                       <img src={record.base64} alt={record.fileName} className="max-w-full max-h-full object-contain" />
                       
                       {record.fromCache && (
@@ -179,9 +222,9 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
                       )}
                    </div>
 
-                   {/* Right: Info (35%) - Generated from Common Layout Config */}
-                   <div className="w-[35%] flex flex-col h-full bg-white">
-                      {LAYOUT_FIELDS.map((field) => {
+                   {/* Info Section */}
+                   <div className={infoContainerClass}>
+                      {visibleFields.map((field) => {
                          // Resolve value
                          let val = "";
                          if (field.key === 'date') {
@@ -192,22 +235,47 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
                             val = record.analysis ? (record.analysis[field.key as keyof AIAnalysisResult] as string || "") : "";
                          }
 
-                         // Resolve extra UI for date (Cache icon)
-                         const extraUI = field.key === 'date' && record.fromCache ? (
+                         // Extra UI (Date Cache icon) - Only shows in 3-up since date is hidden in 2-up
+                         const extraUI = (!isTwoUp && field.key === 'date' && record.fromCache) ? (
                             <div className="flex items-center gap-1 text-[10px] text-green-600 font-bold bg-green-50 px-1 rounded border border-green-200" title="Restored from local cache">
                                <Database className="w-3 h-3" />
                             </div>
                          ) : null;
-
+                         
+                         // Determine height class dynamically
+                         let dynamicHeightClass = field.heightClass;
+                         let dynamicTextClass = undefined;
+                         
+                         if (isTwoUp) {
+                           // In 2-up vertical mode, minimal height, no borders
+                           if (field.key === 'station') {
+                             dynamicHeightClass = 'min-h-[20px] border-none';
+                             dynamicTextClass = 'text-sm text-gray-500 font-medium';
+                           } else { // remarks
+                             dynamicHeightClass = 'min-h-[28px] border-none';
+                             dynamicTextClass = 'text-base text-gray-900 font-medium';
+                           }
+                         } else {
+                           // 3-up Logic (Original)
+                           if (field.key === 'description') {
+                              dynamicHeightClass = 'min-h-0 border-b-0 flex-1'; // Fill remaining vertical space
+                           } else {
+                              dynamicHeightClass = `${field.heightClass} flex-shrink-0`;
+                           }
+                         }
+                         
                          return (
                             <InfoRow 
                                key={field.id}
                                label={txt[field.labelKey as keyof typeof txt] as string}
                                value={val}
-                               className={`${field.heightClass} ${field.key === 'description' ? 'min-h-0 border-b-0' : 'flex-shrink-0'}`}
+                               className={dynamicHeightClass}
                                onChange={(v) => field.key !== 'date' && onUpdatePhoto(record.fileName, field.key as keyof AIAnalysisResult, v)}
                                readOnly={field.readOnly}
                                multiline={field.multiline}
+                               hideLabel={isTwoUp} // Hide label in 2-up mode
+                               align={isTwoUp ? 'center' : 'left'} // Center text in 2-up mode
+                               textClass={dynamicTextClass}
                             >
                                {extraUI}
                             </InfoRow>
@@ -221,21 +289,25 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, onUpdatePhoto
          </div>
        ))}
 
-      {/* Custom Context Menu */}
-      {contextMenu && (
+      {/* Custom Context Menu using Portal to escape CSS Transforms */}
+      {contextMenu && createPortal(
         <div 
-          className="fixed z-[999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[150px] animate-in fade-in zoom-in duration-100"
+          className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[150px] animate-in fade-in zoom-in duration-100"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
+          <div className="px-3 py-1.5 border-b border-gray-100 text-xs text-gray-500 font-bold bg-gray-50">
+             {lang === 'ja' ? '操作' : 'Action'}
+          </div>
           <button 
             onClick={executeDelete}
             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
-            {lang === 'ja' ? '削除する' : 'Delete'}
+            {lang === 'ja' ? '削除する' : 'Delete Photo'}
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -61,6 +61,7 @@ export const TRANS = {
     loadPreset: "Presets",
     searchPlaceholder: "Search...",
     noRulesYet: "No rules saved.",
+    btnReanalyzeAll: "Re-analyze All (Preserve Edits)",
     // Limit Modal
     limitTitle: "Too many photos",
     limitDesc: (n: number) => `Selected ${n} photos. Limit to 30 for stability.`,
@@ -68,7 +69,16 @@ export const TRANS = {
     rangeLabel: `Count (Max 30):`,
     rangePreview: (s: number, e: number) => `#${s} - #${e}`,
     btnProcess: "Start",
-    btnCancel: "Cancel"
+    btnCancel: "Cancel",
+    // Pairing
+    btnPairing: "Auto-Pair (Before/After)",
+    pairingProcessing: "Finding Pairs...",
+    pairingRefining: "Checking history (Before/After context)...",
+    pairingSuccess: "Sorted into Before/After pairs!",
+    pairingNoPairs: "No clear pairs found.",
+    layout2up: "2 Photos/Page",
+    layout3up: "3 Photos/Page",
+    autoPairLabel: "Auto-sort Before/After pairs"
   },
   ja: {
     appTitle: "Photo Archive AI",
@@ -130,6 +140,7 @@ export const TRANS = {
     loadPreset: "プリセット",
     searchPlaceholder: "検索...",
     noRulesYet: "保存されたルールはありません",
+    btnReanalyzeAll: "全件再解析 (手修正を維持)",
     // Limit Modal
     limitTitle: "枚数制限",
     limitDesc: (n: number) => `${n}枚選択されています。安定動作のため30枚以下にしてください。`,
@@ -137,6 +148,15 @@ export const TRANS = {
     rangeLabel: "枚数 (最大30):",
     rangePreview: (s: number, e: number) => `${s}枚目 ～ ${e}枚目`,
     btnProcess: "開始",
-    btnCancel: "キャンセル"
+    btnCancel: "キャンセル",
+    // Pairing
+    btnPairing: "着手前・完了ペアリング",
+    pairingProcessing: "ペアリング解析中...",
+    pairingRefining: "着手前の状況から工種を判定中...",
+    pairingSuccess: "着手前・完了のペア順に並び替えました（2枚/頁）",
+    pairingNoPairs: "明確なペアが見つかりませんでした",
+    layout2up: "2枚/ページ",
+    layout3up: "3枚/ページ",
+    autoPairLabel: "着手前・完了写真を自動ペアリング"
   }
 };

@@ -37,7 +37,7 @@ const ConsolePanel: React.FC<ConsolePanelProps> = ({ logs, isOpen, onToggle, onC
   }
 
   return (
-    <div className="fixed bottom-0 left-0 w-full h-[40vh] z-[150] flex flex-col shadow-2xl animate-in slide-in-from-bottom-10 duration-300">
+    <div className="fixed bottom-0 left-0 w-full h-[20vh] z-[150] flex flex-col shadow-2xl animate-in slide-in-from-bottom-10 duration-300">
       {/* Header */}
       <div className="bg-gray-900 text-gray-300 px-4 py-2 flex justify-between items-center border-t border-gray-700">
         <div className="flex items-center gap-2">

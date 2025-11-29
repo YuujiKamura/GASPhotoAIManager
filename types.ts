@@ -1,5 +1,4 @@
 
-
 export interface PhotoMetadata {
   fileName: string;
   originalFile?: File; // Optional because it might be missing after JSON import, but persisted in IDB
@@ -21,6 +20,12 @@ export interface AIAnalysisResult {
   description: string; // 記事/説明
   hasBoard: boolean; // 黒板有無
   detectedText: string; // OCR text
+  editedFields?: string[]; // Track which fields were manually modified by the user
+  
+  // Pairing Logic Cache
+  sceneId?: string; // Unique ID grouping photos of the same location (Visual or Logical)
+  phase?: 'before' | 'after' | 'status' | 'unknown'; // The phase within that scene
+  visualAnchors?: string; // NEW: Verbalized description of background landmarks (e.g., "White house left, Pole right")
 }
 
 export interface PhotoRecord extends PhotoMetadata {
