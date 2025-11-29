@@ -5,12 +5,12 @@ import { extractBase64Data } from "../utils/imageUtils";
 import { CONSTRUCTION_HIERARCHY } from "../utils/constructionMaster";
 
 // Configuration
-// QUALITY FIRST: Switched default to Pro Preview based on user feedback.
-const PRIMARY_MODEL = "gemini-3-pro-preview"; 
-const COMPLEX_MODEL = "gemini-3-pro-preview"; 
-const FALLBACK_MODEL = "gemini-2.5-flash"; // Fallback to Flash (Mid-tier), never Lite.
-const MAX_RETRIES = 3; // Increased retries for Pro model stability
-const RETRY_DELAY_MS = 4000; // Increased delay to avoid Rate Limits with Pro model
+// QUALITY FIRST: Using high-performance models for accuracy
+const PRIMARY_MODEL = "gemini-3-pro-preview";
+const COMPLEX_MODEL = "gemini-3-pro-preview";
+const FALLBACK_MODEL = "gemini-2.5-flash";
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
 
 // Sleep helper
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -101,7 +101,7 @@ ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
 };
 
 export const identifyTargetPhotos = async (
-  photos: PhotoRecord[], 
+  photos: PhotoRecord[],
   instruction: string,
   apiKey: string
 ): Promise<string[]> => {
@@ -144,9 +144,9 @@ export const identifyTargetPhotos = async (
 };
 
 export const normalizeDataConsistency = async (
-  records: PhotoRecord[], 
+  records: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info'|'success'|'error'|'json', details?: any) => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
 ): Promise<PhotoRecord[]> => {
   const completedRecords = records.filter(r => r.status === 'done' && r.analysis);
   if (completedRecords.length === 0) return records;
@@ -194,7 +194,7 @@ export const normalizeDataConsistency = async (
   while (attempt < MAX_RETRIES) {
     try {
       const result = await genAI.models.generateContent({
-        model: modelToUse, 
+        model: modelToUse,
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json"
@@ -203,7 +203,7 @@ export const normalizeDataConsistency = async (
 
       const text = result.text;
       if (!text) throw new Error("No text response");
-      
+
       const json = JSON.parse(text);
       onLog?.("Normalization Result Received", "json", json);
 
@@ -239,7 +239,7 @@ export const normalizeDataConsistency = async (
     } catch (e: any) {
       attempt++;
       onLog?.(`Normalization Error (${modelToUse}) - ${attempt}/${MAX_RETRIES}`, "error", e.message);
-      
+
       if (attempt < MAX_RETRIES) {
         modelToUse = PRIMARY_MODEL;
         await sleep(RETRY_DELAY_MS);
@@ -256,100 +256,142 @@ export const normalizeDataConsistency = async (
  * NEW: Visual Anchoring & Clustering
  * Instead of opaque IDs, we generate specific descriptions of background anchors.
  */
+/**
+ * NEW: Visual Anchoring & Clustering
+ * Optimized to use cache for visual feature extraction.
+ */
 export const assignSceneIds = async (
   records: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info'|'success'|'error'|'json', details?: any) => void
-): Promise<{ fileName: string, sceneId: string, phase: 'before'|'after'|'status', visualAnchors: string }[]> => {
-  
-  const genAI = new GoogleGenAI({ apiKey });
-  onLog?.(`Running Visual Anchoring on ${records.length} photos using ${COMPLEX_MODEL}...`, 'info');
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
+): Promise<{ fileName: string, sceneId: string, phase: 'before' | 'after' | 'status', visualAnchors: string }[]> => {
 
-  const inputs = records.map(r => ({
+  const genAI = new GoogleGenAI({ apiKey });
+
+  // Step 1: Feature Extraction (Visual Anchors)
+  // Only run for photos that don't have visualAnchors yet.
+  const needsExtraction = records.filter(r => !r.analysis?.visualAnchors);
+  const cachedFeatures = records.filter(r => r.analysis?.visualAnchors).map(r => ({
     fileName: r.fileName,
-    image: {
-      inlineData: {
-        data: extractBase64Data(r.base64),
-        mimeType: r.mimeType
-      }
-    }
+    visualAnchors: r.analysis!.visualAnchors!,
+    phase: r.analysis!.phase || 'status'
   }));
 
-  const promptParts: any[] = [];
-  
-  promptParts.push({ text: `
-    You are an expert in Construction Site "Fixed-Point Photography" (定点撮影).
-    
-    **TASK 1: Visual Anchors (背景の言語化)**
-    Describe ONLY the STATIC background elements (Anchors) that would persist across months.
-    - LOOK FOR: Distinctive houses (color/roof), Utility Poles (arrangement), Mountain skylines, Fence lines, Retaining walls.
-    - IGNORE THE GROUND surface (asphalt vs dirt changes).
-    - Be highly specific: "Blue roof house on left, double utility pole on right".
-    - Output to 'visualAnchors'.
+  let newFeatures: { fileName: string, visualAnchors: string, phase: 'before' | 'after' | 'status' }[] = [];
 
-    **TASK 2: Grouping (Scene ID)**
-    Assign the SAME 'sceneId' to photos that share the SAME Visual Anchors.
-    - IGNORE timestamps completely.
-    - A photo with "Muddy ground" + "Blue House" AND a photo with "New Asphalt" + "Blue House" MUST have the SAME sceneId.
+  if (needsExtraction.length > 0) {
+    onLog?.(`Extracting visual features for ${needsExtraction.length} new photos...`, 'info');
 
-    **TASK 3: Phase Detection (Crucial)**
-    Determine the phase based *strictly* on the ground condition:
-    - "before": Raw earth, gravel, old cracked pavement, weeds. (Appearance: Messy, Brown/Grey).
-    - "after": Brand new black asphalt, fresh white concrete, clean lines, swept surface. (Appearance: Clean, Black/White).
-    - "status": Active machinery, workers, holes being dug, rubble piles.
+    // Process in batches of 5 to avoid payload limits
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < needsExtraction.length; i += BATCH_SIZE) {
+      const batch = needsExtraction.slice(i, i + BATCH_SIZE);
+
+      const inputs = batch.map(r => ({
+        fileName: r.fileName,
+        image: {
+          inlineData: {
+            data: extractBase64Data(r.base64),
+            mimeType: r.mimeType
+          }
+        }
+      }));
+
+      const promptParts: any[] = [];
+      promptParts.push({
+        text: `
+        各写真の「背景の特徴(visualAnchors)」と「工事段階(phase)」を抽出してください。
+        
+        **タスク1: 背景の特徴 (visualAnchors)**
+        - 場所を特定するための恒久的な特徴を記述（建物、電柱、山、道路形状など）。
+        - 可変要素（車、人、天気）は除外。
+        - 簡潔に（例：「左に白い家、奥に赤い看板」）。
+
+        **タスク2: 工事段階 (phase)**
+        - "before": 着手前（未舗装、古い舗装、雑草）
+        - "after": 完了後（新しいアスファルト、きれいな白線）
+        - "status": 施工中（重機、作業員、掘削中）
+
+        **出力形式**:
+        {
+          "features": [
+            { "fileName": "...", "visualAnchors": "...", "phase": "..." }
+          ]
+        }
+      `});
+
+      inputs.forEach(input => {
+        promptParts.push(input.image);
+        promptParts.push({ text: `[${input.fileName}]\n` });
+      });
+
+      try {
+        const result = await genAI.models.generateContent({
+          model: COMPLEX_MODEL,
+          contents: [{ role: 'user', parts: promptParts }],
+          config: { responseMimeType: "application/json" }
+        });
+
+        const text = result.text || "{}";
+        const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+        if (json.features) {
+          newFeatures = [...newFeatures, ...json.features];
+        }
+      } catch (e: any) {
+        onLog?.(`Feature extraction failed for batch ${i}`, 'error', e.message);
+      }
+    }
+  } else {
+    onLog?.("Using cached visual features for all photos.", 'success');
+  }
+
+  const allFeatures = [...cachedFeatures, ...newFeatures];
+
+  // Step 2: Clustering (Text-only)
+  // Group photos based on visualAnchors descriptions.
+  if (allFeatures.length === 0) return [];
+
+  onLog?.(`Clustering ${allFeatures.length} photos based on visual anchors...`, 'info');
+
+  const clusteringPrompt = `
+    以下の写真リストを、背景の特徴(visualAnchors)に基づいて撮影場所ごとにグループ化してください。
     
-    **OUTPUT JSON**:
-    { 
+    **ルール**:
+    - 特徴が似ている写真は同じ場所(sceneId)とする。
+    - sceneIdは "S1", "S2" のように連番を振る。
+    - phase (before/after/status) は入力値をそのまま保持する。
+
+    **入力データ**:
+    ${JSON.stringify(allFeatures, null, 2)}
+
+    **出力形式**:
+    {
       "assignments": [
-        { 
-          "fileName": "img1.jpg", 
-          "sceneId": "S1", 
-          "phase": "before",
-          "visualAnchors": "Left: Blue house. Right: Pole #123." 
-        },
-        ...
+        { "fileName": "...", "sceneId": "...", "phase": "...", "visualAnchors": "..." }
       ]
     }
-  ` });
-
-  inputs.forEach(input => {
-    promptParts.push(input.image);
-    promptParts.push({ text: `[${input.fileName}]\n` });
-  });
+  `;
 
   try {
-    let modelToUse = COMPLEX_MODEL;
-    let attempt = 0;
-    
-    while (attempt < MAX_RETRIES) {
-       try {
-         const result = await genAI.models.generateContent({
-            model: modelToUse,
-            contents: [{ role: 'user', parts: promptParts }],
-            config: { responseMimeType: "application/json" }
-          });
-          
-          const text = result.text || "{}";
-          const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const json = JSON.parse(cleanedText);
-          return json.assignments || [];
+    const result = await genAI.models.generateContent({
+      model: PRIMARY_MODEL, // Text-only is fast and cheap
+      contents: [{ role: 'user', parts: [{ text: clusteringPrompt }] }],
+      config: { responseMimeType: "application/json" }
+    });
 
-       } catch (err: any) {
-         attempt++;
-         onLog?.(`Clustering Attempt ${attempt} failed with ${modelToUse}.`, 'error', err.message);
-         if (attempt < MAX_RETRIES) {
-            modelToUse = FALLBACK_MODEL;
-            await sleep(RETRY_DELAY_MS);
-         } else {
-           throw err;
-         }
-       }
-    }
-    return [];
+    const text = result.text || "{}";
+    const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+    return json.assignments || [];
 
   } catch (e: any) {
-    onLog?.("Clustering failed completely.", "error", e);
-    return [];
+    onLog?.("Clustering failed.", 'error', e.message);
+    // Fallback: Return features as is with unique IDs
+    return allFeatures.map((f, i) => ({
+      fileName: f.fileName,
+      visualAnchors: f.visualAnchors,
+      phase: (f.phase === 'unknown' ? 'status' : f.phase) as 'before' | 'after' | 'status',
+      sceneId: `S${i}`
+    }));
   }
 };
 
@@ -359,7 +401,7 @@ export const sortPhotosByScene = async () => [];
 export const refinePairContext = async (
   sortedRecords: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info'|'success'|'error'|'json', details?: any) => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
 ): Promise<PhotoRecord[]> => {
   // Logic remains similar but now relies on Scene IDs if available
   // For now, we trust the "Phase" from assignSceneIds more.
@@ -367,15 +409,15 @@ export const refinePairContext = async (
 };
 
 export const analyzePhotoBatch = async (
-  records: PhotoRecord[], 
+  records: PhotoRecord[],
   instruction: string,
   batchSize: number,
   appMode: AppMode,
   apiKey: string,
-  onLog?: (msg: string, type: 'info'|'success'|'error'|'json', details?: any) => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
 ): Promise<AIAnalysisResult[]> => {
   const genAI = new GoogleGenAI({ apiKey });
-  
+
   const inputs = records.map(r => ({
     inlineData: {
       data: extractBase64Data(r.base64),
@@ -436,7 +478,7 @@ export const analyzePhotoBatch = async (
 
       onLog?.(`API Success with ${modelToUse}`, "info");
       const parsed = JSON.parse(responseText) as AIAnalysisResult[];
-      
+
       const finalResults = parsed.map((res, idx) => {
         const targetRecord = records[idx];
         return { ...res, fileName: targetRecord.fileName };
@@ -447,7 +489,7 @@ export const analyzePhotoBatch = async (
     } catch (error: any) {
       attempt++;
       const isQuotaError = error.message?.includes("429") || error.status === 429 || error.status === 503;
-      
+
       onLog?.(`API Error (${modelToUse}) - Attempt ${attempt}/${MAX_RETRIES}`, "error", { message: error.message });
 
       if (attempt >= MAX_RETRIES) {
@@ -456,14 +498,14 @@ export const analyzePhotoBatch = async (
 
       if (isQuotaError) {
         if (modelToUse === PRIMARY_MODEL) {
-          modelToUse = FALLBACK_MODEL; 
+          modelToUse = FALLBACK_MODEL;
           onLog?.(`Rate Limit hit. Switching to Fallback Model: ${FALLBACK_MODEL}`, "info");
           await sleep(RETRY_DELAY_MS);
         } else {
           await sleep(RETRY_DELAY_MS * 2);
         }
       } else {
-        await sleep(RETRY_DELAY_MS); 
+        await sleep(RETRY_DELAY_MS);
       }
     }
   }

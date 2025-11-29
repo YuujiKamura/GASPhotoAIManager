@@ -1,6 +1,7 @@
 
 
 import { PhotoRecord, AIAnalysisResult } from "../types";
+import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
 const DB_VERSION = 3; // Version 3 handles File storage in Session Store implicitly
@@ -22,7 +23,7 @@ const openDB = (): Promise<IDBDatabase> => {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      
+
       // Session Store (Current working state)
       if (!db.objectStoreNames.contains(STORE_SESSION)) {
         db.createObjectStore(STORE_SESSION);
@@ -53,7 +54,7 @@ const openDB = (): Promise<IDBDatabase> => {
 
 export const saveProjectData = async (photos: PhotoRecord[]): Promise<void> => {
   if (photos.length === 0) return;
-  
+
   // We NOW store the full record including the File object (supported by IDB).
   // This ensures that on reload, the 'originalFile' is preserved.
   const db = await openDB();
@@ -104,7 +105,7 @@ const getFileKey = (input: File | PhotoRecord): string => {
     name = input.name;
     size = input.size;
     modified = input.lastModified;
-  } 
+  }
   // Priority 2: PhotoRecord with originalFile (Ensures consistency if record missing explicit metadata)
   else if (input.originalFile) {
     name = input.fileName; // fileName matches originalFile.name
@@ -124,6 +125,16 @@ const getFileKey = (input: File | PhotoRecord): string => {
 };
 
 export const getCachedAnalysis = async (input: File | PhotoRecord): Promise<AIAnalysisResult | null> => {
+  // 先にFile System Cacheを確認（利用可能な場合）
+  if (fsCache.isAvailable() && !(input instanceof File)) {
+    const fsCached = await fsCache.getCachedAnalysis(input);
+    if (fsCached) {
+      console.log('Retrieved from file system cache');
+      return fsCached;
+    }
+  }
+
+  // IndexedDBから取得
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_CACHE, 'readonly');
@@ -142,6 +153,12 @@ export const getCachedAnalysis = async (input: File | PhotoRecord): Promise<AIAn
 };
 
 export const cacheAnalysis = async (input: File | PhotoRecord, result: AIAnalysisResult): Promise<void> => {
+  // File System Cacheにも保存（利用可能な場合）
+  if (fsCache.isAvailable() && !(input instanceof File)) {
+    await fsCache.cacheAnalysis(input, result);
+  }
+
+  // IndexedDBにも保存
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_CACHE, 'readwrite');
@@ -205,7 +222,7 @@ export const deleteRule = async (id: string): Promise<void> => {
 export const exportDataToJson = (photos: PhotoRecord[]): string => {
   const dataToExport = photos.map(p => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { originalFile, ...rest } = p; 
+    const { originalFile, ...rest } = p;
     return rest;
   });
   return JSON.stringify(dataToExport, null, 2);

@@ -168,45 +168,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          </div>
 
          <div className="flex gap-2 items-center">
-            {/* Sort by Date (Local) */}
-            <button 
-              onClick={onSortByDate}
-              className="p-2 bg-slate-600 hover:bg-slate-500 rounded text-slate-200 shadow-sm flex items-center gap-2"
-              disabled={isProcessing}
-              title={lang === 'ja' ? "日時順に並び替え（API不使用）" : "Sort by Date (Local)"}
-            >
-              <CalendarClock className="w-4 h-4" /> <span className="text-xs font-bold hidden lg:inline">{lang === 'ja' ? "日時順" : "Date"}</span>
-            </button>
 
-            {/* Auto Pair Button */}
-            {appMode === 'construction' && (
-              <button 
-                onClick={handleAutoPairClick}
-                className="p-2 bg-indigo-600 hover:bg-indigo-500 rounded text-white shadow-sm flex items-center gap-2"
-                disabled={isProcessing}
-                title={txt.btnPairing}
-              >
-                <GitCompare className="w-4 h-4" /> <span className="text-xs font-bold hidden md:inline">{lang === 'ja' ? "AIペアリング" : "AI Pair"}</span>
-              </button>
-            )}
-
-            {/* Layout Toggle (2/3) */}
-            <div className="bg-slate-700 rounded p-0.5 flex items-center mr-2">
-               <button 
-                 onClick={() => setPhotosPerPage(2)}
-                 className={`p-1.5 rounded transition-colors ${photosPerPage === 2 ? 'bg-slate-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                 title={txt.layout2up}
-               >
-                 <span className="text-xs font-bold">2up</span>
-               </button>
-               <button 
-                 onClick={() => setPhotosPerPage(3)}
-                 className={`p-1.5 rounded transition-colors ${photosPerPage === 3 ? 'bg-slate-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                 title={txt.layout3up}
-               >
-                 <span className="text-xs font-bold">3up</span>
-               </button>
-            </div>
 
             {/* Refine Button */}
             <button 
@@ -218,16 +180,10 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               <Wand2 className="w-4 h-4" />
             </button>
 
-            <button onClick={() => setIsFitMode(!isFitMode)} className="p-2 bg-slate-700 hover:bg-slate-600 rounded text-slate-200" title={isFitMode ? "Zoom to 100%" : "Fit to Screen"}>
-              {isFitMode ? <ZoomIn className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            </button>
+
 
             <button onClick={onGoHome} className="p-2 bg-slate-700 hover:bg-blue-600 rounded text-slate-300 hover:text-white transition-colors" title={txt.backHome}>
               <Home className="w-4 h-4" />
-            </button>
-
-            <button onClick={onCloseProject} className="p-2 bg-slate-700 hover:bg-red-600 rounded text-slate-300 hover:text-white transition-colors" disabled={isProcessing} title={txt.deleteData}>
-              <X className="w-4 h-4" />
             </button>
 
             <div className="flex gap-1 ml-1">
