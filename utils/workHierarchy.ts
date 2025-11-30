@@ -489,3 +489,86 @@ export function inferPhotoCategoryFromRemarks(remarkText: string): PhotoCategory
   }
   return null;
 }
+
+
+/**
+ * 指定した工種のみのサブセット階層を取得
+ * セレクターエージェントで判定した工種だけを含む軽量な階層を返す
+ */
+export function getHierarchySubset(workTypes: string[]): object {
+  const result: Record<string, Record<string, Record<string, Record<string, object>>>> = {};
+
+  for (const workType of workTypes) {
+    const workNode = WORK_HIERARCHY[workType];
+    if (!workNode) continue;
+
+    result[workType] = {};
+    for (const [variety, varietyNode] of Object.entries(workNode)) {
+      result[workType][variety] = {};
+      for (const [detail, detailNode] of Object.entries(varietyNode)) {
+        result[workType][variety][detail] = {};
+        for (const remarkName of Object.keys(detailNode.remarks)) {
+          result[workType][variety][detail][remarkName] = {};
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * セレクター用の軽量プロンプトを生成
+ * 工種の一覧と代表的な備考のみを含む
+ */
+export function getSelectorPrompt(): string {
+  const workTypes = getWorkTypes();
+  const summary: Record<string, string[]> = {};
+
+  for (const workType of workTypes) {
+    const varieties = getVarieties(workType);
+    // 各工種から代表的な備考を最大5つ収集
+    const sampleRemarks: string[] = [];
+    for (const variety of varieties.slice(0, 2)) {
+      const details = getDetails(workType, variety);
+      for (const detail of details.slice(0, 2)) {
+        const remarks = getRemarksList(workType, variety, detail);
+        sampleRemarks.push(...remarks.slice(0, 3));
+      }
+    }
+    summary[workType] = [...new Set(sampleRemarks)].slice(0, 5);
+  }
+
+  return JSON.stringify(summary, null, 2);
+}
+
+/**
+ * 工種別のサイズ情報を取得（デバッグ・最適化用）
+ */
+export function getWorkTypeStats(): { workType: string; varieties: number; remarks: number; jsonSize: number }[] {
+  const stats: { workType: string; varieties: number; remarks: number; jsonSize: number }[] = [];
+
+  for (const workType of getWorkTypes()) {
+    const workNode = WORK_HIERARCHY[workType];
+    let remarkCount = 0;
+    const varietyCount = Object.keys(workNode).length;
+
+    for (const [, varietyNode] of Object.entries(workNode)) {
+      for (const [, detailNode] of Object.entries(varietyNode)) {
+        remarkCount += Object.keys(detailNode.remarks).length;
+      }
+    }
+
+    const subset = getHierarchySubset([workType]);
+    const jsonSize = JSON.stringify(subset).length;
+
+    stats.push({
+      workType,
+      varieties: varietyCount,
+      remarks: remarkCount,
+      jsonSize
+    });
+  }
+
+  return stats.sort((a, b) => b.jsonSize - a.jsonSize);
+}

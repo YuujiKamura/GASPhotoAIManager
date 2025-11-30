@@ -1,5 +1,5 @@
 # GASPhotoAIManager - Merged Codebase for AI Analysis
-# Generated: Sun, Nov 30, 2025  3:55:06 PM
+# Generated: Sun, Nov 30, 2025  4:03:00 PM
 # This file is for AI Studio import. Original files are preserved.
 
 //===============================================================================
@@ -2019,13 +2019,14 @@ export const generateZip = async (records: PhotoRecord[]): Promise<Blob> => {
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
-import { formatHierarchyForPrompt } from "../utils/workHierarchy";
+import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes } from "../utils/workHierarchy";
 
 // Configuration
 // QUALITY FIRST: Using high-performance models for accuracy
 const PRIMARY_MODEL = "gemini-3-pro-preview";
 const COMPLEX_MODEL = "gemini-3-pro-preview";
 const FALLBACK_MODEL = "gemini-2.5-flash";
+const SELECTOR_MODEL = "gemini-2.5-flash"; // Fast model for work type selection
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
@@ -2132,6 +2133,102 @@ keys: workType, variety, detail, station, remarks, description, hasBoard, detect
 
 ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
   `.trim();
+};
+
+
+
+/**
+ * セレクターエージェント: 画像群から工種を判定
+ * 軽量モデルで高速に工種を特定し、本解析で使う階層サブセットを決定
+ */
+export const selectWorkTypes = async (
+  records: PhotoRecord[],
+  apiKey: string,
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
+): Promise<string[]> => {
+  const startTime = performance.now();
+  const genAI = new GoogleGenAI({ apiKey });
+
+  // サンプル画像を選択（最初と最後、中間から数枚）
+  const sampleCount = Math.min(3, records.length);
+  const sampleIndices: number[] = [];
+  if (records.length <= 3) {
+    sampleIndices.push(...records.map((_, i) => i));
+  } else {
+    sampleIndices.push(0); // 最初
+    sampleIndices.push(Math.floor(records.length / 2)); // 中間
+    sampleIndices.push(records.length - 1); // 最後
+  }
+
+  const samples = sampleIndices.map(i => records[i]);
+  const inputs = samples.map(r => ({
+    inlineData: {
+      data: extractBase64Data(r.base64),
+      mimeType: r.mimeType
+    }
+  }));
+
+  const selectorPrompt = getSelectorPrompt();
+  const availableWorkTypes = getWorkTypes();
+
+  const prompt = `
+あなたは建設現場の写真を分類する専門家です。
+以下の${samples.length}枚のサンプル画像を見て、このバッチに含まれる工種を判定してください。
+
+**利用可能な工種と代表的な備考:**
+${selectorPrompt}
+
+**タスク:**
+1. 各画像を観察し、どの工種に該当するか判断
+2. このバッチ全体で使われている工種のリストを返す
+
+**重要:**
+- 複数の工種が混在している場合は全て含める
+- 判断できない場合は最も近い工種を選択
+- 利用可能な工種: ${availableWorkTypes.join(', ')}
+
+**出力形式 (JSON):**
+{ "workTypes": ["舗装工", ...] }
+`;
+
+  try {
+    const result = await genAI.models.generateContent({
+      model: SELECTOR_MODEL,
+      contents: [{ role: 'user', parts: [...inputs, { text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.1
+      }
+    });
+
+    const text = result.text || "{}";
+    const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+    const selectedTypes = (json.workTypes || []).filter((t: string) => availableWorkTypes.includes(t));
+
+    const elapsed = performance.now() - startTime;
+    onLog?.(`[SELECTOR] ${formatDuration(elapsed)}: Selected ${selectedTypes.length} work types: ${selectedTypes.join(', ')}`, 'info');
+
+    // 何も選択されなかった場合はフォールバック
+    if (selectedTypes.length === 0) {
+      onLog?.('[SELECTOR] No work types selected, using all types', 'info');
+      return availableWorkTypes;
+    }
+
+    return selectedTypes;
+  } catch (e: any) {
+    onLog?.(`[SELECTOR] Error: ${e.message}, falling back to all types`, 'error');
+    return availableWorkTypes;
+  }
+};
+
+/**
+ * 工種に基づいた階層サブセットを取得
+ */
+export const getFilteredHierarchy = (workTypes: string[]): object => {
+  if (workTypes.length === 0 || workTypes.length === getWorkTypes().length) {
+    return formatHierarchyForPrompt();
+  }
+  return getHierarchySubset(workTypes);
 };
 
 export const identifyTargetPhotos = async (
