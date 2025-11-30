@@ -8,8 +8,10 @@ echo "# Generated: $(date)" >> $OUTPUT
 echo "# This file is for AI Studio import. Original files are preserved." >> $OUTPUT
 echo "" >> $OUTPUT
 
-# Define file order (dependencies first)
+# Define file order (config files first, then dependencies)
 FILES=(
+  "package.json"
+  "index.html"
   "types.ts"
   "utils/constructionMaster.ts"
   "utils/translations.ts"

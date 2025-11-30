@@ -1,6 +1,126 @@
 # GASPhotoAIManager - Merged Codebase for AI Analysis
-# Generated: Sun, Nov 30, 2025 10:59:10 AM
+# Generated: Sun, Nov 30, 2025 11:53:39 AM
 # This file is for AI Studio import. Original files are preserved.
+
+//===============================================================================
+// FILE: package.json
+//===============================================================================
+{
+  "name": "construction-album-maker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "lucide-react": "^0.554.0",
+    "@google/genai": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
+
+//===============================================================================
+// FILE: index.html
+//===============================================================================
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工事写真帳メーカー - Construction Album Maker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+
+    /* Screen Styles for the Sheet Preview */
+    .sheet-preview {
+      width: 210mm;
+      min-height: 297mm;
+      background: white;
+      margin: 0 auto 2rem auto;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      position: relative;
+      box-sizing: border-box;
+    }
+
+    /* PDF Generation Mode Overrides */
+    /* These styles activate when the 'pdf-mode' class is added to the container during export */
+    .pdf-mode .sheet-preview {
+      /* Force exact height slightly less than A4 to prevent micro-spillover causing blank pages */
+      height: 295mm !important;
+      min-height: 295mm !important;
+      max-height: 295mm !important;
+      width: 210mm !important;
+
+      /* Remove screen-only styling */
+      margin: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+
+      /* Clip any content that might push boundaries */
+      overflow: hidden !important;
+
+      /* Ensure clean breaks */
+      page-break-after: always !important;
+      page-break-inside: avoid !important;
+    }
+
+    /* Prevent the last page from creating an empty page after it */
+    .pdf-mode .sheet-preview:last-child {
+      page-break-after: avoid !important;
+    }
+
+    /* PDF Visibility Helpers:
+         Allows switching between 'Input' (Edit) and 'Div' (Print) 
+         to ensure text wraps correctly in PDF. 
+      */
+    .pdf-visible {
+      display: none;
+    }
+
+    .pdf-mode .pdf-visible {
+      display: block !important;
+    }
+
+    .pdf-mode .pdf-hidden {
+      display: none !important;
+    }
+  </style>
+
+
+</head>
+
+<body class="bg-gray-100 text-gray-900 antialiased">
+  <div id="root">
+    <div style="padding: 20px; font-family: sans-serif;">
+      <h1>工事写真帳メーカーを読み込み中...</h1>
+      <p>If this message persists, there may be a JavaScript error.</p>
+    </div>
+  </div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>
 
 //===============================================================================
 // FILE: types.ts
