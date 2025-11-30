@@ -10,6 +10,18 @@ export interface PhotoMetadata {
 
 export type AppMode = 'construction' | 'general';
 
+// 写真管理基準（国土交通省）による正式な写真区分
+export type PhotoCategory =
+  | "着手前及び完成写真"
+  | "施工状況写真"
+  | "安全管理写真"
+  | "使用材料写真"
+  | "品質管理写真"
+  | "出来形管理写真"
+  | "災害写真"
+  | "事故写真"
+  | "その他";
+
 export interface AIAnalysisResult {
   fileName: string;
   workType: string; // 工種 (Construction Type) OR Category

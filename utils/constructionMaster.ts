@@ -438,3 +438,38 @@ export const CONSTRUCTION_HIERARCHY = {
     }
   }
 };
+
+// 写真区分の一覧（国土交通省写真管理基準による正式名称）
+export const PHOTO_CATEGORIES = [
+  "着手前及び完成写真",
+  "施工状況写真",
+  "安全管理写真",
+  "使用材料写真",
+  "品質管理写真",
+  "出来形管理写真",
+  "災害写真",
+  "事故写真",
+  "その他"
+] as const;
+
+export type PhotoCategoryType = typeof PHOTO_CATEGORIES[number];
+
+// 備考テキストから写真区分を推定する
+export function inferPhotoCategory(remarkText: string): PhotoCategoryType {
+  if (remarkText.includes("着手前") || remarkText.includes("完成") || remarkText.includes("竣工")) {
+    return "着手前及び完成写真";
+  }
+  if (remarkText.includes("出来形") || remarkText.includes("測定")) {
+    return "出来形管理写真";
+  }
+  if (remarkText.includes("品質") || remarkText.includes("温度") || remarkText.includes("密度")) {
+    return "品質管理写真";
+  }
+  if (remarkText.includes("材料") || remarkText.includes("検収") || remarkText.includes("搬入")) {
+    return "使用材料写真";
+  }
+  if (remarkText.includes("安全") || remarkText.includes("朝礼") || remarkText.includes("KY")) {
+    return "安全管理写真";
+  }
+  return "施工状況写真";
+}
