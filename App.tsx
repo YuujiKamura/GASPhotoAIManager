@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
@@ -53,6 +53,11 @@ export default function App() {
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
 
+  // Active instruction management - tracks the currently effective instruction
+  // Priority: refinementInstruction > initialInstruction
+  const [initialInstruction, setInitialInstruction] = useState<string>("");
+  const [activeInstruction, setActiveInstruction] = useState<string>("");
+
   // Language
   const [lang, setLang] = useState<'en' | 'ja'>('en');
   const txt = TRANS[lang];
@@ -60,6 +65,9 @@ export default function App() {
   // File System Cache
   const [fsCacheEnabled, setFsCacheEnabled] = useState(false);
   const [fsCacheStats, setFsCacheStats] = useState<{ totalFiles: number; lastUpdated: string } | null>(null);
+
+  // Analysis Abort Control
+  const [shouldAbortAnalysis, setShouldAbortAnalysis] = useState(false);
 
   // Detect Language
   useEffect(() => {
@@ -77,8 +85,7 @@ export default function App() {
   useEffect(() => {
     const initLoad = async () => {
       try {
-        // File System Cache の復元を試みる
-        if (fsCache.isAvailable()) {
+        // File System Cache 縺ｮ蠕ｩ蜈・ｒ隧ｦ縺ｿ繧・        if (fsCache.isAvailable()) {
           const restored = await fsCache.restoreHandle();
           if (restored) {
             setFsCacheEnabled(true);
@@ -118,6 +125,19 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [photos, isStorageLoaded]);
 
+  // ESC Key Listener for Analysis Interruption
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isProcessing) {
+        setShouldAbortAnalysis(true);
+        addLog("ESC pressed - aborting analysis...", 'info');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isProcessing]);
+
   // --- Helpers ---
 
   const addLog = (message: string, type: LogEntry['type'] = 'info', details?: any) => {
@@ -125,50 +145,60 @@ export default function App() {
     setLogs(prev => [...prev, { timestamp, message, type, details }]);
   };
 
+  const logIndividualResult = (fileName: string, result: AIAnalysisResult) => {
+    const summary = [
+      `萄 ${fileName}`,
+      result.workType && `蟾･遞ｮ: ${result.workType}`,
+      result.variety && `遞ｮ蛻･: ${result.variety}`,
+      result.detail && `邏ｰ蛻･: ${result.detail}`,
+      result.station && `貂ｬ轤ｹ: ${result.station}`,
+      result.remarks && `蛯呵・ ${result.remarks}`,
+    ].filter(Boolean).join(' | ');
+
+    addLog(summary, 'success', result);
+  };
+
   const clearLogs = () => setLogs([]);
 
-  // プロンプトから測点名を抽出する共通関数
+  // 繝励Ο繝ｳ繝励ヨ縺九ｉ貂ｬ轤ｹ蜷阪ｒ謚ｽ蜃ｺ縺吶ｋ蜈ｱ騾夐未謨ｰ
   const extractLocationName = (prompt: string): string => {
-    // パターン1: 「測点は〇〇とする」「測点を〇〇に統一」など
-    const sokuten1 = prompt.match(/測点[はを]一律に?([^とに、。\n]+?)(?:[とに](?:統一|する)|$)/);
+    // 繝代ち繝ｼ繝ｳ1: 縲梧ｸｬ轤ｹ縺ｯ縲・・→縺吶ｋ縲阪梧ｸｬ轤ｹ繧偵・・↓邨ｱ荳縲阪↑縺ｩ
+    const sokuten1 = prompt.match(/貂ｬ轤ｹ[縺ｯ繧綻荳蠕九↓?([^縺ｨ縺ｫ縲√・n]+?)(?:[縺ｨ縺ｫ](?:邨ｱ荳|縺吶ｋ)|$)/);
     if (sokuten1) {
       return sokuten1[1].trim();
     }
 
-    // パターン2: 「測点：〇〇」「測点:〇〇」
-    const sokuten2 = prompt.match(/測点[：:]\s*([^、。\n]+)/);
+    // 繝代ち繝ｼ繝ｳ2: 縲梧ｸｬ轤ｹ・壹・・阪梧ｸｬ轤ｹ:縲・・・    const sokuten2 = prompt.match(/貂ｬ轤ｹ[・・]\s*([^縲√・n]+)/);
     if (sokuten2) {
       return sokuten2[1].trim();
     }
 
-    // パターン3: 「〇〇付近」「〇〇地点」などを含む行を探す
-    const locationPattern = prompt.match(/([^、。\n]*(?:付近|地点|地区|丁目)[^、。\n]*)/);
+    // 繝代ち繝ｼ繝ｳ3: 縲後・・ｻ倩ｿ代阪後・・慍轤ｹ縲阪↑縺ｩ繧貞性繧陦後ｒ謗｢縺・    const locationPattern = prompt.match(/([^縲√・n]*(?:莉倩ｿ掃蝨ｰ轤ｹ|蝨ｰ蛹ｺ|荳∫岼)[^縲√・n]*)/);
     if (locationPattern) {
-      // 不要な前後を削除
+      // 荳崎ｦ√↑蜑榊ｾ後ｒ蜑企勁
       const location = locationPattern[1]
-        .replace(/^.*(?:測点[はを]|場所[はを]|位置[はを]|一律に)/, '')
-        .replace(/(?:[とに](?:統一|する)|です|である).*$/, '')
+        .replace(/^.*(?:貂ｬ轤ｹ[縺ｯ繧綻|蝣ｴ謇[縺ｯ繧綻|菴咲ｽｮ[縺ｯ繧綻|荳蠕九↓)/, '')
+        .replace(/(?:[縺ｨ縺ｫ](?:邨ｱ荳|縺吶ｋ)|縺ｧ縺處縺ｧ縺ゅｋ).*$/, '')
         .trim();
       if (location) return location;
     }
 
-    // パターン4: 最初の行を取得（フォールバック）
-    const lines = prompt.split('\n').filter(line => line.trim().length > 0);
+    // 繝代ち繝ｼ繝ｳ4: 譛蛻昴・陦後ｒ蜿門ｾ暦ｼ医ヵ繧ｩ繝ｼ繝ｫ繝舌ャ繧ｯ・・    const lines = prompt.split('\n').filter(line => line.trim().length > 0);
     if (lines.length > 0) {
       const firstLine = lines[0].trim();
-      // 「〇〇工事」などを除去
-      const cleanedLine = firstLine.replace(/工事.*$/, '').trim();
+      // 縲後・・ｷ･莠九阪↑縺ｩ繧帝勁蜴ｻ
+      const cleanedLine = firstLine.replace(/蟾･莠・*$/, '').trim();
       if (cleanedLine) {
         return cleanedLine.substring(0, 30);
       }
     }
 
-    return '現場';
+    return '迴ｾ蝣ｴ';
   };
 
   // --- Logic Controllers ---
 
-  // File System Cache 関連
+  // File System Cache 髢｢騾｣
   const handleSelectCacheFolder = async () => {
     if (!fsCache.isAvailable()) {
       setErrorMsg("File System Access API is not supported in this browser.");
@@ -179,8 +209,7 @@ export default function App() {
       const selected = await fsCache.selectDirectory();
       if (selected) {
         setFsCacheEnabled(true);
-        await fsCache.saveHandle(); // ハンドルを保存
-        const stats = fsCache.getStats();
+        await fsCache.saveHandle(); // 繝上Φ繝峨Ν繧剃ｿ晏ｭ・        const stats = fsCache.getStats();
         setFsCacheStats(stats);
         setSuccessMsg("Cache folder selected successfully!");
         addLog("File system cache enabled", 'success');
@@ -219,20 +248,20 @@ export default function App() {
 
   const handleClearCache = async () => {
     const msg = lang === 'ja'
-      ? "解析済みのキャッシュデータを削除しますか？\n（現在表示中のデータは消えませんが、次回以降の解析でAPIが使用されます）"
+      ? "隗｣譫先ｸ医∩縺ｮ繧ｭ繝｣繝・す繝･繝・・繧ｿ繧貞炎髯､縺励∪縺吶°・歃n・育樟蝨ｨ陦ｨ遉ｺ荳ｭ縺ｮ繝・・繧ｿ縺ｯ豸医∴縺ｾ縺帙ｓ縺後∵ｬ｡蝗樔ｻ･髯阪・隗｣譫舌〒API縺御ｽｿ逕ｨ縺輔ｌ縺ｾ縺呻ｼ・
       : "Clear analysis cache?\n(Current view is not affected, but next analysis will use API)";
 
     if (window.confirm(msg)) {
       await clearAnalysisCache();
       setStats(prev => ({ ...prev, cached: 0 }));
       setPhotos(prev => prev.map(p => ({ ...p, fromCache: false })));
-      alert(lang === 'ja' ? "キャッシュを削除しました。" : "Cache cleared.");
+      alert(lang === 'ja' ? "繧ｭ繝｣繝・す繝･繧貞炎髯､縺励∪縺励◆縲・ : "Cache cleared.");
       addLog("Cache cleared by user.", 'info');
     }
   };
 
   const handleDeletePhoto = (fileName: string) => {
-    if (window.confirm(lang === 'ja' ? "この写真を削除してもよろしいですか？" : "Are you sure you want to delete this photo?")) {
+    if (window.confirm(lang === 'ja' ? "縺薙・蜀咏悄繧貞炎髯､縺励※繧ゅｈ繧阪＠縺・〒縺吶°・・ : "Are you sure you want to delete this photo?")) {
       const updatedPhotos = photos.filter(p => p.fileName !== fileName);
       setPhotos(updatedPhotos);
 
@@ -282,7 +311,7 @@ export default function App() {
     if (!raw) return "";
     let s = raw.trim();
     if (!s) return "";
-    s = s.replace(/[！-～]/g, r => String.fromCharCode(r.charCodeAt(0) - 0xFEE0));
+    s = s.replace(/[・・・枉/g, r => String.fromCharCode(r.charCodeAt(0) - 0xFEE0));
     s = s.replace(/\s+/g, "");
     // Remove "No." "NO" prefixes to match just the number if possible, or normalize valid prefixes
     if (/^(no|number|nu|nm)[^a-z]/i.test(s)) {
@@ -299,8 +328,8 @@ export default function App() {
 
     // Fallback to text heuristics
     const text = ((r.analysis?.remarks || "") + (r.analysis?.variety || "") + (r.analysis?.workType || "")).toLowerCase();
-    if (text.includes("着手前") || text.includes("before") || text.includes("pre")) return 0;
-    if (text.includes("完了") || text.includes("竣工") || text.includes("after") || text.includes("done")) return 2;
+    if (text.includes("逹謇句燕") || text.includes("before") || text.includes("pre")) return 0;
+    if (text.includes("螳御ｺ・) || text.includes("遶｣蟾･") || text.includes("after") || text.includes("done")) return 2;
     return 1;
   };
 
@@ -420,10 +449,10 @@ export default function App() {
         const remarks = photo.analysis?.remarks || "";
         const phase = photo.analysis?.phase;
 
-        if (!beforePhoto && (phase === 'before' || remarks.includes("着手前") || remarks.includes("施工前"))) {
+        if (!beforePhoto && (phase === 'before' || remarks.includes("逹謇句燕") || remarks.includes("譁ｽ蟾･蜑・))) {
           beforePhoto = photo;
           if (photo.analysis) photo.analysis.phase = 'before';
-        } else if (!afterPhoto && (phase === 'after' || remarks.includes("完了") || remarks.includes("完成") || remarks.includes("竣工"))) {
+        } else if (!afterPhoto && (phase === 'after' || remarks.includes("螳御ｺ・) || remarks.includes("螳梧・") || remarks.includes("遶｣蟾･"))) {
           afterPhoto = photo;
           if (photo.analysis) photo.analysis.phase = 'after';
         }
@@ -484,7 +513,6 @@ export default function App() {
 
     setIsProcessing(true);
     setCurrentStep(txt.pairingProcessing);
-    setInitialLayout(2);
 
     try {
       const records = [...photos];
@@ -517,7 +545,7 @@ export default function App() {
             ...r.analysis!,
             sceneId: `LOGICAL_${station}`,
             // Phase is actually irrelevant for grouping in strict mode, but good for display
-            phase: ((r.analysis?.remarks || "").includes("着手前") ? 'before' : (r.analysis?.remarks || "").includes("完了") ? 'after' : 'status') as any
+            phase: ((r.analysis?.remarks || "").includes("逹謇句燕") ? 'before' : (r.analysis?.remarks || "").includes("螳御ｺ・) ? 'after' : 'status') as any
           }
         };
       });
@@ -573,7 +601,7 @@ export default function App() {
 
       setPhotos(sorted);
       setSuccessMsg(lang === 'ja'
-        ? `${pairCount}組の着手前-竣工ペアを作成しました${omittedCount > 0 ? `（${omittedCount}枚は除外）` : ''}`
+        ? `${pairCount}邨・・逹謇句燕-遶｣蟾･繝壹い繧剃ｽ懈・縺励∪縺励◆${omittedCount > 0 ? `・・{omittedCount}譫壹・髯､螟厄ｼ荏 : ''}`
         : `Created ${pairCount} before-after pairs${omittedCount > 0 ? ` (${omittedCount} photos omitted)` : ''}`);
 
     } catch (err: any) {
@@ -590,8 +618,7 @@ export default function App() {
     // Just sort by logical station/date without the strict pairing requirement
     const sorted = sortPhotosLogical([...photos]);
     setPhotos(sorted);
-    setInitialLayout(2);
-    setSuccessMsg(lang === 'ja' ? "測点・シーン情報に基づいて並び替えました" : "Sorted by Scene & Phase");
+    setSuccessMsg(lang === 'ja' ? "貂ｬ轤ｹ繝ｻ繧ｷ繝ｼ繝ｳ諠・ｱ縺ｫ蝓ｺ縺･縺・※荳ｦ縺ｳ譖ｿ縺医∪縺励◆" : "Sorted by Scene & Phase");
   };
 
   // --- Pipeline Steps ---
@@ -628,13 +655,19 @@ export default function App() {
 
   const startAnalysisPipeline = async (files: File[], instruction: string, useCache: boolean) => {
     setIsProcessing(true);
+    setShouldAbortAnalysis(false); // Reset abort flag
     setErrorMsg(null);
     setSuccessMsg(null);
     clearLogs();
 
+    // Store initial instruction as active
+    setInitialInstruction(instruction);
+    setActiveInstruction(instruction);
+    addLog(`[INSTRUCTION] Initial: "${instruction.substring(0, 50)}${instruction.length > 50 ? '...' : ''}"`, 'info');
+
     try {
       // 1. Prepare Records & Check Cache
-      setCurrentStep(lang === 'ja' ? "画像を準備中..." : "Preparing images...");
+      setCurrentStep(lang === 'ja' ? "逕ｻ蜒上ｒ貅門ｙ荳ｭ..." : "Preparing images...");
 
       const newRecords: PhotoRecord[] = [];
       let cachedCount = 0;
@@ -660,7 +693,7 @@ export default function App() {
 
         if (cachedAnalysis) {
           const { base64, mimeType } = await processImageForAI(file);
-          // キャッシュされた分析結果に測点名を追加
+          // 繧ｭ繝｣繝・す繝･縺輔ｌ縺溷・譫千ｵ先棡縺ｫ貂ｬ轤ｹ蜷阪ｒ霑ｽ蜉
           const locationName = extractLocationName(instruction);
           newRecords.push({
             ...tempRecord,
@@ -668,7 +701,7 @@ export default function App() {
             mimeType,
             analysis: {
               ...cachedAnalysis,
-              station: locationName  // プロンプトから抽出した測点名を追加
+              station: locationName  // 繝励Ο繝ｳ繝励ヨ縺九ｉ謚ｽ蜃ｺ縺励◆貂ｬ轤ｹ蜷阪ｒ霑ｽ蜉
             },
             status: 'done',
             fromCache: true
@@ -696,14 +729,12 @@ export default function App() {
       setStats({ total: initialSorted.length, processed: cachedCount, success: cachedCount, failed: 0, cached: cachedCount });
       setShowPreview(true);
 
-      // 2. Smart Flow: 写真タイプを自動判定して最適な処理を選択
-      const pendingPhotos = initialSorted.filter(p => p.status === 'pending');
+      // 2. Smart Flow: 蜀咏悄繧ｿ繧､繝励ｒ閾ｪ蜍募愛螳壹＠縺ｦ譛驕ｩ縺ｪ蜃ｦ逅・ｒ驕ｸ謚・      const pendingPhotos = initialSorted.filter(p => p.status === 'pending');
 
       if (pendingPhotos.length > 0) {
-        addLog(`${pendingPhotos.length}枚の新しい写真を処理します`, 'info');
+        addLog(`${pendingPhotos.length}譫壹・譁ｰ縺励＞蜀咏悄繧貞・逅・＠縺ｾ縺兪, 'info');
 
-        // スマートフローで処理
-        const result = await processPhotosWithSmartFlow(
+        // 繧ｹ繝槭・繝医ヵ繝ｭ繝ｼ縺ｧ蜃ｦ逅・        const result = await processPhotosWithSmartFlow(
           pendingPhotos,
           apiKey,
           instruction,
@@ -711,17 +742,14 @@ export default function App() {
         );
 
         if (result.type === 'paired') {
-          // 景観写真モード：ペアリング完了
-          addLog('景観写真モードで処理しました', 'success');
+          // 譎ｯ隕ｳ蜀咏悄繝｢繝ｼ繝会ｼ壹・繧｢繝ｪ繝ｳ繧ｰ螳御ｺ・          addLog('譎ｯ隕ｳ蜀咏悄繝｢繝ｼ繝峨〒蜃ｦ逅・＠縺ｾ縺励◆', 'success');
 
-          // プロンプトから測点名を抽出（共通関数を使用）
-          const locationName = extractLocationName(instruction);
+          // 繝励Ο繝ｳ繝励ヨ縺九ｉ貂ｬ轤ｹ蜷阪ｒ謚ｽ蜃ｺ・亥・騾夐未謨ｰ繧剃ｽｿ逕ｨ・・          const locationName = extractLocationName(instruction);
 
-          // ペアを展開して写真リストを更新
+          // 繝壹い繧貞ｱ暮幕縺励※蜀咏悄繝ｪ繧ｹ繝医ｒ譖ｴ譁ｰ
           const updatedPhotos: PhotoRecord[] = [];
           result.pairs?.forEach(pair => {
-            // analysis が存在しない場合は空のオブジェクトを初期化
-            const beforeAnalysis = pair.before.analysis || {
+            // analysis 縺悟ｭ伜惠縺励↑縺・ｴ蜷医・遨ｺ縺ｮ繧ｪ繝悶ず繧ｧ繧ｯ繝医ｒ蛻晄悄蛹・            const beforeAnalysis = pair.before.analysis || {
               fileName: pair.before.fileName,
               workType: '',
               variety: '',
@@ -745,16 +773,15 @@ export default function App() {
               detectedText: ''
             };
 
-            // beforeとafterにsceneIdとphaseを付与、測点名と備考を追加
+            // before縺ｨafter縺ｫsceneId縺ｨphase繧剃ｻ倅ｸ弱∵ｸｬ轤ｹ蜷阪→蛯呵・ｒ霑ｽ蜉
             const beforePhoto = {
               ...pair.before,
               analysis: {
                 ...beforeAnalysis,
                 sceneId: pair.sceneId,
                 phase: 'before' as const,
-                station: locationName, // 測点名を追加
-                remarks: '着手前' // 備考に着手前を記載
-              },
+                station: locationName, // 貂ｬ轤ｹ蜷阪ｒ霑ｽ蜉
+                remarks: '逹謇句燕' // 蛯呵・↓逹謇句燕繧定ｨ倩ｼ・              },
               status: 'done' as const
             };
             const afterPhoto = {
@@ -763,9 +790,8 @@ export default function App() {
                 ...afterAnalysis,
                 sceneId: pair.sceneId,
                 phase: 'after' as const,
-                station: locationName, // 測点名を追加
-                remarks: '竣工' // 備考に竣工を記載
-              },
+                station: locationName, // 貂ｬ轤ｹ蜷阪ｒ霑ｽ蜉
+                remarks: '遶｣蟾･' // 蛯呵・↓遶｣蟾･繧定ｨ倩ｼ・              },
               status: 'done' as const
             };
             updatedPhotos.push(beforePhoto, afterPhoto);
@@ -776,17 +802,24 @@ export default function App() {
             return [...unchanged, ...updatedPhotos];
           });
 
-          setInitialLayout(2); // 2-upレイアウトに自動切り替え
-
+          setInitialLayout(2); // 2-up繝ｬ繧､繧｢繧ｦ繝医↓閾ｪ蜍募・繧頑崛縺・
         } else {
-          // 黒板ありモード：従来の詳細解析
-          const batchSize = DEFAULT_BATCH_SIZE;
+          // 鮟呈攸縺ゅｊ繝｢繝ｼ繝会ｼ壼ｾ捺擂縺ｮ隧ｳ邏ｰ隗｣譫・          const batchSize = DEFAULT_BATCH_SIZE;
           for (let i = 0; i < pendingPhotos.length; i += batchSize) {
             const batch = pendingPhotos.slice(i, i + batchSize);
             setCurrentStep(`${txt.analyzing} (${i + 1}/${pendingPhotos.length})`);
 
             try {
-              const results = await analyzePhotoBatch(batch, instruction, batchSize, appMode, apiKey, addLog);
+              const results = await analyzePhotoBatch(
+                batch,
+                instruction,
+                batchSize,
+                appMode,
+                apiKey,
+                addLog,
+                logIndividualResult,
+                () => shouldAbortAnalysis
+              );
 
               const updatedBatch = batch.map(record => {
                 const res = results.find(r => r.fileName === record.fileName);
@@ -835,12 +868,6 @@ export default function App() {
       // This will use cached sceneIds from previous sessions if they exist!
       setPhotos(prev => sortPhotosLogical(prev));
 
-      if (appMode === 'construction') {
-        setInitialLayout(2);
-      } else {
-        setInitialLayout(3);
-      }
-
       setSuccessMsg(txt.done);
 
     } catch (err: any) {
@@ -853,21 +880,42 @@ export default function App() {
     }
   };
 
+// Console CLI instruction handler
+  const handleConsoleInstruction = (instruction: string) => {
+    addLog("User instruction: " + instruction, "info");
+    handleRefineAnalysis(instruction, 6);
+  };
   const handleRefineAnalysis = async (instruction: string, batchSize: number) => {
     setShowRefineModal(false);
     setIsProcessing(true);
     setCurrentStep("Refining analysis...");
     clearLogs();
 
+    // Update active instruction (refinement takes priority)
+    if (instruction && instruction !== "__REANALYZE__") {
+      setActiveInstruction(instruction);
+      addLog(`[INSTRUCTION] Refinement: "${instruction.substring(0, 50)}${instruction.length > 50 ? '...' : ''}"`, 'info');
+      addLog(`[INSTRUCTION] Priority: Refinement > Initial`, 'info');
+    }
+
     try {
       let targetFileNames: string[] = [];
+
+      // Check if refinement instruction contains a station specification
+      const refinementStation = extractLocationName(instruction);
+      const hasStationOverride = instruction && instruction !== "__REANALYZE__" && 
+        (instruction.includes('貂ｬ轤ｹ') || instruction.includes('莉倩ｿ・) || instruction.includes('蝨ｰ轤ｹ'));
+
+      if (hasStationOverride) {
+        addLog(`[INSTRUCTION] Station override detected: "${refinementStation}"`, 'info');
+      }
 
       if (instruction === "__REANALYZE__") {
         targetFileNames = photos.map(p => p.fileName);
         addLog("Re-analyzing ALL photos.", 'info');
       } else {
         setCurrentStep(txt.identifyingTargets);
-        targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey);
+        targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey, addLog);
       }
 
       if (targetFileNames.length === 0) {
@@ -884,7 +932,16 @@ export default function App() {
         setCurrentStep(`${txt.analyzing} (${i + 1}/${targets.length})`);
 
         try {
-          const results = await analyzePhotoBatch(batch, instruction === "__REANALYZE__" ? "" : instruction, batchSize, appMode, apiKey, addLog);
+          const results = await analyzePhotoBatch(
+            batch,
+            instruction === "__REANALYZE__" ? "" : instruction,
+            batchSize,
+            appMode,
+            apiKey,
+            addLog,
+            logIndividualResult,
+            () => shouldAbortAnalysis
+          );
 
           const processedBatch = batch.map(record => {
             const res = results.find(r => r.fileName === record.fileName);
@@ -919,16 +976,109 @@ export default function App() {
         }
       }
 
-      const otherPhotos = photos.filter(p => !targetFileNames.includes(p.fileName));
+      // If refinement had station override, apply to ALL photos (including non-targets)
+      let otherPhotos = photos.filter(p => !targetFileNames.includes(p.fileName));
+      
+      if (hasStationOverride && refinementStation) {
+        addLog(`[INSTRUCTION] Applying station "${refinementStation}" to all ${otherPhotos.length + updatedTargets.length} photos`, 'info');
+        
+        // Update other photos with new station
+        otherPhotos = otherPhotos.map(p => {
+          if (p.analysis) {
+            return {
+              ...p,
+              analysis: {
+                ...p.analysis,
+                station: refinementStation
+              }
+            };
+          }
+          return p;
+        });
+
+        // Also ensure updated targets have the station
+        updatedTargets = updatedTargets.map(p => {
+          if (p.analysis) {
+            return {
+              ...p,
+              analysis: {
+                ...p.analysis,
+                station: refinementStation
+              }
+            };
+          }
+          return p;
+        });
+      }
+
       const merged = [...otherPhotos, ...updatedTargets];
       const sorted = sortPhotosLogical(merged);
 
       setPhotos(sorted);
-      setSuccessMsg(`Updated ${updatedTargets.length} photos.`);
+      setSuccessMsg(`Updated ${updatedTargets.length} photos.${hasStationOverride ? ` Station set to "${refinementStation}"` : ''}`);
 
     } catch (e: any) {
       console.error(e);
       setErrorMsg("Refine failed: " + e.message);
+      setShouldAbortAnalysis(false); // Reset abort flag
+    }
+  };
+
+  const handleSingleReanalysis = async (fileName: string) => {
+    setIsProcessing(true);
+    setCurrentStep(`Re-analyzing ${fileName}...`);
+    clearLogs();
+    setShouldAbortAnalysis(false);
+
+    try {
+      const target = photos.find(p => p.fileName === fileName);
+      if (!target) return;
+
+      const results = await analyzePhotoBatch(
+        [target],
+        "", // Empty instruction for default analysis
+        1, // batchSize
+        appMode,
+        apiKey,
+        addLog,
+        logIndividualResult,
+        () => shouldAbortAnalysis,
+        (reasoningText) => {
+          setCurrentStep(`Thinking: ${reasoningText.slice(0, 100)}${reasoningText.length > 100 ? '...' : ''}`);
+        }
+      );
+
+      if (results.length > 0) {
+        const res = results[0];
+        let finalAnalysis = res;
+
+        // Preserve Edited Fields
+        if (target.analysis?.editedFields) {
+          finalAnalysis = { ...res, editedFields: target.analysis.editedFields };
+          target.analysis.editedFields.forEach(field => {
+            // @ts-ignore
+            finalAnalysis[field] = target.analysis[field];
+          });
+        }
+
+        setPhotos(prev => prev.map(p =>
+          p.fileName === fileName
+            ? { ...p, analysis: finalAnalysis, status: 'done' }
+            : p
+        ));
+
+        if (res.reasoning) {
+          addLog(`Reasoning for ${fileName}: ${res.reasoning}`, 'info');
+          console.log(`[AI Reasoning] ${fileName}:`, res.reasoning);
+        }
+
+        addLog(`Re-analysis complete for ${fileName}`, 'success');
+        setSuccessMsg("Photo re-analyzed successfully.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Re-analysis failed");
+      addLog("Re-analysis error", 'error', err);
     } finally {
       setIsProcessing(false);
       setCurrentStep("");
@@ -974,6 +1124,7 @@ export default function App() {
           reader.readAsText(file);
         }}
         onClearCache={handleClearCache}
+        onShowPreview={() => setShowPreview(true)}
       />
     );
   }
@@ -994,7 +1145,7 @@ export default function App() {
         fsCacheEnabled={fsCacheEnabled}
         fsCacheStats={fsCacheStats}
         onClearLogs={clearLogs}
-        onGoHome={() => setShowPreview(false)}
+        onGoHome={() => { setShouldAbortAnalysis(true); setShowPreview(false); }}
         onCloseProject={handleCloseProject}
         onRefine={() => setShowRefineModal(true)}
         onExportExcel={generateExcel}
@@ -1002,8 +1153,10 @@ export default function App() {
         onDeletePhoto={handleDeletePhoto}
         onAutoPair={handleAutoPair}
         onSortByDate={handleSmartSort}
+        onSendInstruction={handleConsoleInstruction}
         onSelectCacheFolder={handleSelectCacheFolder}
         onClearFileSystemCache={handleClearFileSystemCache}
+        onReanalyzePhoto={handleSingleReanalysis}
       />
 
       {pendingFiles && (

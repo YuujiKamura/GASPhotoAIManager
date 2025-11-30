@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { Database, Trash2 } from 'lucide-react';
+import { Database, Trash2, Wand2 } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   photosPerPage: 2 | 3;
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto?: (fileName: string) => void;
+  onReanalyzePhoto?: (fileName: string) => void;
 }
 
 /**
@@ -113,7 +114,7 @@ type ContextMenuState = {
   targetFileName: string;
 } | null;
 
-const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto }) => {
+const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
@@ -293,6 +294,18 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
           <div className="px-3 py-1.5 border-b border-gray-100 text-xs text-gray-500 font-bold bg-gray-50">
             {lang === 'ja' ? '操作' : 'Action'}
           </div>
+          <button
+            onClick={() => {
+              if (contextMenu && onReanalyzePhoto) {
+                onReanalyzePhoto(contextMenu.targetFileName);
+                setContextMenu(null);
+              }
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+          >
+            <Wand2 className="w-4 h-4" />
+            {lang === 'ja' ? 'この画像を再解析' : 'Re-analyze Photo'}
+          </button>
           <button
             onClick={executeDelete}
             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"

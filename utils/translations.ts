@@ -2,7 +2,7 @@
 
 export const TRANS = {
   en: {
-    appTitle: "Photo Archive AI",
+    appTitle: "Construction Album Maker",
     tagline: "",
     uploadTitle: "",
     uploadDesc: "",
@@ -39,8 +39,8 @@ export const TRANS = {
     labelVariety: "Sub-Category",
     labelDetail: "Detail",
     labelCategory: "Category",
-    labelStation: "Location", 
-    labelLocation: "Location", 
+    labelStation: "Location",
+    labelLocation: "Location",
     labelDate: "Date",
     labelRemarks: "Title",
     labelTitle: "Title / Key Point",
@@ -81,11 +81,11 @@ export const TRANS = {
     autoPairLabel: "Auto-sort Before/After pairs"
   },
   ja: {
-    appTitle: "Photo Archive AI",
+    appTitle: "工事写真帳メーカー",
     tagline: "",
     uploadTitle: "",
     uploadDesc: "",
-    putPhotos: "写真をアップロード", 
+    putPhotos: "写真をアップロード",
     resumeLabel: "前回の続きから",
     resumeBtn: "アルバムを表示",
     clearBtn: "クリア",
@@ -108,7 +108,7 @@ export const TRANS = {
     exportJson: "データ保存",
     importJson: "データ復元",
     dataMgmt: "データ管理",
-    dropHere: "ここにドロップ", 
+    dropHere: "ここにドロップ",
     identifyingTargets: "指示に関連する写真を特定中...",
     // Modes
     modeConstruction: "工事写真",
@@ -118,7 +118,7 @@ export const TRANS = {
     labelVariety: "種別",
     labelDetail: "細別",
     labelCategory: "カテゴリ",
-    labelStation: "測点", 
+    labelStation: "測点",
     labelLocation: "場所",
     labelDate: "日時",
     labelRemarks: "備考",

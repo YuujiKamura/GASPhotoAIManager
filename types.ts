@@ -21,11 +21,12 @@ export interface AIAnalysisResult {
   hasBoard: boolean; // 黒板有無
   detectedText: string; // OCR text
   editedFields?: string[]; // Track which fields were manually modified by the user
-  
+
   // Pairing Logic Cache
   sceneId?: string; // Unique ID grouping photos of the same location (Visual or Logical)
   phase?: 'before' | 'after' | 'status' | 'unknown'; // The phase within that scene
   visualAnchors?: string; // NEW: Verbalized description of background landmarks (e.g., "White house left, Pole right")
+  reasoning?: string; // NEW: AI's thought process explaining the classification
 }
 
 export interface PhotoRecord extends PhotoMetadata {

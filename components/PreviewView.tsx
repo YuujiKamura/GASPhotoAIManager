@@ -33,6 +33,7 @@ interface PreviewViewProps {
   onDeletePhoto: (fileName: string) => void;
   onAutoPair: () => void;
   onSortByDate: () => void;
+  onSendInstruction?: (instruction: string) => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -54,7 +55,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onUpdatePhoto,
   onDeletePhoto,
   onAutoPair,
-  onSortByDate
+  onSortByDate,
+  onSendInstruction
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -146,14 +148,11 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     onAutoPair();
   };
 
+  const hasPhotosWithBoard = photos.some(p => p.analysis?.hasBoard);
   return (
     <div className="fixed inset-0 z-[100] bg-gray-200 overflow-hidden flex flex-col">
       <div className="sticky top-0 z-[101] bg-slate-800 text-white p-3 shadow-md flex justify-between items-center">
          <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-           <div className="flex items-center gap-2 flex-shrink-0">
-             <FileText className="w-5 h-5 md:w-6 md:h-6 text-amber-400" />
-             <h2 className="font-bold text-lg hidden md:block">{txt.previewTitle}</h2>
-           </div>
            
            <div className="flex gap-2 text-xs md:text-sm bg-slate-700 px-2 py-1 rounded-lg flex-shrink 0 whitespace-nowrap items-center">
               <span className="text-slate-300">{txt.total}: {stats.total}</span>
@@ -185,6 +184,30 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             <button onClick={onGoHome} className="p-2 bg-slate-700 hover:bg-blue-600 rounded text-slate-300 hover:text-white transition-colors" title={txt.backHome}>
               <Home className="w-4 h-4" />
             </button>
+
+            {/* Layout Switcher - show when photos have boards */}
+            {hasPhotosWithBoard && (
+              <div className="flex bg-slate-700 rounded overflow-hidden ml-2">
+                <button
+                  onClick={() => setPhotosPerPage(2)}
+                  className={`px-3 py-2 text-xs font-medium transition-colors ${
+                    photosPerPage === 2 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                  }`}
+                  title="2枚/ページ"
+                >
+                  2枚
+                </button>
+                <button
+                  onClick={() => setPhotosPerPage(3)}
+                  className={`px-3 py-2 text-xs font-medium transition-colors ${
+                    photosPerPage === 3 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                  }`}
+                  title="3枚/ページ"
+                >
+                  3枚
+                </button>
+              </div>
+            )}
 
             <div className="flex gap-1 ml-1">
               <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-4 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-2" title={txt.exportExcel}>
@@ -234,6 +257,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
            isOpen={showConsole}
            onToggle={() => setShowConsole(!showConsole)}
            onClear={onClearLogs}
+           isProcessing={isProcessing}
+           onSendInstruction={onSendInstruction}
          />
       </div>
     </div>
