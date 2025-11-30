@@ -106,6 +106,7 @@ Once Level 2 is selected, drill down strictly:
 *   If a location name is visible or can be inferred from the blackboard/surroundings, use that as the station.
 *   If only the "No.X+XX" format is visible, extract it exactly.
 *   If the station cannot be determined, return an empty string "" (NOT "null", "荳肴・", "unknown", etc.).
+*   **Important for road construction**: For lot numbers (地番), use only the main number without sub-lot numbers (枝番). Example: "小山町1359" is correct, "小山町1359-5" is incorrect (too specific for road work spanning multiple lots). Add "付近" or "地先" if appropriate.
 
 **OUTPUT FORMAT**:
 JSON only.
