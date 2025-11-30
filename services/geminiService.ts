@@ -22,7 +22,7 @@ const formatDuration = (ms: number): string => {
   return `${(ms / 1000).toFixed(2)}s`;
 };
 
-const getSystemInstruction = (appMode: AppMode, customInstruction?: string) => {
+const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
   if (appMode === 'general') {
     return `
 You are a professional photo archivist. Analyze the image and provide structured metadata.
@@ -44,7 +44,7 @@ You MUST NOT use any Work Types, Varieties, or Details that are not explicitly d
 Even if you recognize a standard MLIT term, if it is not in the JSON, do not use it. Map to the closest existing node.
 
 --- MASTER DATA HIERARCHY ---
-${JSON.stringify(formatHierarchyForPrompt(), null, 2)}
+${JSON.stringify(hierarchy || formatHierarchyForPrompt(), null, 2)}
 
 --- HIERARCHY MAPPING RULES (STRICT) ---
 The hierarchy is defined by depth levels. You must traverse from the Root to the Leaf and map the keys to the specific columns below.
@@ -531,6 +531,18 @@ export const analyzePhotoBatch = async (
 
   onLog?.(`[PROFILER] Batch start: ${records.length} photos, model=${PRIMARY_MODEL}`, "info");
 
+  // Use selector to determine work types (only for construction mode)
+  let filteredHierarchy: object | undefined;
+  if (appMode === 'construction' && records.length >= 3) {
+    const selectorStart = performance.now();
+    const selectedWorkTypes = await selectWorkTypes(records, apiKey, onLog);
+    filteredHierarchy = getFilteredHierarchy(selectedWorkTypes);
+    const selectorTime = performance.now() - selectorStart;
+    const fullSize = JSON.stringify(formatHierarchyForPrompt()).length;
+    const filteredSize = JSON.stringify(filteredHierarchy).length;
+    onLog?.(`[PROFILER] Selector: ${formatDuration(selectorTime)}, hierarchy ${fullSize} -> ${filteredSize} chars (${((1 - filteredSize/fullSize) * 100).toFixed(1)}% reduction)`, "info");
+  }
+
   const prepStartTime = performance.now();
   const inputs = records.map(r => ({
     inlineData: {
@@ -541,7 +553,7 @@ export const analyzePhotoBatch = async (
   const prepTime = performance.now() - prepStartTime;
   onLog?.(`[PROFILER] Image prep: ${formatDuration(prepTime)}`, "info");
 
-  const systemPrompt = getSystemInstruction(appMode, instruction);
+  const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy);
 
   // Context relay: Build context hint from previously analyzed photos in this batch
   let contextHint = "";
