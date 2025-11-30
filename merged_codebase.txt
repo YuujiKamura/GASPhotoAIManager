@@ -1,5 +1,5 @@
 # GASPhotoAIManager - Merged Codebase for AI Analysis
-# Generated: Sun, Nov 30, 2025  4:07:46 PM
+# Generated: Sun, Nov 30, 2025  8:52:20 PM
 # This file is for AI Studio import. Original files are preserved.
 
 //===============================================================================
@@ -16,18 +16,24 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "@google/genai": "^1.30.0",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "fontkit": "^2.0.4",
     "lucide-react": "^0.554.0",
-    "@google/genai": "^1.30.0"
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.31.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "dotenv": "^17.2.3",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
 }
+
 
 //===============================================================================
 // FILE: index.html
@@ -4030,7 +4036,7 @@ const EditableField = ({
   onChange,
   multiline = false,
   align = 'left',
-  textClass = "text-lg text-gray-900"
+  textClass = "text-sm text-gray-900"
 }: {
   value: string;
   onChange: (val: string) => void;
@@ -4038,10 +4044,10 @@ const EditableField = ({
   align?: 'left' | 'center';
   textClass?: string;
 }) => {
-  // Unified typography: text-lg, text-gray-900, tight leading
+  // Unified typography: text-sm, text-gray-900, tight leading
   const baseClass = `w-full h-full bg-transparent border-none outline-none focus:bg-yellow-50 focus:ring-1 focus:ring-amber-300 hover:bg-black/5 rounded-sm transition-colors leading-tight font-normal block ${textClass}`;
   const alignClass = align === 'center' ? 'text-center' : 'text-left';
-  // Minimal padding to fit text-lg in h-[28px] rows
+  // Minimal padding to fit text-sm in h-[28px] rows
   const paddingClass = multiline ? 'p-1' : 'px-1 py-0.5';
 
   return (
@@ -4090,14 +4096,14 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, className = "", onChang
   <div className={`flex border-b border-gray-300 last:border-b-0 box-border w-full ${className}`}>
     {/* Label: Fixed width w-12 (48px) - Only render if not hidden */}
     {!hideLabel && (
-      <div className={`w-12 flex justify-center text-lg text-gray-900 font-normal flex-shrink-0 leading-tight px-0.5 text-center select-none bg-gray-50/50 border-r border-gray-300 ${multiline ? 'items-start pt-1' : 'items-center'}`}>
+      <div className={`w-12 flex justify-center text-sm text-gray-900 font-normal flex-shrink-0 leading-tight px-0.5 text-center select-none bg-gray-50/50 border-r border-gray-300 ${multiline ? 'items-start pt-1' : 'items-center'}`}>
         {label}
       </div>
     )}
     {/* Content Area */}
     <div className="flex-1 relative min-w-0 bg-white h-full overflow-hidden">
       {readOnly ? (
-        <div className="w-full h-full px-1 py-0.5 flex items-center justify-between text-lg text-gray-900 leading-tight font-normal">
+        <div className="w-full h-full px-1 py-0.5 flex items-center justify-between text-sm text-gray-900 leading-tight font-normal">
           <span className="truncate">{value}</span>
           {children}
         </div>
