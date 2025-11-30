@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
-import { CONSTRUCTION_HIERARCHY } from "../utils/constructionMaster";
+import { formatHierarchyForPrompt } from "../utils/workHierarchy";
 
 // Configuration
 // QUALITY FIRST: Using high-performance models for accuracy
@@ -43,17 +43,18 @@ You MUST NOT use any Work Types, Varieties, or Details that are not explicitly d
 Even if you recognize a standard MLIT term, if it is not in the JSON, do not use it. Map to the closest existing node.
 
 --- MASTER DATA HIERARCHY ---
-${JSON.stringify(CONSTRUCTION_HIERARCHY, null, 2)}
+${JSON.stringify(formatHierarchyForPrompt(), null, 2)}
 
 --- HIERARCHY MAPPING RULES (STRICT) ---
 The hierarchy is defined by depth levels. You must traverse from the Root to the Leaf and map the keys to the specific columns below.
 
-**Hierarchy Structure**:
-*   **Level 1 (Root)**: Cost Item (雋ｻ逶ｮ) - e.g., "逶ｴ謗･蟾･莠玖ｲｻ".
-*   **Level 2**: Photo Category (蜀咏悄蛹ｺ蛻・ - **BRANCHING POINT**.
-*   **Level 3**: Work Type (蟾･遞ｮ) -> Output to **'workType'**.
-*   **Level 4**: Variety (遞ｮ蛻･) -> Output to **'variety'**.
-*   **Level 5**: Detail (邏ｰ蛻･) -> Output to **'detail'**.
+**Hierarchy Structure** (Simplified - No Photo Category Branching):
+*   **Level 1 (Root)**: Work Type (工種) -> Output to **'workType'**.
+*   **Level 2**: Variety (種別) -> Output to **'variety'**.
+*   **Level 3**: Detail (細別) -> Output to **'detail'**.
+*   **Level 4 (Leaf)**: Remarks (備考) -> Output to **'remarks'**.
+
+Photo categories are determined automatically based on the remarks field.
 
 **STEP 1: Select Level 2 (Photo Category) - PRIORITIZATION RULE**
 You must FIRST check if the photo is a static "Before" or "Completion" scene (Landscape/Scenery).
@@ -81,11 +82,11 @@ Only classify as "Construction Status" if there is clear evidence of **ACTIVE WO
 6.  **"蜃ｺ譚･蠖｢邂｡逅・・逵・**: Ribbons/Rulers measuring finished dimensions.
 
 **STEP 2: Traverse & Map Columns**
-Once Level 2 is selected, drill down strictly:
-*   **workType**: The key at Level 3 (e.g., "闊苓｣・ｷ･").
-*   **variety**: The key at Level 4 (e.g., "闊苓｣・遠謠帙∴蟾･").
-*   **detail**: The key at Level 5 (e.g., "陦ｨ螻､蟾･").
-    *   *Note*: If Level 5 is a Leaf (empty object) and looks like a status (e.g., "謗伜炎迥ｶ豕・), leave 'detail' EMPTY and move that text to Remarks. 'Detail' is for structural components only.
+Traverse the hierarchy directly:
+*   **workType**: The key at Level 1 (e.g., "舗装工").
+*   **variety**: The key at Level 2 (e.g., "舗装打換え工").
+*   **detail**: The key at Level 3 (e.g., "表層工").
+*   **remarks**: The key at Level 4 (e.g., "舗設状況", "着手前", "転圧状況").
 
 **STEP 3: Remarks (蛯呵・ Logic**
 *   **If Category is "逹謇句燕蜿翫・螳梧・蜀咏悄"**:

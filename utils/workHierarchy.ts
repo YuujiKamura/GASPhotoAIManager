@@ -440,3 +440,52 @@ export function getDetails(workType: string, variety: string): string[] {
   if (!varietyNode) return [];
   return Object.keys(varietyNode);
 }
+
+
+/**
+ * AIプロンプト用にWORK_HIERARCHYをシンプルな階層構造に変換
+ * 旧CONSTRUCTION_HIERARCHYと同等のフォーマット（写真区分なし）
+ */
+export function formatHierarchyForPrompt(): object {
+  const result: Record<string, Record<string, Record<string, Record<string, object>>>> = {};
+
+  for (const [workType, workNode] of Object.entries(WORK_HIERARCHY)) {
+    result[workType] = {};
+    for (const [variety, varietyNode] of Object.entries(workNode)) {
+      result[workType][variety] = {};
+      for (const [detail, detailNode] of Object.entries(varietyNode)) {
+        result[workType][variety][detail] = {};
+        for (const remarkName of Object.keys(detailNode.remarks)) {
+          result[workType][variety][detail][remarkName] = {};
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 備考から写真区分を推定（エイリアス対応）
+ * 工種/種別/細別がわからなくても備考テキストから推定
+ */
+export function inferPhotoCategoryFromRemarks(remarkText: string): PhotoCategory | null {
+  for (const [, workNode] of Object.entries(WORK_HIERARCHY)) {
+    for (const [, varietyNode] of Object.entries(workNode)) {
+      for (const [, detailNode] of Object.entries(varietyNode)) {
+        // 完全一致
+        const remarkDef = detailNode.remarks[remarkText];
+        if (remarkDef) {
+          return remarkDef.categories[0];
+        }
+        // エイリアス検索
+        for (const [, def] of Object.entries(detailNode.remarks)) {
+          if (def.aliases?.includes(remarkText)) {
+            return def.categories[0];
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
