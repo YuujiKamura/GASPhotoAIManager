@@ -4,7 +4,13 @@ import fs from 'fs';
 import path from 'path';
 import { GoogleGenAI } from '@google/genai';
 
-const API_KEY = 'process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY';
+const API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+if (!API_KEY) {
+  console.error('❌ GEMINI_API_KEY 環境変数が設定されていません');
+  console.error('   .envファイルに GEMINI_API_KEY=... を設定するか、');
+  console.error('   環境変数として設定してください');
+  process.exit(1);
+}
 const TEST_DIR = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251028小山4丁目/着手前、小山4丁目-6';
 
 console.log('========================================');
