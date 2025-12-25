@@ -18,7 +18,7 @@ if (!API_KEY) {
 const PRIMARY_MODEL = 'gemini-3-pro-preview';
 
 // テスト用のフォルダパス
-const testFolderPath = 'H:\\マイドライブ\\〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）\\20251028小山町1359-5\\着手前、小山1359-5';
+const testFolderPath = './test-images';
 
 console.log('\n🔍 詳細デバッグモード（実画像）\n');
 console.log('=' .repeat(50));

@@ -158,19 +158,19 @@ Traverse the hierarchy directly:
 
 **STEP 5: Station (測点)**
 *   There are two types of station formats:
-    1. **Location-based (preferred)**: Location names such as "小山町1359", "長嶺南6丁目123", etc.
+    1. **Location-based (preferred)**: Location names such as "○○町1234", "△△1丁目567", etc.
     2. **Route-based**: Pinpoint markers like "No.0+50", "No.1+23.5", etc.
 *   If a location name is visible or can be inferred from the blackboard/surroundings, use that as the station.
 *   If only the "No.X+XX" format is visible, extract it exactly.
 *   If the station cannot be determined, return an empty string "" (NOT "null", "不明", "unknown", etc.).
 *   **Important for road construction**: For Japanese addresses (地区名・丁目・番・号), use only up to 番 (block number) and exclude 号 (building/lot number) and 枝番 (sub-number). Do NOT add "付近".
-   - Address structure: 町名+丁目 + 番 + 号 + 枝番 (e.g., "小山4丁目6-62-1" = 小山4丁目 + 6番 + 62号 + 1枝番)
-   - Keep only: 町名+丁目 + 番 (e.g., "小山4丁目6")
+   - Address structure: 町名+丁目 + 番 + 号 + 枝番 (e.g., "○○1丁目2-34-5" = ○○1丁目 + 2番 + 62号 + 1枝番)
+   - Keep only: 町名+丁目 + 番 (e.g., "○○1丁目2")
    - If both address and station number (No.X+XX) are present, combine them.
-   - Example: "小山4丁目6-62-1" → "小山4丁目6" (号・枝番を除外、番まで残す)
-   - Example: "小山町1359-5" → "小山町1359" (号を除外)
-   - Example: "長嶺南6丁目123-10" → "長嶺南6丁目123" (号を除外)
-   - Example: "小山4丁目6-62-1 No.0+11" → "小山4丁目6 No.0+11" (番+横断測点名を併記)
+   - Example: "○○1丁目2-34-5" → "○○1丁目2" (号・枝番を除外、番まで残す)
+   - Example: "○○町1234-5" → "○○町1234" (号を除外)
+   - Example: "△△1丁目567-10" → "△△1丁目567" (号を除外)
+   - Example: "○○1丁目2-34-5 No.0+11" → "○○1丁目2 No.0+11" (番+横断測点名を併記)
 
 --- REMARKS (備考) RULES ---
 **備考の判定ルール（重要）:**

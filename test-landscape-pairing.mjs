@@ -15,7 +15,7 @@ const expectedPairs = [
 ];
 
 // テスト用の画像フォルダパス
-const testImageFolder = 'H:\\マイドライブ\\〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）\\20251028小山町1359-5\\着手前、小山1359-5';
+const testImageFolder = './test-images';
 
 async function loadImages() {
       console.log('📂 画像フォルダをスキャン中...');

@@ -12,7 +12,7 @@ if (!API_KEY) {
   console.error('   環境変数として設定してください');
   process.exit(1);
 }
-const TEST_DIR = process.argv[2] || 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251028小山4丁目/着手前、小山4丁目-6';
+const TEST_DIR = process.argv[2] || './test-images';
 
 console.log('========================================');
 console.log('Photo Pairing Test Tool');
