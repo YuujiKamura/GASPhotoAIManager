@@ -1,0 +1,37 @@
+[
+  {
+    "contractType": "unit-price",
+    "workType": "舗装補修工",
+    "variety": "未舗装部舗装工",
+    "detail": "作業土工",
+    "code": "pending",
+    "definition": {
+      "remarks": {
+        "鋤取り状況": { "categories": ["施工状況写真"] },
+        "積込状況": { "categories": ["施工状況写真"] }
+      }
+    }
+  },
+  {
+    "contractType": "unit-price",
+    "workType": "舗装補修工",
+    "variety": "未舗装部舗装工",
+    "detail": "上層路盤工",
+    "code": "pending",
+    "definition": {
+      "refRemarks": "舗装工.舗装打換え工.上層路盤工",
+      "addGroups": ["乳剤散布_標準"]
+    }
+  },
+  {
+    "contractType": "unit-price",
+    "workType": "舗装補修工",
+    "variety": "未舗装部舗装工",
+    "detail": "表層工",
+    "code": "pending",
+    "definition": {
+      "refRemarks": "舗装工.舗装打換え工.表層工",
+      "addGroups": ["乳剤散布_標準"]
+    }
+  }
+]
