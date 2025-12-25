@@ -57,8 +57,9 @@ if (!API_KEY) {
   console.error('   環境変数として設定してください');
   process.exit(1);
 }
-const TEST_DIR = process.argv[2] || './test-images';
 const SKIP_CONFIRM = process.argv.includes('--yes') || process.argv.includes('-y');
+const args = process.argv.slice(2).filter(a => !a.startsWith('-'));
+const TEST_DIR = args[0] || './test-images';
 
 console.log('========================================');
 console.log('Photo Pairing Test Tool');
