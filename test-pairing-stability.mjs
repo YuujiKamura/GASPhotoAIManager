@@ -2,7 +2,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 
-const API_KEY = 'process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY';
+const API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 const PRIMARY_MODEL = 'gemini-3-pro-preview';
 
 console.log('========================================');
