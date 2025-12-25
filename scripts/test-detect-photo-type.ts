@@ -51,7 +51,7 @@ async function testDetectPhotoType() {
 
   // テストケース1: 景観写真フォルダ
   console.log('--- [Test 1] 景観写真フォルダの判定 ---');
-  const landscapeFolder = process.argv[2] || 'H:\\マイドライブ\\〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）\\20251028小山町1359-5\\着手前、小山1359-5';
+  const landscapeFolder = process.argv[2] || './test-images';
   
   if (!fs.existsSync(landscapeFolder)) {
     console.log(`⚠️  テストフォルダが見つかりません: ${landscapeFolder}`);
