@@ -6,6 +6,7 @@ import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import ExamplesModal from './ExamplesModal';
 import { generateZip } from '../utils/zipGenerator';
+import { embedSessionInPdf } from '../utils/pdfGenerator';
 
 // Declare html2pdf and saveAs
 declare const html2pdf: any;
@@ -232,7 +233,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [isFitMode]);
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (typeof html2pdf === 'undefined') {
       alert("PDF library not loaded.");
       return;
@@ -253,18 +254,23 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       pagebreak: { mode: 'css', after: '.sheet-preview' }
     };
 
-    html2pdf().set(opt).from(element).output('blob').then((blob: Blob) => {
-      saveAs(blob, filename);
-      const url = URL.createObjectURL(blob);
+    try {
+      const blob: Blob = await html2pdf().set(opt).from(element).output('blob');
+
+      // セッションデータをPDFに埋め込み（スマートPDF化）
+      const smartPdfBlob = await embedSessionInPdf(blob, photos);
+
+      saveAs(smartPdfBlob, filename);
+      const url = URL.createObjectURL(smartPdfBlob);
       window.open(url, '_blank');
       setIsGeneratingPdf(false);
       if (element) element.classList.remove('pdf-mode');
-    }).catch((err: any) => {
+    } catch (err: any) {
       console.error(err);
       setIsGeneratingPdf(false);
       if (element) element.classList.remove('pdf-mode');
       alert(txt.pdfError);
-    });
+    }
   };
 
   const handleDownloadZip = async () => {

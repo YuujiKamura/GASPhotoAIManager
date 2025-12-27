@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -19,6 +19,7 @@ interface UploadViewProps {
   onCloseProject: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onImportPdf?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
@@ -40,6 +41,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   onCloseProject,
   onExportJson,
   onImportJson,
+  onImportPdf,
   onClearCache,
   onShowPreview,
   onOpenSettings,
@@ -49,6 +51,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputImportRef = useRef<HTMLInputElement>(null);
+  const fileInputPdfRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [useCache, setUseCache] = useState(true); // Default to True
@@ -130,7 +133,7 @@ const UploadView: React.FC<UploadViewProps> = ({
     if (!isProcessing && apiKey) {
       fileInputRef.current?.click();
     } else if (!apiKey) {
-      alert("API Key is missing. Please configure it in your environment.");
+      onOpenSettings?.();
     }
   };
 
@@ -165,11 +168,18 @@ const UploadView: React.FC<UploadViewProps> = ({
           {/* Settings Button */}
           <button
             onClick={onOpenSettings}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-600 transition-colors"
-            title="API設定"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors relative ${
+              apiKey ? 'bg-slate-100 hover:bg-slate-200 text-slate-600' : 'bg-red-100 hover:bg-red-200 text-red-600'
+            }`}
+            title={apiKey ? "API設定" : "APIキーを設定してください"}
           >
             <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline text-xs font-medium">{getSelectedModel()}</span>
+            {!apiKey && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+            )}
+            <span className="hidden sm:inline text-xs font-medium">
+              {apiKey ? getSelectedModel() : 'キー未設定'}
+            </span>
           </button>
         </div>
       </div>
@@ -470,6 +480,11 @@ const UploadView: React.FC<UploadViewProps> = ({
           <button onClick={() => fileInputImportRef.current?.click()} className="hover:text-gray-800 transition-colors">
             Restore (JSON)
           </button>
+          {onImportPdf && (
+            <button onClick={() => fileInputPdfRef.current?.click()} className="hover:text-red-600 transition-colors flex items-center gap-1" title="PDFからセッションを復元">
+              <FileText className="w-3 h-3" /> Load PDF
+            </button>
+          )}
           {onClearCache && (
             <>
               <span className="w-px bg-gray-300 mx-1 h-4"></span>
@@ -479,6 +494,7 @@ const UploadView: React.FC<UploadViewProps> = ({
             </>
           )}
           <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
+          {onImportPdf && <input type="file" ref={fileInputPdfRef} onChange={onImportPdf} className="hidden" accept=".pdf" />}
         </div>
       </div>
 

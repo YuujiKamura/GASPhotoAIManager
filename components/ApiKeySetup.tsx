@@ -5,11 +5,13 @@ import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvail
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
   onCancel?: () => void;
+  onImportPdf?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel }) => {
+const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImportPdf }) => {
   const [apiKey, setApiKey] = useState('');
   const [selectedModel, setSelectedModelState] = useState<ModelType>(getSelectedModel());
+  const pdfInputRef = React.useRef<HTMLInputElement>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [modelAvailabilities, setModelAvailabilities] = useState<ModelAvailability[]>([]);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -120,9 +122,38 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel }) => {
           <h2 className="text-xl font-black text-white mb-2">工事写真帳メーカー</h2>
           <p className="text-sm text-slate-400">
             AIで工事写真を自動分類・整理します。
-            利用にはGoogle AIのキーが必要です（無料）。
           </p>
         </div>
+
+        {/* PDF読み込みオプション - 最初の選択肢として */}
+        {onImportPdf && (
+          <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-4">
+            <p className="text-sm text-amber-200 mb-3 text-center">
+              共有されたPDFをお持ちですか？
+            </p>
+            <button
+              onClick={() => pdfInputRef.current?.click()}
+              className="w-full bg-amber-500 hover:bg-amber-400 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              PDFからセッションを復元
+            </button>
+            <input
+              type="file"
+              ref={pdfInputRef}
+              onChange={onImportPdf}
+              className="hidden"
+              accept=".pdf"
+            />
+          </div>
+        )}
+
+        {onImportPdf && (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-700"></div>
+            <span className="text-xs text-slate-500">または新規で始める</span>
+            <div className="flex-1 h-px bg-slate-700"></div>
+          </div>
+        )}
 
         {/* ステップ1: キーを取得 */}
         <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
@@ -250,7 +281,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel }) => {
               onClick={onCancel}
               className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-3 rounded-xl transition-all"
             >
-              キャンセル
+              戻る
             </button>
           )}
           <button
