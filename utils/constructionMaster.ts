@@ -605,6 +605,50 @@ export function validateAgainstMaster(
   return { validatedWorkType, validatedVariety, validatedDetail, warnings };
 }
 
+// マスタにない用語を検出（警告用、値は変更しない）
+// 備考に「〜工」が含まれている場合も警告
+export function detectUnknownTerms(
+  workType: string,
+  variety: string,
+  detail: string,
+  remarks: string
+): string[] {
+  const { workTypes, varieties, details, remarks: validRemarks } = extractAllValidValues();
+  const warnings: string[] = [];
+
+  // 工種・種別・細別のチェック
+  if (workType && !workTypes.has(workType)) {
+    warnings.push(`⚠️ 工種「${workType}」はマスタにありません（AI創作の可能性）`);
+  }
+  if (variety && !varieties.has(variety)) {
+    warnings.push(`⚠️ 種別「${variety}」はマスタにありません（AI創作の可能性）`);
+  }
+  if (detail && !details.has(detail)) {
+    warnings.push(`⚠️ 細別「${detail}」はマスタにありません（AI創作の可能性）`);
+  }
+
+  // 備考のチェック
+  if (remarks) {
+    // 備考に「〜工」が含まれている場合は警告（細別以下には「工」は付けない）
+    if (remarks.match(/[^着手完]工/) && !remarks.includes('施工')) {
+      warnings.push(`⚠️ 備考「${remarks}」に「〜工」が含まれています（備考レベルに「工」は不要）`);
+    }
+
+    // 既知の備考でない場合も警告（ただし測定値などは許容）
+    const isMeasurement = remarks.match(/[0-9０-９]+|℃|mm|cm|m|%/);
+    const isKnownStatus = remarks.match(/状況|完了|確認|着手前|竣工|出来形/);
+    if (!validRemarks.has(remarks) && !isMeasurement && !isKnownStatus) {
+      // 完全一致でなくても部分一致なら許容
+      const partialMatch = Array.from(validRemarks).some(r => remarks.includes(r) || r.includes(remarks));
+      if (!partialMatch) {
+        warnings.push(`⚠️ 備考「${remarks}」はマスタにありません（AI創作の可能性）`);
+      }
+    }
+  }
+
+  return warnings;
+}
+
 // 備考テキストから写真区分を推定する
 export function inferPhotoCategory(remarkText: string): PhotoCategoryType {
   if (remarkText.includes("着手前") || remarkText.includes("完成") || remarkText.includes("竣工")) {

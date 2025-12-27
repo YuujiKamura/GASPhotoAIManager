@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
-import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster } from "../utils/constructionMaster";
+import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
 import { getRelevantExamples, getActiveSession } from "../utils/storage";
 
@@ -609,6 +609,26 @@ export const normalizeDataConsistency = async (
         return r;
       });
 
+      // マスタ外用語の検出（警告のみ、値は変更しない）
+      let unknownTermWarnings: string[] = [];
+      for (const r of updatedRecords) {
+        if (r.analysis) {
+          const warnings = detectUnknownTerms(
+            r.analysis.workType || '',
+            r.analysis.variety || '',
+            r.analysis.detail || '',
+            r.analysis.remarks || ''
+          );
+          if (warnings.length > 0) {
+            unknownTermWarnings.push(`${r.fileName}: ${warnings.join(', ')}`);
+          }
+        }
+      }
+      if (unknownTermWarnings.length > 0) {
+        onLog?.(`🚨 AI創作の可能性がある用語を検出:`, "error");
+        unknownTermWarnings.forEach(w => onLog?.(w, "error"));
+      }
+
       onLog?.(`Applied consistency corrections to ${corrections.length} records.`, "success");
       return updatedRecords;
 
@@ -1069,7 +1089,12 @@ export const analyzePhotoBatch = async (
           validateAgainstMaster(res.workType, res.variety, res.detail, res.remarks);
 
         if (warnings.length > 0) {
-          onLog?.(`[MASTER警告] ${res.fileName}: ${warnings.join(', ')}`, "warn");
+          onLog?.(`[MASTER警告] ${res.fileName}: ${warnings.join(', ')}`, "error");
+        }
+
+        // 備考に「〜工」が含まれている場合は警告（細別以下には「工」は不要）
+        if (res.remarks && res.remarks.match(/[^着手完]工/) && !res.remarks.includes('施工')) {
+          onLog?.(`🚨 [AI創作検出] ${res.fileName}: 備考「${res.remarks}」に「〜工」が含まれています`, "error");
         }
 
         return {
