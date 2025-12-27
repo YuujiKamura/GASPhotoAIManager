@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 15:27:05
+生成日時: 2025-12-27 15:31:29
 ================================================================================
 
 === ファイル一覧 ===
@@ -1336,45 +1336,29 @@ export default function App() {
         updatedTargets = [...updatedTargets, ...batchResults.flat()];
       }
 
-      // If refinement had station override, apply to ALL photos (including non-targets)
-      let otherPhotos = photos.filter(p => !targetFileNames.includes(p.fileName));
-      
+      // Apply station override to updated targets if needed
       if (hasStationOverride && refinementStation) {
-        addLog(`[INSTRUCTION] Applying station "${refinementStation}" to all ${otherPhotos.length + updatedTargets.length} photos`, 'info');
-        
-        // Update other photos with new station
-        otherPhotos = otherPhotos.map(p => {
-          if (p.analysis) {
-            return {
-              ...p,
-              analysis: {
-                ...p.analysis,
-                station: refinementStation
-              }
-            };
-          }
-          return p;
-        });
-
-        // Also ensure updated targets have the station
+        addLog(`[INSTRUCTION] Applying station "${refinementStation}" to all photos`, 'info');
         updatedTargets = updatedTargets.map(p => {
           if (p.analysis) {
-            return {
-              ...p,
-              analysis: {
-                ...p.analysis,
-                station: refinementStation
-              }
-            };
+            return { ...p, analysis: { ...p.analysis, station: refinementStation } };
           }
           return p;
         });
       }
 
-      const merged = [...otherPhotos, ...updatedTargets];
-      const sorted = sortPhotosLogical(merged);
+      // Preserve original order: update photos in place, don't re-sort
+      setPhotos(prev => prev.map(p => {
+        // Find updated version if exists
+        const updated = updatedTargets.find(u => u.fileName === p.fileName);
+        if (updated) return updated;
 
-      setPhotos(sorted);
+        // Apply station override to non-targets if needed
+        if (hasStationOverride && refinementStation && p.analysis) {
+          return { ...p, analysis: { ...p.analysis, station: refinementStation } };
+        }
+        return p;
+      }));
       setSuccessMsg(`Updated ${updatedTargets.length} photos.${hasStationOverride ? ` Station set to "${refinementStation}"` : ''}`);
 
     } catch (e: any) {
@@ -6543,9 +6527,11 @@ Traverse the hierarchy directly:
     *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
     *   Normalize text: "転圧中" -> "転圧状況".
 *   **If Category is "出来形管理写真"**:
-    *   **remarks** MUST end with "出来形" (e.g., "不陸整正出来形", "表層厚出来形").
+    *   **remarks** MUST end with "出来形" AND include measurement values if visible.
+    *   Format: "〜出来形　測定値" (e.g., "不陸整正出来形　実測値+3mm", "路盤厚出来形　t=150")
     *   NEVER use "〜状況" for measurement photos - that implies ongoing work.
     *   If blackboard shows measurement values (設計/実測/差), it's definitely 出来形管理.
+    *   **ALWAYS include visible measurements in remarks** - don't make user ask for it.
 
 **STEP 4: Description (記事) - 重要な情報を記録**
 

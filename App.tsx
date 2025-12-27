@@ -1286,45 +1286,29 @@ export default function App() {
         updatedTargets = [...updatedTargets, ...batchResults.flat()];
       }
 
-      // If refinement had station override, apply to ALL photos (including non-targets)
-      let otherPhotos = photos.filter(p => !targetFileNames.includes(p.fileName));
-      
+      // Apply station override to updated targets if needed
       if (hasStationOverride && refinementStation) {
-        addLog(`[INSTRUCTION] Applying station "${refinementStation}" to all ${otherPhotos.length + updatedTargets.length} photos`, 'info');
-        
-        // Update other photos with new station
-        otherPhotos = otherPhotos.map(p => {
-          if (p.analysis) {
-            return {
-              ...p,
-              analysis: {
-                ...p.analysis,
-                station: refinementStation
-              }
-            };
-          }
-          return p;
-        });
-
-        // Also ensure updated targets have the station
+        addLog(`[INSTRUCTION] Applying station "${refinementStation}" to all photos`, 'info');
         updatedTargets = updatedTargets.map(p => {
           if (p.analysis) {
-            return {
-              ...p,
-              analysis: {
-                ...p.analysis,
-                station: refinementStation
-              }
-            };
+            return { ...p, analysis: { ...p.analysis, station: refinementStation } };
           }
           return p;
         });
       }
 
-      const merged = [...otherPhotos, ...updatedTargets];
-      const sorted = sortPhotosLogical(merged);
+      // Preserve original order: update photos in place, don't re-sort
+      setPhotos(prev => prev.map(p => {
+        // Find updated version if exists
+        const updated = updatedTargets.find(u => u.fileName === p.fileName);
+        if (updated) return updated;
 
-      setPhotos(sorted);
+        // Apply station override to non-targets if needed
+        if (hasStationOverride && refinementStation && p.analysis) {
+          return { ...p, analysis: { ...p.analysis, station: refinementStation } };
+        }
+        return p;
+      }));
       setSuccessMsg(`Updated ${updatedTargets.length} photos.${hasStationOverride ? ` Station set to "${refinementStation}"` : ''}`);
 
     } catch (e: any) {

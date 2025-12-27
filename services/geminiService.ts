@@ -279,9 +279,11 @@ Traverse the hierarchy directly:
     *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
     *   Normalize text: "転圧中" -> "転圧状況".
 *   **If Category is "出来形管理写真"**:
-    *   **remarks** MUST end with "出来形" (e.g., "不陸整正出来形", "表層厚出来形").
+    *   **remarks** MUST end with "出来形" AND include measurement values if visible.
+    *   Format: "〜出来形　測定値" (e.g., "不陸整正出来形　実測値+3mm", "路盤厚出来形　t=150")
     *   NEVER use "〜状況" for measurement photos - that implies ongoing work.
     *   If blackboard shows measurement values (設計/実測/差), it's definitely 出来形管理.
+    *   **ALWAYS include visible measurements in remarks** - don't make user ask for it.
 
 **STEP 4: Description (記事) - 重要な情報を記録**
 
