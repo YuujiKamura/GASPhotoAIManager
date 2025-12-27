@@ -1,7 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play } from 'lucide-react';
+import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -42,6 +43,13 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [useCache, setUseCache] = useState(true); // Default to True
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
+
+  // コスト見積もり
+  const costEstimate = useMemo(() => {
+    if (!pendingFiles || pendingFiles.length === 0) return null;
+    return estimateQuickCost(pendingFiles.length);
+  }, [pendingFiles]);
 
   // Restore instruction from local storage on mount
   useEffect(() => {
@@ -72,16 +80,31 @@ const UploadView: React.FC<UploadViewProps> = ({
     if (isProcessing || !apiKey) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      onStartProcessing(Array.from(e.dataTransfer.files), instruction, useCache);
+      // 確認画面を表示
+      setPendingFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      onStartProcessing(Array.from(e.target.files), instruction, useCache);
+      // 確認画面を表示
+      setPendingFiles(Array.from(e.target.files));
     }
     // Reset input so the same file can be selected again if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // 解析を開始
+  const handleConfirmStart = () => {
+    if (pendingFiles && pendingFiles.length > 0) {
+      onStartProcessing(pendingFiles, instruction, useCache);
+      setPendingFiles(null);
+    }
+  };
+
+  // キャンセル
+  const handleCancelPending = () => {
+    setPendingFiles(null);
   };
 
   const handleClick = () => {
@@ -197,6 +220,95 @@ const UploadView: React.FC<UploadViewProps> = ({
                 Show Preview
               </button>
             )}
+          </div>
+        )}
+
+        {/* Cost Estimation Confirmation Panel */}
+        {pendingFiles && costEstimate && (
+          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Coins className="w-5 h-5" />
+                  <h3 className="font-bold text-lg">コスト見積もり</h3>
+                </div>
+                <button
+                  onClick={handleCancelPending}
+                  className="p-1 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-5 space-y-4">
+                {/* File Info */}
+                <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                  <span className="text-gray-600">選択された画像</span>
+                  <span className="font-bold text-gray-800">{pendingFiles.length}枚</span>
+                </div>
+
+                {/* Cost Estimate */}
+                <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
+                  <div className="flex items-start gap-2 mb-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-yellow-800">
+                      <span className="font-bold">推定APIコスト</span>
+                      <p className="text-xs mt-1 text-yellow-700">
+                        実際のコストは写真の内容により変動します
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">最小</span>
+                      <span className="font-mono text-gray-800">
+                        ${costEstimate.min.toFixed(4)} ({formatCostJPY(costEstimate.min)})
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-gray-700">典型的</span>
+                      <span className="font-mono text-blue-600">
+                        ${costEstimate.typical.toFixed(4)} ({formatCostJPY(costEstimate.typical)})
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">最大</span>
+                      <span className="font-mono text-gray-800">
+                        ${costEstimate.max.toFixed(4)} ({formatCostJPY(costEstimate.max)})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cache Notice */}
+                {useCache && (
+                  <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 p-2 rounded-lg">
+                    <Database className="w-4 h-4" />
+                    <span>キャッシュ有効: 既に解析済みの画像はスキップされます</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 p-4 bg-gray-50 border-t border-gray-100">
+                <button
+                  onClick={handleCancelPending}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleConfirmStart}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Play className="w-4 h-4" />
+                  解析開始
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

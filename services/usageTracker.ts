@@ -218,3 +218,136 @@ export const formatCostJPY = (costUSD: number): string => {
   }
   return `¥${Math.round(jpy).toLocaleString()}`;
 };
+
+/**
+ * 解析前のコスト見積もり
+ */
+export interface CostEstimate {
+  imageCount: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedCostUSD: number;
+  estimatedCostJPY: number;
+  breakdown: { operation: string; model: string; cost: number }[];
+  notes: string[];
+}
+
+/**
+ * 解析前にコストを見積もる
+ * @param imageCount 画像枚数
+ * @param mode 処理モード (auto, landscape, construction)
+ */
+export const estimateAnalysisCost = (
+  imageCount: number,
+  mode: 'auto' | 'landscape' | 'construction' = 'auto'
+): CostEstimate => {
+  const breakdown: { operation: string; model: string; cost: number }[] = [];
+  const notes: string[] = [];
+
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  // 推定プロンプトサイズ（文字数）
+  const AVG_PROMPT_SIZE = 500;
+  const AVG_RESPONSE_SIZE = 200;
+
+  // Step 1: 写真タイプ判定 (Flash model, サンプル3枚)
+  if (mode === 'auto') {
+    const sampleCount = Math.min(3, imageCount);
+    const detectInputTokens = estimateTokens(AVG_PROMPT_SIZE.toString().repeat(AVG_PROMPT_SIZE)) + estimateImageTokens(sampleCount);
+    const detectOutputTokens = estimateTokens(AVG_RESPONSE_SIZE.toString().repeat(AVG_RESPONSE_SIZE));
+    const detectCost = calculateCost('gemini-2.5-flash', detectInputTokens, detectOutputTokens);
+
+    breakdown.push({
+      operation: '写真タイプ判定',
+      model: 'Flash',
+      cost: detectCost
+    });
+    totalInputTokens += detectInputTokens;
+    totalOutputTokens += detectOutputTokens;
+  }
+
+  // Step 2A: 景観写真ペアリング (Pro model)
+  if (mode === 'auto' || mode === 'landscape') {
+    // 空間特徴抽出 - 全画像を処理
+    const BATCH_SIZE = 4;
+    const batchCount = Math.ceil(imageCount / BATCH_SIZE);
+
+    const spatialInputTokens = (estimateTokens(AVG_PROMPT_SIZE.toString().repeat(AVG_PROMPT_SIZE)) + estimateImageTokens(Math.min(BATCH_SIZE, imageCount))) * batchCount;
+    const spatialOutputTokens = estimateTokens(AVG_RESPONSE_SIZE.toString().repeat(AVG_RESPONSE_SIZE * 3)) * batchCount;
+    const spatialCost = calculateCost('gemini-3-pro-preview', spatialInputTokens, spatialOutputTokens);
+
+    breakdown.push({
+      operation: '空間特徴抽出',
+      model: 'Pro',
+      cost: spatialCost
+    });
+    totalInputTokens += spatialInputTokens;
+    totalOutputTokens += spatialOutputTokens;
+
+    notes.push('景観モード: 画像の座標ベース解析を実行');
+  }
+
+  // Step 2B: 黒板付き写真解析 (Flash model)
+  if (mode === 'auto' || mode === 'construction') {
+    // 詳細解析 - 全画像
+    const analyzeInputTokens = estimateTokens(AVG_PROMPT_SIZE.toString().repeat(AVG_PROMPT_SIZE * 2)) + estimateImageTokens(imageCount);
+    const analyzeOutputTokens = estimateTokens(AVG_RESPONSE_SIZE.toString().repeat(AVG_RESPONSE_SIZE * imageCount));
+    const analyzeCost = calculateCost('gemini-2.5-flash', analyzeInputTokens, analyzeOutputTokens);
+
+    breakdown.push({
+      operation: '黒板/詳細解析',
+      model: 'Flash',
+      cost: analyzeCost
+    });
+
+    if (mode === 'auto') {
+      // 自動モードの場合、両方の可能性を含む
+      notes.push('黒板モード: 工種・測点の抽出を実行');
+    }
+    totalInputTokens += analyzeInputTokens;
+    totalOutputTokens += analyzeOutputTokens;
+  }
+
+  const estimatedCostUSD = breakdown.reduce((sum, b) => sum + b.cost, 0);
+
+  if (mode === 'auto') {
+    notes.push('※ 自動判定のため、実際のコストは写真の内容により変動します');
+  }
+
+  return {
+    imageCount,
+    estimatedInputTokens: totalInputTokens,
+    estimatedOutputTokens: totalOutputTokens,
+    estimatedCostUSD,
+    estimatedCostJPY: estimatedCostUSD * USD_TO_JPY,
+    breakdown,
+    notes
+  };
+};
+
+/**
+ * 簡易見積もり（画像枚数のみで概算）
+ */
+export const estimateQuickCost = (imageCount: number): { min: number; max: number; typical: number } => {
+  // 最小: Flash modelのみ使用
+  const minCost = calculateCost('gemini-2.5-flash',
+    estimateImageTokens(imageCount) + 500,  // 画像 + プロンプト
+    200 * imageCount  // レスポンス
+  );
+
+  // 最大: Pro modelで全画像処理
+  const maxCost = calculateCost('gemini-3-pro-preview',
+    estimateImageTokens(imageCount) + 1000,
+    500 * imageCount
+  );
+
+  // 典型的: 混合使用
+  const typicalCost = (minCost + maxCost) / 2;
+
+  return {
+    min: minCost,
+    max: maxCost,
+    typical: typicalCost
+  };
+};
