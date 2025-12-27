@@ -365,11 +365,24 @@ const UploadView: React.FC<UploadViewProps> = ({
                     キャンセル
                   </button>
                   <button
+                    onClick={() => {
+                      if (pendingFiles && pendingFiles.length > 0) {
+                        setSelectedModel(selectedModelLocal);
+                        onStartProcessing([pendingFiles[0]], instruction, useCache, sortPolicy);
+                        // Keep pendingFiles for full run after test
+                      }
+                    }}
+                    className="flex-1 px-4 py-2.5 border-2 border-green-500 text-green-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-green-50 transition-colors"
+                    title="1枚だけテスト解析して結果を確認"
+                  >
+                    🧪 テスト(1枚)
+                  </button>
+                  <button
                     onClick={handleConfirmStart}
                     className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"
                   >
                     <Play className="w-4 h-4" />
-                    AI解析
+                    全解析
                   </button>
                 </div>
                 {onManualPairing && (
