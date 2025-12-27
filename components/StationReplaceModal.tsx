@@ -111,10 +111,13 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
 
     if (replacements.length > 0) {
       console.log('[DEBUG handleApply] Calling onReplace with', replacements.length, 'items');
+      // デバッグ用のアラート
+      alert(`置換実行: ${replacements.length}件\n${replacements.map(r => `${r.fileName}: ${r.newStation}`).join('\n')}`);
       onReplace(replacements);
       onClose();
     } else {
       console.warn('[DEBUG handleApply] No replacements to apply - nothing selected?');
+      alert('置換対象がありません。検索テキストを入力してマッチする測点を選択してください。');
     }
   };
 
@@ -187,11 +190,21 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
           )}
         </div>
 
+        {/* Debug Info */}
+        <div className="px-4 py-2 bg-yellow-100 border-b text-xs font-mono">
+          <div>📊 photos: {photos.length}枚 | 測点あり: {photos.filter(p => p.analysis?.station).length}枚</div>
+          <div>🔍 stationStats: {stationStats.length}種類 | selected: {selectedStations.size}件</div>
+          <div>📝 search: "{searchText}" | replace: "{replaceText}" | preview: {previewReplacements.length}件</div>
+        </div>
+
         {/* Station List */}
         <div className="flex-1 overflow-y-auto p-4">
           {stationStats.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
-              {lang === 'ja' ? '測点データがありません' : 'No station data'}
+              <div>{lang === 'ja' ? '測点データがありません' : 'No station data'}</div>
+              <div className="text-xs mt-2 text-red-500">
+                (photos: {photos.length}枚, 測点なし: {photos.filter(p => !p.analysis?.station).length}枚)
+              </div>
             </div>
           ) : searchText ? (
             // Show matched replacements
