@@ -255,6 +255,7 @@ export default function App() {
       setSuccessMsg(null);
       setShowPreview(false);
       setPendingFiles(null);
+      setInitialLayout(3); // レイアウトをデフォルトに戻す
       clearLogs();
       await clearProjectData();
     }
@@ -1183,7 +1184,7 @@ export default function App() {
         fsCacheEnabled={fsCacheEnabled}
         fsCacheStats={fsCacheStats}
         onClearLogs={clearLogs}
-        onGoHome={() => { setShouldAbortAnalysis(true); setShowPreview(false); }}
+        onGoHome={() => { setShouldAbortAnalysis(true); setShowPreview(false); setInitialLayout(3); }}
         onCloseProject={handleCloseProject}
         onRefine={() => setShowRefineModal(true)}
         onExportExcel={(layout) => generateExcel(photos, appMode, layout)}
