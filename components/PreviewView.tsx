@@ -84,47 +84,70 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
   const [showDescription, setShowDescription] = useState(false); // Default to OFF
   const [isReorderMode, setIsReorderMode] = useState(false);
-  const [reorderedPhotos, setReorderedPhotos] = useState<PhotoRecord[]>([]);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize reordered photos when entering reorder mode
+  // 細別ごとにグループ化
+  type PhotoGroup = { detail: string; photos: PhotoRecord[] };
+  const [reorderedGroups, setReorderedGroups] = useState<PhotoGroup[]>([]);
+
+  // Initialize groups when entering reorder mode
   useEffect(() => {
     if (isReorderMode) {
-      setReorderedPhotos([...photos]);
+      // 写真を細別でグループ化（出現順を維持）
+      const groupMap = new Map<string, PhotoRecord[]>();
+      const groupOrder: string[] = [];
+
+      photos.forEach(photo => {
+        const detail = photo.analysis?.detail || photo.analysis?.variety || '未分類';
+        if (!groupMap.has(detail)) {
+          groupMap.set(detail, []);
+          groupOrder.push(detail);
+        }
+        groupMap.get(detail)!.push(photo);
+      });
+
+      const groups: PhotoGroup[] = groupOrder.map(detail => ({
+        detail,
+        photos: groupMap.get(detail)!
+      }));
+
+      setReorderedGroups(groups);
     }
   }, [isReorderMode, photos]);
 
-  // Drag and drop handlers for reorder mode
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index);
+  // Drag and drop handlers for group reorder mode
+  const handleGroupDragStart = (index: number) => {
+    setDraggedGroupIndex(index);
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleGroupDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
+    if (draggedGroupIndex === null || draggedGroupIndex === index) return;
 
-    const newPhotos = [...reorderedPhotos];
-    const draggedPhoto = newPhotos[draggedIndex];
-    newPhotos.splice(draggedIndex, 1);
-    newPhotos.splice(index, 0, draggedPhoto);
-    setReorderedPhotos(newPhotos);
-    setDraggedIndex(index);
+    const newGroups = [...reorderedGroups];
+    const draggedGroup = newGroups[draggedGroupIndex];
+    newGroups.splice(draggedGroupIndex, 1);
+    newGroups.splice(index, 0, draggedGroup);
+    setReorderedGroups(newGroups);
+    setDraggedGroupIndex(index);
   };
 
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
+  const handleGroupDragEnd = () => {
+    setDraggedGroupIndex(null);
   };
 
   const handleSaveReorder = () => {
     if (onReorderPhotos) {
+      // グループ順に写真を展開
+      const reorderedPhotos = reorderedGroups.flatMap(g => g.photos);
       onReorderPhotos(reorderedPhotos);
     }
     setIsReorderMode(false);
   };
 
   const handleCancelReorder = () => {
-    setReorderedPhotos([]);
+    setReorderedGroups([]);
     setIsReorderMode(false);
   };
 
@@ -400,36 +423,52 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 
       <div id="print-area" ref={previewContainerRef} className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-auto bg-gray-200 w-full relative">
          {isReorderMode ? (
-           /* Reorder Mode - Draggable Grid */
-           <div className="w-full max-w-6xl">
+           /* Reorder Mode - Group-based Draggable Cards */
+           <div className="w-full max-w-4xl">
              <div className="bg-orange-100 border border-orange-300 rounded-lg p-3 mb-4 text-orange-800 text-sm">
                <ArrowUpDown className="w-4 h-4 inline mr-2" />
                {lang === 'ja'
-                 ? 'ドラッグして写真を並べ替えてください。完了したら「保存」を押すと順序が学習されます。'
-                 : 'Drag photos to reorder. Click "Save" to learn this order for future use.'}
+                 ? '細別グループをドラッグして並べ替えてください。完了したら「保存」を押すと順序が学習されます。'
+                 : 'Drag detail groups to reorder. Click "Save" to learn this order for future use.'}
              </div>
-             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-               {reorderedPhotos.map((photo, index) => (
+             <div className="flex flex-col gap-2">
+               {reorderedGroups.map((group, index) => (
                  <div
-                   key={photo.fileName}
+                   key={group.detail}
                    draggable
-                   onDragStart={() => handleDragStart(index)}
-                   onDragOver={(e) => handleDragOver(e, index)}
-                   onDragEnd={handleDragEnd}
-                   className={`bg-white rounded-lg shadow-md overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
-                     draggedIndex === index ? 'ring-2 ring-orange-500 scale-105 opacity-75' : 'hover:shadow-lg'
+                   onDragStart={() => handleGroupDragStart(index)}
+                   onDragOver={(e) => handleGroupDragOver(e, index)}
+                   onDragEnd={handleGroupDragEnd}
+                   className={`bg-white rounded-lg shadow-md overflow-hidden cursor-grab active:cursor-grabbing transition-all flex items-center ${
+                     draggedGroupIndex === index ? 'ring-2 ring-orange-500 scale-[1.02] opacity-75' : 'hover:shadow-lg'
                    }`}
                  >
-                   <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
-                     <img
-                       src={photo.base64}
-                       alt={photo.fileName}
-                       className="w-full h-full object-cover pointer-events-none"
-                     />
+                   {/* Order Number */}
+                   <div className="w-12 h-full bg-orange-500 text-white flex items-center justify-center font-bold text-lg flex-shrink-0">
+                     {index + 1}
                    </div>
-                   <div className="p-2 text-xs">
-                     <div className="font-bold text-gray-700 truncate">{index + 1}. {photo.analysis?.detail || photo.analysis?.variety || '未分類'}</div>
-                     <div className="text-gray-500 truncate">{photo.analysis?.remarks || ''}</div>
+
+                   {/* Thumbnail Grid (up to 4 photos) */}
+                   <div className="w-24 h-16 flex-shrink-0 grid grid-cols-2 grid-rows-2 gap-0.5 p-1 bg-gray-100">
+                     {group.photos.slice(0, 4).map((photo, i) => (
+                       <img
+                         key={photo.fileName}
+                         src={photo.base64}
+                         alt=""
+                         className="w-full h-full object-cover pointer-events-none"
+                       />
+                     ))}
+                   </div>
+
+                   {/* Group Info */}
+                   <div className="flex-1 px-4 py-2">
+                     <div className="font-bold text-gray-800 text-base">{group.detail}</div>
+                     <div className="text-gray-500 text-sm">{group.photos.length}枚</div>
+                   </div>
+
+                   {/* Drag Handle Indicator */}
+                   <div className="px-4 text-gray-400">
+                     <ArrowUpDown className="w-5 h-5" />
                    </div>
                  </div>
                ))}
