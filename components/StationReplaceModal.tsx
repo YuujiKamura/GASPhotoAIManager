@@ -19,14 +19,8 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
   const [replaceText, setReplaceText] = useState('');
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set());
 
-  // Debug: Log props on mount
-  console.log('[DEBUG StationReplaceModal] photos received:', photos.length);
-  console.log('[DEBUG StationReplaceModal] photos with station:',
-    photos.filter(p => p.analysis?.station).length);
-
   // Get unique stations with their counts
   const stationStats = useMemo(() => {
-    console.log('[DEBUG stationStats] Computing for', photos.length, 'photos');
     const stats = new Map<string, { count: number; fileNames: string[] }>();
     photos.forEach(photo => {
       const station = photo.analysis?.station || '';
@@ -39,11 +33,9 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
         s.fileNames.push(photo.fileName);
       }
     });
-    const result = Array.from(stats.entries())
+    return Array.from(stats.entries())
       .map(([station, data]) => ({ station, ...data }))
       .sort((a, b) => b.count - a.count);
-    console.log('[DEBUG stationStats] Found stations:', result.map(r => `"${r.station}" (${r.count})`));
-    return result;
   }, [photos]);
 
   // Escape special regex characters
@@ -70,7 +62,6 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
       const matching = new Set<string>();
       previewReplacements.forEach(r => matching.add(r.original));
       setSelectedStations(matching);
-      console.log('[DEBUG] Auto-selected', matching.size, 'stations');
     } else {
       setSelectedStations(new Set());
     }
@@ -96,14 +87,9 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
 
   // Apply replacements
   const handleApply = () => {
-    console.log('[DEBUG handleApply] Called');
-    console.log('[DEBUG handleApply] selectedStations:', Array.from(selectedStations));
-    console.log('[DEBUG handleApply] previewReplacements:', previewReplacements);
-
     const replacements: Array<{ fileName: string; newStation: string }> = [];
 
     previewReplacements.forEach(({ original, replaced, fileNames }) => {
-      console.log(`[DEBUG] Checking "${original}" - selected: ${selectedStations.has(original)}`);
       if (selectedStations.has(original)) {
         fileNames.forEach(fileName => {
           replacements.push({ fileName, newStation: replaced });
@@ -111,17 +97,9 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
       }
     });
 
-    console.log('[DEBUG handleApply] Final replacements:', replacements);
-
     if (replacements.length > 0) {
-      console.log('[DEBUG handleApply] Calling onReplace with', replacements.length, 'items');
-      // デバッグ用のアラート
-      alert(`置換実行: ${replacements.length}件\n${replacements.map(r => `${r.fileName}: ${r.newStation}`).join('\n')}`);
       onReplace(replacements);
       onClose();
-    } else {
-      console.warn('[DEBUG handleApply] No replacements to apply - nothing selected?');
-      alert('置換対象がありません。検索テキストを入力してマッチする測点を選択してください。');
     }
   };
 
@@ -194,21 +172,11 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
           )}
         </div>
 
-        {/* Debug Info */}
-        <div className="px-4 py-2 bg-yellow-100 border-b text-xs font-mono">
-          <div>📊 photos: {photos.length}枚 | 測点あり: {photos.filter(p => p.analysis?.station).length}枚</div>
-          <div>🔍 stationStats: {stationStats.length}種類 | selected: {selectedStations.size}件</div>
-          <div>📝 search: "{searchText}" | replace: "{replaceText}" | preview: {previewReplacements.length}件</div>
-        </div>
-
         {/* Station List */}
         <div className="flex-1 overflow-y-auto p-4">
           {stationStats.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
-              <div>{lang === 'ja' ? '測点データがありません' : 'No station data'}</div>
-              <div className="text-xs mt-2 text-red-500">
-                (photos: {photos.length}枚, 測点なし: {photos.filter(p => !p.analysis?.station).length}枚)
-              </div>
+              {lang === 'ja' ? '測点データがありません' : 'No station data'}
             </div>
           ) : searchText ? (
             // Show matched replacements

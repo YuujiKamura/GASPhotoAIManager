@@ -301,31 +301,17 @@ export default function App() {
 
   // 測点の一括置換
   const handleStationReplace = (replacements: Array<{ fileName: string; newStation: string }>) => {
-    console.log('[DEBUG] handleStationReplace called');
-    console.log('[DEBUG] replacements:', replacements);
-    console.log('[DEBUG] current photos count:', photos.length);
+    if (replacements.length === 0) return;
 
-    if (replacements.length === 0) {
-      console.warn('[DEBUG] No replacements to apply!');
-      return;
-    }
-
-    setPhotos(prev => {
-      console.log('[DEBUG] setPhotos prev count:', prev.length);
-      const updated = prev.map(p => {
-        const replacement = replacements.find(r => r.fileName === p.fileName);
-        if (replacement && p.analysis) {
-          console.log(`[DEBUG] Updating ${p.fileName}: "${p.analysis.station}" → "${replacement.newStation}"`);
-          const updatedAnalysis = { ...p.analysis, station: replacement.newStation };
-          // キャッシュも更新
-          cacheAnalysis(p, updatedAnalysis).catch(console.error);
-          return { ...p, analysis: updatedAnalysis };
-        }
-        return p;
-      });
-      console.log('[DEBUG] Updated photos count:', updated.length);
-      return updated;
-    });
+    setPhotos(prev => prev.map(p => {
+      const replacement = replacements.find(r => r.fileName === p.fileName);
+      if (replacement && p.analysis) {
+        const updatedAnalysis = { ...p.analysis, station: replacement.newStation };
+        cacheAnalysis(p, updatedAnalysis).catch(console.error);
+        return { ...p, analysis: updatedAnalysis };
+      }
+      return p;
+    }));
     setSuccessMsg(`${replacements.length}枚の測点を更新しました`);
     addLog(`測点を一括置換: ${replacements.length}枚`, 'success');
   };
