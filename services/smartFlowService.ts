@@ -3,6 +3,7 @@ import { PhotoRecord, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { createSpatialPairs } from "./spatialPairingService";
 import { trackUsage } from "./usageTracker";
+import { AbortChecker, checkAbort } from "./geminiService";
 
 const PRIMARY_MODEL = "gemini-2.5-flash";
 const DETECTION_MODEL = "gemini-2.5-flash"; // Fast model for initial detection
@@ -19,8 +20,10 @@ const DETECTION_MODEL = "gemini-2.5-flash"; // Fast model for initial detection
 export const detectPhotoType = async (
   records: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void,
+  shouldAbort?: AbortChecker
 ): Promise<'construction_with_board' | 'landscape_pairing'> => {
+  checkAbort(shouldAbort, 'detectPhotoType開始前');
 
   const genAI = new GoogleGenAI({ apiKey });
 
@@ -108,8 +111,10 @@ export const detectPhotoType = async (
 export const processLandscapePhotos = async (
   records: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void,
+  shouldAbort?: AbortChecker
 ): Promise<{ pairs: Array<{ before: PhotoRecord, after: PhotoRecord, sceneId: string }> }> => {
+  checkAbort(shouldAbort, 'processLandscapePhotos開始前');
 
   onLog?.(`=== 景観写真ペアリング開始 ===`, 'info');
   onLog?.(`対象: ${records.length}枚`, 'info');
@@ -187,8 +192,10 @@ export const processConstructionPhotos = async (
   records: PhotoRecord[],
   apiKey: string,
   instruction: string,
-  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void,
+  shouldAbort?: AbortChecker
 ): Promise<PhotoRecord[]> => {
+  checkAbort(shouldAbort, 'processConstructionPhotos開始前');
 
   // 従来の詳細解析処理
   // analyzePhotoBatchを呼び出す
@@ -207,26 +214,29 @@ export const processPhotosWithSmartFlow = async (
   records: PhotoRecord[],
   apiKey: string,
   instruction: string = "",
-  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error') => void,
+  shouldAbort?: AbortChecker
 ): Promise<{
   type: 'paired' | 'analyzed',
   pairs?: Array<{ before: PhotoRecord, after: PhotoRecord, sceneId: string }>,
   photos?: PhotoRecord[]
 }> => {
+  checkAbort(shouldAbort, 'processPhotosWithSmartFlow開始前');
 
   onLog?.(`=== スマートフロー処理開始 ===`, 'info');
   onLog?.(`入力: ${records.length}枚の写真`, 'info');
 
   // Step 1: 写真タイプを判定
   onLog?.(`[STEP 1] 写真タイプを自動判定中...`, 'info');
-  const photoType = await detectPhotoType(records, apiKey, onLog);
+  const photoType = await detectPhotoType(records, apiKey, onLog, shouldAbort);
   onLog?.(`→ 判定結果: ${photoType === 'construction_with_board' ? '黒板あり → 詳細解析' : '景観写真 → ペアリング'}`, 'success');
 
   // Step 2: タイプに応じた処理
+  checkAbort(shouldAbort, 'processPhotosWithSmartFlow Step2前');
   if (photoType === 'landscape_pairing') {
     // 景観写真：ペアリングのみ
     onLog?.(`[STEP 2] 景観写真モードでペアリング処理...`, 'info');
-    const result = await processLandscapePhotos(records, apiKey, onLog);
+    const result = await processLandscapePhotos(records, apiKey, onLog, shouldAbort);
     onLog?.(`=== スマートフロー完了: ${result.pairs.length}組のペア ===`, 'success');
     return {
       type: 'paired',
@@ -235,7 +245,7 @@ export const processPhotosWithSmartFlow = async (
   } else {
     // 黒板あり：従来の詳細解析
     onLog?.(`[STEP 2] 黒板解析モードで詳細処理...`, 'info');
-    const analyzedPhotos = await processConstructionPhotos(records, apiKey, instruction, onLog);
+    const analyzedPhotos = await processConstructionPhotos(records, apiKey, instruction, onLog, shouldAbort);
     onLog?.(`=== スマートフロー完了: ${analyzedPhotos.length}枚解析済み ===`, 'success');
     return {
       type: 'analyzed',

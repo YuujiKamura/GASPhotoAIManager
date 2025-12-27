@@ -672,7 +672,7 @@ export default function App() {
       if (needsAI.length > 1) {
         try {
           // Use Gemini 3 Pro to group by visual anchors
-          const assignments = await assignSceneIds(needsAI, apiKey, addLog);
+          const assignments = await assignSceneIds(needsAI, apiKey, addLog, () => shouldAbortRef.current);
           const assignmentMap = new Map(assignments.map(a => [a.fileName, a]));
 
           const processedAI = needsAI.map(r => {
@@ -988,7 +988,8 @@ export default function App() {
           pendingPhotos,
           apiKey,
           instruction,
-          addLog
+          addLog,
+          () => shouldAbortRef.current
         );
 
         if (result.type === 'paired') {
@@ -1131,7 +1132,7 @@ export default function App() {
       if (newlyAnalyzed.length > 0) {
         addLog(`${newlyAnalyzed.length}枚の解析結果を正規化中...`, 'info');
         setCurrentStep("Finalizing data consistency...");
-        const normalizedNew = await normalizeDataConsistency(newlyAnalyzed, apiKey, addLog);
+        const normalizedNew = await normalizeDataConsistency(newlyAnalyzed, apiKey, addLog, () => shouldAbortRef.current);
 
         setPhotos(prev => prev.map(p => {
           const norm = normalizedNew.find(n => n.fileName === p.fileName);
@@ -1194,7 +1195,7 @@ export default function App() {
         addLog("Re-analyzing ALL photos.", 'info');
       } else {
         setCurrentStep(txt.identifyingTargets);
-        targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey, addLog);
+        targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey, addLog, () => shouldAbortRef.current);
       }
 
       if (targetFileNames.length === 0) {

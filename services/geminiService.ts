@@ -4,6 +4,23 @@ import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
 
+// ============================================
+// 中断処理の共通インターフェース
+// ============================================
+export type AbortChecker = () => boolean;
+
+/**
+ * 中断チェックを行い、中断が要求されている場合はエラーをスロー
+ * @param shouldAbort - 中断チェック関数
+ * @param context - エラーメッセージに含めるコンテキスト
+ */
+export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void => {
+  if (shouldAbort?.()) {
+    const msg = context ? `処理が中断されました: ${context}` : '処理が中断されました';
+    throw new Error(msg);
+  }
+};
+
 // API Key Management (localStorage)
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
 
@@ -323,8 +340,11 @@ export const identifyTargetPhotos = async (
   photos: PhotoRecord[],
   instruction: string,
   apiKey: string,
-  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
+  shouldAbort?: AbortChecker
 ): Promise<string[]> => {
+  checkAbort(shouldAbort, 'identifyTargetPhotos開始前');
+
   const startTime = performance.now();
   const genAI = new GoogleGenAI({ apiKey });
 
@@ -339,15 +359,16 @@ export const identifyTargetPhotos = async (
 
   const prompt = `
     User Instruction: "${instruction}"
-    
+
     Given the following list of photos and their current analysis, identify which fileNames should be re-analyzed to satisfy the instruction.
     Return a JSON object with a key "targetFiles" containing an array of strings (fileNames).
-    
+
     Photos:
     ${JSON.stringify(photoSummaries, null, 2)}
   `;
 
   try {
+    checkAbort(shouldAbort, 'identifyTargetPhotos API呼び出し前');
     const result = await genAI.models.generateContent({
       model: PRIMARY_MODEL, // Use Pro for better logic interpretation
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -371,8 +392,11 @@ export const identifyTargetPhotos = async (
 export const normalizeDataConsistency = async (
   records: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
+  shouldAbort?: AbortChecker
 ): Promise<PhotoRecord[]> => {
+  checkAbort(shouldAbort, 'normalizeDataConsistency開始前');
+
   const completedRecords = records.filter(r => r.status === 'done' && r.analysis);
   if (completedRecords.length === 0) return records;
 
@@ -417,6 +441,7 @@ export const normalizeDataConsistency = async (
   let attempt = 0;
 
   while (attempt < MAX_RETRIES) {
+    checkAbort(shouldAbort, 'normalizeDataConsistency リトライループ');
     try {
       const result = await genAI.models.generateContent({
         model: modelToUse,
@@ -485,8 +510,10 @@ export const normalizeDataConsistency = async (
 export const assignSceneIds = async (
   records: PhotoRecord[],
   apiKey: string,
-  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
+  shouldAbort?: AbortChecker
 ): Promise<{ fileName: string, sceneId: string, phase: 'before' | 'after' | 'status', visualAnchors: string }[]> => {
+  checkAbort(shouldAbort, 'assignSceneIds開始前');
 
   const genAI = new GoogleGenAI({ apiKey });
 
@@ -507,6 +534,7 @@ export const assignSceneIds = async (
     // Process in batches of 5 to avoid payload limits
     const BATCH_SIZE = 5;
     for (let i = 0; i < needsExtraction.length; i += BATCH_SIZE) {
+      checkAbort(shouldAbort, 'assignSceneIds バッチ処理');
       const batch = needsExtraction.slice(i, i + BATCH_SIZE);
 
       const inputs = batch.map(r => ({
@@ -638,7 +666,7 @@ export const analyzePhotoBatch = async (
   apiKey: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   onIndividualResult?: (fileName: string, result: AIAnalysisResult) => void,
-  shouldAbort?: () => boolean,
+  shouldAbort?: AbortChecker,
   onReasoningStream?: (text: string) => void
 ): Promise<AIAnalysisResult[]> => {
   const batchStartTime = performance.now();
@@ -715,10 +743,7 @@ export const analyzePhotoBatch = async (
 
   while (attempt < MAX_RETRIES) {
     // Check if analysis should be aborted
-    if (shouldAbort?.()) {
-      onLog?.("Analysis aborted by user", "info");
-      throw new Error("Analysis aborted by user");
-    }
+    checkAbort(shouldAbort, 'analyzePhotoBatch リトライループ');
 
     try {
       // Use streaming to capture "reasoning" or partial output if possible
@@ -746,10 +771,7 @@ export const analyzePhotoBatch = async (
       let chunkCount = 0;
       for await (const chunk of result) {
         // Check abort during streaming
-        if (shouldAbort?.()) {
-          onLog?.("Analysis aborted by user during streaming", "info");
-          throw new Error("Analysis aborted by user");
-        }
+        checkAbort(shouldAbort, 'analyzePhotoBatch ストリーミング中');
 
         if (firstChunkTime === null) {
           firstChunkTime = performance.now() - apiStartTime;
