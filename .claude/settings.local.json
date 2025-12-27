@@ -18,7 +18,9 @@
       "Bash(bash:*)",
       "Bash(timeout 30 bash:*)",
       "Bash(ls:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(GEMINI_API_KEY=\"AIzaSyAAQxrGQ0zX5aX55IuF_iWZWnhUeeW40f0\" npx tsx:*)",
+      "Bash(export GEMINI_API_KEY:*)"
     ]
   }
 }

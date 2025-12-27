@@ -31,7 +31,10 @@ const keyArgIndex = process.argv.indexOf('--key');
 if (keyArgIndex !== -1 && process.argv[keyArgIndex + 1]) {
   API_KEY = process.argv[keyArgIndex + 1];
 }
-const MODEL = 'gemini-2.0-flash-exp';
+// モデル選択（フォールバック対応）
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+let currentModelIndex = 0;
+const getModel = () => MODELS[currentModelIndex] || MODELS[0];
 
 interface AnalysisResult {
   fileName: string;
@@ -88,37 +91,57 @@ keys: workType, variety, detail, station, remarks, description, hasBoard, detect
     required: ['workType', 'station', 'description']
   };
 
-  const result = await genAI.models.generateContent({
-    model: MODEL,
-    contents: [{
-      role: 'user',
-      parts: [
-        { text: `Analyze this construction photo: ${fileName}` },
-        { inlineData: { mimeType: 'image/jpeg', data: base64 } }
-      ]
-    }],
-    config: {
-      systemInstruction,
-      responseMimeType: 'application/json',
-      responseSchema: schema as any,
-      temperature: 0.2
+  // リトライ＆フォールバック対応
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await genAI.models.generateContent({
+        model: getModel(),
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: `Analyze this construction photo: ${fileName}` },
+            { inlineData: { mimeType: 'image/jpeg', data: base64 } }
+          ]
+        }],
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: schema as any,
+          temperature: 0.2
+        }
+      });
+
+      const text = result.text || '{}';
+      const parsed = JSON.parse(text);
+      return {
+        fileName,
+        workType: parsed.workType || '',
+        variety: parsed.variety || '',
+        detail: parsed.detail || '',
+        station: parsed.station || '',
+        remarks: parsed.remarks || '',
+        description: parsed.description || '',
+        hasBoard: !!parsed.hasBoard,
+        detectedText: parsed.detectedText || ''
+      };
+    } catch (e: any) {
+      lastError = e;
+      const isQuotaError = e.message?.includes('429') || e.message?.includes('quota');
+      if (isQuotaError && currentModelIndex < MODELS.length - 1) {
+        currentModelIndex++;
+        console.log(`  ⚠️ Quota exceeded, switching to ${getModel()}`);
+        await new Promise(r => setTimeout(r, 1000));
+      } else if (isQuotaError) {
+        // All models exhausted, wait and retry
+        console.log(`  ⏳ All models quota exceeded, waiting 60s...`);
+        await new Promise(r => setTimeout(r, 60000));
+      } else {
+        throw e;
+      }
     }
-  });
-
-  const text = result.text || '{}';
-  const parsed = JSON.parse(text);
-
-  return {
-    fileName,
-    workType: parsed.workType || '',
-    variety: parsed.variety || '',
-    detail: parsed.detail || '',
-    station: parsed.station || '',
-    remarks: parsed.remarks || '',
-    description: parsed.description || '',
-    hasBoard: !!parsed.hasBoard,
-    detectedText: parsed.detectedText || ''
-  };
+  }
+  throw lastError || new Error('Max retries exceeded');
 }
 
 async function main() {
@@ -136,7 +159,7 @@ async function main() {
 
   console.log(`\n=== Photo Analysis CLI ===`);
   console.log(`Folder: ${folderPath}`);
-  console.log(`Model: ${MODEL}`);
+  console.log(`Models: ${MODELS.join(' → ')} (fallback chain)`);
   console.log(`API Key: ${API_KEY.slice(0, 8)}...`);
   console.log('');
 
