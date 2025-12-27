@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Replace, Search, ArrowRight, CheckCircle2, AlertTriangle, Edit3, List } from 'lucide-react';
+import { X, Replace, Search, ArrowRight, CheckCircle2, AlertTriangle, Edit3, History, ChevronDown } from 'lucide-react';
 import { PhotoRecord } from '../types';
+import { getStationHistory, addStationToHistory } from '../utils/storage';
 
 // 空の測点を表示する際のラベル
 const EMPTY_STATION_LABEL = '(空白)';
@@ -22,6 +23,13 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
   const [searchText, setSearchText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set());
+  const [showHistory, setShowHistory] = useState(false);
+  const [stationHistory, setStationHistory] = useState<string[]>([]);
+
+  // 履歴を読み込み
+  useEffect(() => {
+    setStationHistory(getStationHistory());
+  }, []);
 
   // Get unique stations with their counts (空も含む)
   const stationStats = useMemo(() => {
@@ -137,6 +145,10 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
           });
         }
       });
+      // 履歴に追加
+      if (replaceText) {
+        addStationToHistory(replaceText);
+      }
     } else {
       // 置換モード: マッチした測点を置換
       previewReplacements.forEach(({ original, replaced, fileNames }) => {
@@ -146,6 +158,9 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
           });
         }
       });
+      // 置換後の値を履歴に追加
+      const uniqueReplaced = [...new Set(previewReplacements.map(r => r.replaced))];
+      uniqueReplaced.forEach(r => r && addStationToHistory(r));
     }
 
     if (replacements.length > 0) {
@@ -219,13 +234,47 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
                 <Edit3 className="w-3 h-3 inline mr-1" />
                 {lang === 'ja' ? '新しい測点' : 'New Station Value'}
               </label>
-              <input
-                type="text"
-                value={replaceText}
-                onChange={(e) => setReplaceText(e.target.value)}
-                placeholder={lang === 'ja' ? '例: 小峯2丁目 No.4' : 'e.g., Street No.4'}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={replaceText}
+                  onChange={(e) => setReplaceText(e.target.value)}
+                  placeholder={lang === 'ja' ? '例: 小峯2丁目 No.4' : 'e.g., Street No.4'}
+                  className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                {stationHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded"
+                    title={lang === 'ja' ? '履歴から選択' : 'Select from history'}
+                  >
+                    <History className="w-4 h-4 text-gray-500" />
+                  </button>
+                )}
+                {/* 履歴ドロップダウン */}
+                {showHistory && stationHistory.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    <div className="p-2 text-xs text-gray-500 border-b flex items-center gap-1">
+                      <History className="w-3 h-3" />
+                      {lang === 'ja' ? '最近使用した測点' : 'Recent stations'}
+                    </div>
+                    {stationHistory.map((station, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setReplaceText(station);
+                          setShowHistory(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 font-mono text-sm border-b last:border-b-0"
+                      >
+                        {station}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 {lang === 'ja'
                   ? '下のリストから書き換えたい測点を選択してください'
