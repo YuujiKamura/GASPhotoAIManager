@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ExternalLink, Key, Camera, Loader2, CheckCircle, XCircle, Cpu, AlertTriangle, Ban, Search } from 'lucide-react';
-import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvailability, getSelectedModel, setSelectedModel, getBestAvailableModel } from '../services/geminiService';
+import { ExternalLink, Key, Camera, Loader2, CheckCircle, XCircle, Cpu, AlertTriangle, Ban, Search, Shield } from 'lucide-react';
+import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvailability, getSelectedModel, setSelectedModel, getBestAvailableModel, setTrustedSession } from '../services/geminiService';
 
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
@@ -15,6 +15,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
   const [isValidating, setIsValidating] = useState(false);
   const [modelAvailabilities, setModelAvailabilities] = useState<ModelAvailability[]>([]);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [trustSession, setTrustSession] = useState(true); // デフォルトON（推奨）
 
   // NOTE: 自動バリデーションを削除 - 明示的な「検証」ボタンで実行
   // セキュリティ上、暗黙的なAPI呼び出しを防止
@@ -55,12 +56,16 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
       const bestModel = getBestAvailableModel(modelAvailabilities);
       if (bestModel) {
         setSelectedModel(bestModel);
+        // 信頼セッションを設定
+        setTrustedSession(trustSession);
         onComplete(apiKey.trim());
       }
       return;
     }
 
     setSelectedModel(selectedModel);
+    // 信頼セッションを設定
+    setTrustedSession(trustSession);
     onComplete(apiKey.trim());
   };
 
@@ -285,6 +290,31 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
             </div>
           )}
         </div>
+
+        {/* 信頼セッション設定 */}
+        {hasAnyAvailable && (
+          <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={trustSession}
+                onChange={(e) => setTrustSession(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Shield size={16} className="text-green-400" />
+                  <span className="text-sm font-medium text-white">このセッションを信頼する</span>
+                  <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">推奨</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  ブラウザを閉じるまで、自動的なAPI呼び出しを許可します。
+                  共有PCでは無効にしてください。
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
 
         {/* ボタン */}
         <div className="flex gap-3">

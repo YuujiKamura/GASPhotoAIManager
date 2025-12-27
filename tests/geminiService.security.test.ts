@@ -7,6 +7,9 @@ import {
   getAutoApiSettings,
   setAutoApiSettings,
   isAutoApiEnabled,
+  isTrustedSession,
+  setTrustedSession,
+  revokeTrust,
   AutoApiSettings,
 } from '../services/geminiService';
 
@@ -132,5 +135,84 @@ describe('Error Message Sanitization', () => {
     const sanitized = testMessage.replace(apiKeyPattern, '[API_KEY_REDACTED]');
     expect(sanitized).not.toMatch(apiKeyPattern);
     expect(sanitized).toContain('[API_KEY_REDACTED]');
+  });
+});
+
+describe('Trusted Session (GitHub Passkey-style)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  describe('isTrustedSession', () => {
+    it('should return false by default', () => {
+      expect(isTrustedSession()).toBe(false);
+    });
+
+    it('should return true after setTrustedSession(true)', () => {
+      setTrustedSession(true);
+      expect(isTrustedSession()).toBe(true);
+    });
+
+    it('should return false after setTrustedSession(false)', () => {
+      setTrustedSession(true);
+      setTrustedSession(false);
+      expect(isTrustedSession()).toBe(false);
+    });
+  });
+
+  describe('setTrustedSession', () => {
+    it('should store trust in sessionStorage (not localStorage)', () => {
+      setTrustedSession(true);
+
+      // Should be in sessionStorage
+      expect(sessionStorage.getItem('construction_album_trusted_session')).toBe('true');
+
+      // Should NOT be in localStorage
+      expect(localStorage.getItem('construction_album_trusted_session')).toBeNull();
+    });
+
+    it('should remove from sessionStorage when set to false', () => {
+      setTrustedSession(true);
+      setTrustedSession(false);
+
+      expect(sessionStorage.getItem('construction_album_trusted_session')).toBeNull();
+    });
+  });
+
+  describe('revokeTrust', () => {
+    it('should clear trusted session', () => {
+      setTrustedSession(true);
+      expect(isTrustedSession()).toBe(true);
+
+      revokeTrust();
+      expect(isTrustedSession()).toBe(false);
+    });
+  });
+
+  describe('isAutoApiEnabled with trusted session', () => {
+    it('should return true for all features when session is trusted', () => {
+      // Not trusted - should return individual settings (all false by default)
+      expect(isAutoApiEnabled('autoSelectWorkTypes')).toBe(false);
+      expect(isAutoApiEnabled('autoNormalization')).toBe(false);
+      expect(isAutoApiEnabled('autoSceneAssignment')).toBe(false);
+
+      // Set trusted session
+      setTrustedSession(true);
+
+      // Now all should return true
+      expect(isAutoApiEnabled('autoSelectWorkTypes')).toBe(true);
+      expect(isAutoApiEnabled('autoNormalization')).toBe(true);
+      expect(isAutoApiEnabled('autoSceneAssignment')).toBe(true);
+    });
+
+    it('should fall back to individual settings when not trusted', () => {
+      // Enable one feature
+      setAutoApiSettings({ autoSelectWorkTypes: true });
+
+      // Not trusted - should return individual setting
+      expect(isAutoApiEnabled('autoSelectWorkTypes')).toBe(true);
+      expect(isAutoApiEnabled('autoNormalization')).toBe(false); // Still false
+    });
   });
 });

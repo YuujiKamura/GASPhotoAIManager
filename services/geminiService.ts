@@ -57,8 +57,12 @@ const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
 };
 
 // ============================================
-// API呼び出し承認設定（暗黙的呼び出しの制御）
+// 信頼セッション方式（GitHub Passkey風）
+// - 初回のみ明示的な承認が必要
+// - 「信頼する」を選択するとセッション中は自動許可
+// - ブラウザを閉じると信頼状態がリセット
 // ============================================
+const TRUSTED_SESSION_KEY = 'construction_album_trusted_session';
 const AUTO_API_SETTINGS_KEY = 'construction_album_auto_api_settings';
 
 export interface AutoApiSettings {
@@ -68,11 +72,29 @@ export interface AutoApiSettings {
   autoSceneAssignment: boolean;    // 自動シーン割当（ペアリング時）
 }
 
+// 信頼セッション: sessionStorageに保存（ブラウザ閉じるとリセット）
+export const isTrustedSession = (): boolean => {
+  return sessionStorage.getItem(TRUSTED_SESSION_KEY) === 'true';
+};
+
+export const setTrustedSession = (trusted: boolean): void => {
+  if (trusted) {
+    sessionStorage.setItem(TRUSTED_SESSION_KEY, 'true');
+  } else {
+    sessionStorage.removeItem(TRUSTED_SESSION_KEY);
+  }
+};
+
+export const revokeTrust = (): void => {
+  sessionStorage.removeItem(TRUSTED_SESSION_KEY);
+};
+
+// 永続設定（localStorageに保存）: 信頼セッションでない場合のデフォルト動作
 const DEFAULT_AUTO_API_SETTINGS: AutoApiSettings = {
-  autoValidateModels: false,      // デフォルトOFF: 明示的に検証ボタンを押す
-  autoSelectWorkTypes: false,     // デフォルトOFF: セレクターをスキップ
-  autoNormalization: false,       // デフォルトOFF: 正規化をスキップ
-  autoSceneAssignment: false,     // デフォルトOFF: シーン割当をスキップ
+  autoValidateModels: false,
+  autoSelectWorkTypes: false,
+  autoNormalization: false,
+  autoSceneAssignment: false,
 };
 
 export const getAutoApiSettings = (): AutoApiSettings => {
@@ -93,7 +115,13 @@ export const setAutoApiSettings = (settings: Partial<AutoApiSettings>): void => 
   localStorage.setItem(AUTO_API_SETTINGS_KEY, JSON.stringify(updated));
 };
 
+// 信頼セッションの場合は全機能を自動許可、そうでなければ個別設定を参照
 export const isAutoApiEnabled = (feature: keyof AutoApiSettings): boolean => {
+  // 信頼セッションなら全て許可
+  if (isTrustedSession()) {
+    return true;
+  }
+  // そうでなければ個別設定を参照
   return getAutoApiSettings()[feature];
 };
 
