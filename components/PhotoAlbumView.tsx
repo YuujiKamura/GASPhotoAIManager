@@ -82,7 +82,8 @@ interface InfoRowProps {
 
 const InfoRow: React.FC<InfoRowProps> = ({ label, value, className = "", onChange, align = 'left', multiline = false, readOnly = false, hideLabel = false, textClass, children }) => (
   // Use className for height control
-  <div className={`flex border-b border-gray-300 last:border-b-0 box-border w-full ${className}`}>
+  // Note: removed last:border-b-0 to always show bottom border (even when description is hidden)
+  <div className={`flex border-b border-gray-300 box-border w-full ${className}`}>
     {/* Label: Fixed width w-12 (48px) - Only render if not hidden */}
     {!hideLabel && (
       <div className={`w-12 flex justify-center text-sm text-gray-900 font-normal flex-shrink-0 leading-tight px-0.5 text-center select-none bg-gray-50/50 border-r border-gray-300 ${multiline ? 'items-start pt-1' : 'items-center'}`}>
