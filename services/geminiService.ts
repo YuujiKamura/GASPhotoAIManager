@@ -803,6 +803,7 @@ export const analyzePhotoBatch = async (
         station: item.station || "",
         remarks: item.remarks || "",
         description: item.description || "",
+        measurements: item.measurements || "", // 出来形管理の測定値
         hasBoard: !!item.hasBoard,
         detectedText: item.detectedText || "",
         reasoning: item.reasoning || "" // Capture reasoning
@@ -832,6 +833,7 @@ export const analyzePhotoBatch = async (
             station: '',
             remarks: '',
             description: '',
+            measurements: '',
             hasBoard: false,
             detectedText: '',
             reasoning: ''
