@@ -281,7 +281,24 @@ Only classify as "Construction Status" if there is clear evidence of **ACTIVE WO
     *   **NOTE**: If you see a GROUP of workers NOT actively doing construction work, it's likely 安全管理写真.
 
 4.  **"使用材料写真"**: Material checks.
-5.  **"品質管理写真"**: Thermometers, density meters.
+5.  **"品質管理写真"** (Quality Control) [PRIORITY - TEMPERATURE/DENSITY MEASUREMENT]:
+    *   **Definition**: Photos documenting quality measurements during construction.
+    *   **Visual Cues**:
+        - Thermometers measuring asphalt temperature (デジタル温度計, 棒状温度計)
+        - Density meters (RI計器, 砂置換法の器具)
+        - Blackboard showing temperature readings (到着温度, 敷均し温度, 初期締固め前温度, 開放温度)
+    *   **Temperature Photo Cycles** (温度管理写真のサイクル):
+        - Per truck (1台につき3温度 × 3枚 = 9枚):
+          1. 到着温度 (arrival temp): 全景 + ボードアップ + 温度計アップ
+          2. 敷均し温度 (spread temp): 全景 + ボードアップ + 温度計アップ
+          3. 初期締固め前温度 (initial compaction temp): 全景 + ボードアップ + 温度計アップ
+        - Per day/location (1日1回 × 3枚):
+          4. 開放温度 (release temp): 全景 + ボードアップ + 温度計アップ
+    *   **Remarks for 品質管理写真** MUST include:
+        - The temperature TYPE (到着温度, 敷均し温度, 初期締固め前温度, 開放温度)
+        - The actual temperature VALUE visible on thermometer or blackboard (e.g., 161.1℃)
+        - Example: "到着温度 161.1℃", "敷均し温度 155.3℃", "初期締固め前温度 148.8℃"
+    *   **NEVER use just** "温度測定" or "アスファルト混合物温度測定" without the actual value.
 6.  **"出来形管理写真"** (Finished Dimension Management) [PRIORITY - MEASUREMENT PHOTOS]:
     *   **Definition**: Photos documenting COMPLETED work dimensions with measuring tools.
     *   **Visual Cues**:
@@ -310,6 +327,12 @@ Traverse the hierarchy directly:
 *   **If Category is "施工状況写真"**:
     *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
     *   Normalize text: "転圧中" -> "転圧状況".
+*   **If Category is "品質管理写真"**:
+    *   **remarks** MUST include temperature TYPE + VALUE.
+    *   Format: "温度種別 実測値℃" (e.g., "到着温度 161.1℃", "敷均し温度 155.3℃")
+    *   Valid temperature types: 到着温度, 敷均し温度, 初期締固め前温度, 開放温度
+    *   If temperature value is visible, ALWAYS include it in remarks.
+    *   **NEVER use** "アスファルト混合物温度測定" or "温度測定" alone without the actual value.
 *   **If Category is "出来形管理写真"**:
     *   **remarks** MUST end with "出来形" AND include measurement values if visible.
     *   Format: "〜出来形　測定値" (e.g., "不陸整正出来形　実測値+3mm", "路盤厚出来形　t=150")
