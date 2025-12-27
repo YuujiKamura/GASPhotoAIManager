@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry } from './types';
+import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
@@ -58,6 +58,7 @@ export default function App() {
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>('construction');
   const [initialLayout, setInitialLayout] = useState<2 | 3>(3); // Default to 3-up
+  const [currentSortPolicy, setCurrentSortPolicy] = useState<SortPolicy>('chronological');
 
   // Console Logs
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -357,21 +358,22 @@ export default function App() {
   };
 
   /**
-   * Sorts photos by time first, then by scene/station.
-   * Time is the primary sort key to maintain chronological order.
+   * Sorts photos based on the current sort policy.
    */
-  const sortPhotosLogical = (records: PhotoRecord[]): PhotoRecord[] => {
-    // 時間優先ソート：まず日時でソートし、同時刻帯はフェーズで調整
-    return [...records].sort((a, b) => {
+  const sortPhotosLogical = (records: PhotoRecord[], policy: SortPolicy = currentSortPolicy): PhotoRecord[] => {
+    const isSafetyPhoto = (r: PhotoRecord) => {
+      const workType = r.analysis?.workType || '';
+      return workType.includes('安全管理') || workType.includes('安全');
+    };
+
+    // 時系列ソート（基本）
+    const chronologicalSort = (a: PhotoRecord, b: PhotoRecord) => {
       const dateA = a.date || 0;
       const dateB = b.date || 0;
-
-      // 5分以内の写真は同時刻帯とみなす
-      const TIME_WINDOW = 5 * 60 * 1000; // 5 minutes
+      const TIME_WINDOW = 5 * 60 * 1000;
       const timeDiff = Math.abs(dateA - dateB);
 
       if (timeDiff <= TIME_WINDOW) {
-        // 同時刻帯の場合：測点→フェーズ順
         const stationA = normalizeStationName(a.analysis?.station) || "ZZZ";
         const stationB = normalizeStationName(b.analysis?.station) || "ZZZ";
         if (stationA !== stationB) return stationA.localeCompare(stationB);
@@ -380,10 +382,53 @@ export default function App() {
         const scoreB = getPhaseScore(b);
         if (scoreA !== scoreB) return scoreA - scoreB;
       }
-
-      // 時間順
       return dateA - dateB;
-    });
+    };
+
+    switch (policy) {
+      case 'chronological':
+        return [...records].sort(chronologicalSort);
+
+      case 'chronological_safety_first': {
+        const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
+        const others = records.filter(r => !isSafetyPhoto(r)).sort(chronologicalSort);
+        return [...safety, ...others];
+      }
+
+      case 'chronological_safety_last': {
+        const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
+        const others = records.filter(r => !isSafetyPhoto(r)).sort(chronologicalSort);
+        return [...others, ...safety];
+      }
+
+      case 'chronological_no_safety':
+        return records.filter(r => !isSafetyPhoto(r)).sort(chronologicalSort);
+
+      case 'by_detail': {
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        records.forEach(r => {
+          const key = r.analysis?.detail || r.analysis?.variety || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        const sortedKeys = Object.keys(groups).sort();
+        return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+      }
+
+      case 'by_worktype': {
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        records.forEach(r => {
+          const key = r.analysis?.workType || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        const sortedKeys = Object.keys(groups).sort();
+        return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+      }
+
+      default:
+        return [...records].sort(chronologicalSort);
+    }
   };
 
   /**
@@ -747,8 +792,9 @@ export default function App() {
 
   // --- Pipeline Steps ---
 
-  const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean) => {
+  const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean, sortPolicy: SortPolicy = 'chronological') => {
     if (!files || files.length === 0) return;
+    setCurrentSortPolicy(sortPolicy); // ソートポリシーを保存
 
     // 1. Initial Validation
     if (files.length > MAX_PHOTOS) {

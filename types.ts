@@ -62,3 +62,21 @@ export interface LogEntry {
   type: 'info' | 'success' | 'error' | 'json';
   details?: any; // For JSON objects
 }
+
+// ソートポリシー
+export type SortPolicy =
+  | 'chronological'           // 時系列順
+  | 'chronological_safety_first' // 時系列（安全管理を先頭に）
+  | 'chronological_safety_last'  // 時系列（安全管理を末尾に）
+  | 'chronological_no_safety'    // 時系列（安全管理を除外）
+  | 'by_detail'               // 細別ごとにグループ化
+  | 'by_worktype';            // 工種ごとにグループ化
+
+export const SORT_POLICIES: { id: SortPolicy; name: string; description: string }[] = [
+  { id: 'chronological', name: '時系列', description: '撮影順に並べる' },
+  { id: 'chronological_safety_first', name: '安全管理優先', description: '安全管理を先頭に、他は時系列' },
+  { id: 'chronological_safety_last', name: '安全管理末尾', description: '安全管理を末尾に、他は時系列' },
+  { id: 'chronological_no_safety', name: '安全管理除外', description: '安全管理写真を非表示' },
+  { id: 'by_detail', name: '細別順', description: '細別ごとにグループ化' },
+  { id: 'by_worktype', name: '工種順', description: '工種ごとにグループ化' },
+];

@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, AppMode } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, Cpu, ChevronDown } from 'lucide-react';
+import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, Cpu, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 
@@ -12,7 +12,7 @@ interface UploadViewProps {
   appMode: AppMode;
   apiKey: string; // Only for checking availability
   setAppMode: (mode: AppMode) => void;
-  onStartProcessing: (files: File[], instruction: string, useCache: boolean) => void;
+  onStartProcessing: (files: File[], instruction: string, useCache: boolean, sortPolicy: SortPolicy) => void;
   onResume: () => void;
   onCloseProject: () => void;
   onExportJson: () => void;
@@ -50,6 +50,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [useCache, setUseCache] = useState(true); // Default to True
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
+  const [sortPolicy, setSortPolicy] = useState<SortPolicy>('chronological');
 
   // コスト見積もり
   const costEstimate = useMemo(() => {
@@ -104,7 +105,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const handleConfirmStart = () => {
     if (pendingFiles && pendingFiles.length > 0) {
       setSelectedModel(selectedModelLocal); // モデル設定を保存
-      onStartProcessing(pendingFiles, instruction, useCache);
+      onStartProcessing(pendingFiles, instruction, useCache, sortPolicy);
       setPendingFiles(null);
     }
   };
@@ -317,6 +318,30 @@ const UploadView: React.FC<UploadViewProps> = ({
                         >
                           <div className="font-medium truncate">{model.name.replace('Gemini ', '')}</div>
                           <div className="text-[10px] text-gray-400 truncate">{model.description.split('（')[0]}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sort Policy Selection */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1.5 block flex items-center gap-1">
+                      <ArrowUpDown className="w-3 h-3" />
+                      並び替え
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {SORT_POLICIES.map((policy) => (
+                        <button
+                          key={policy.id}
+                          onClick={() => setSortPolicy(policy.id)}
+                          className={`p-2 rounded-lg border text-xs text-left transition-all ${
+                            sortPolicy === policy.id
+                              ? 'bg-purple-50 border-purple-500 text-purple-700'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="font-medium">{policy.name}</div>
+                          <div className="text-[10px] text-gray-400">{policy.description}</div>
                         </button>
                       ))}
                     </div>
