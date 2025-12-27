@@ -1338,31 +1338,28 @@ export default function App() {
     );
   }
 
-  if (!showPreview) {
-    return (
-      <UploadView
-        lang={lang}
-        isProcessing={isProcessing}
-        photos={photos}
-        appMode={appMode}
-        apiKey={apiKey || ''}
-        setAppMode={setAppMode}
-        onStartProcessing={handleStartProcessing}
-        onResume={handleResume}
-        onCloseProject={handleCloseProject}
-        onExportJson={handleExportJson}
-        onImportJson={handleImportJson}
-        onClearCache={handleClearCache}
-        onShowPreview={() => setShowPreview(true)}
-        onOpenSettings={() => setShowApiKeySetup(true)}
-        onManualPairing={handleStartManualPairing}
-      />
-    );
-  }
-
   return (
     <>
-      <PreviewView
+      {!showPreview ? (
+        <UploadView
+          lang={lang}
+          isProcessing={isProcessing}
+          photos={photos}
+          appMode={appMode}
+          apiKey={apiKey || ''}
+          setAppMode={setAppMode}
+          onStartProcessing={handleStartProcessing}
+          onResume={handleResume}
+          onCloseProject={handleCloseProject}
+          onExportJson={handleExportJson}
+          onImportJson={handleImportJson}
+          onClearCache={handleClearCache}
+          onShowPreview={() => setShowPreview(true)}
+          onOpenSettings={() => setShowApiKeySetup(true)}
+          onManualPairing={handleStartManualPairing}
+        />
+      ) : (
+        <PreviewView
         lang={lang}
         photos={photos}
         stats={stats}
@@ -1392,13 +1389,17 @@ export default function App() {
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
         onOpenMasterEditor={() => setShowMasterEditor(true)}
       />
+      )}
 
-      {/* Usage Panel */}
-      <UsagePanel
-        photoCount={photos.length}
-        totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)}
-      />
+      {/* Usage Panel - only shown in preview mode */}
+      {showPreview && (
+        <UsagePanel
+          photoCount={photos.length}
+          totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)}
+        />
+      )}
 
+      {/* Modals - always rendered regardless of showPreview */}
       {pendingFiles && (
         <LimitModal
           totalFiles={pendingFiles.length}

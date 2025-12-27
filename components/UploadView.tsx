@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, Cpu, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 
@@ -187,25 +187,6 @@ const UploadView: React.FC<UploadViewProps> = ({
         {/* --- SETTINGS / INSTRUCTION INPUT --- */}
         {apiKey && (
           <div className="w-full max-w-md mt-6 z-20 animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-3">
-            {/* Use Cache Checkbox */}
-            <div
-              className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-white transition-colors group"
-              onClick={() => setUseCache(!useCache)}
-            >
-              <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useCache ? 'bg-green-600 border-green-600' : 'bg-white border-gray-400'}`}>
-                {useCache && <Check className="w-3.5 h-3.5 text-white" />}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-gray-700 select-none flex items-center gap-2">
-                  <Database className="w-4 h-4 text-green-600" />
-                  {lang === 'ja' ? 'キャッシュを利用（高速化）' : 'Use Cache (Restore previous)'}
-                </span>
-                <span className="text-[10px] text-gray-400 pl-6">
-                  {lang === 'ja' ? '解析済みの写真を復元し、API消費を抑えます' : 'Restore analyzed photos to save API quota'}
-                </span>
-              </div>
-            </div>
-
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 pt-3 pointer-events-none">
                 <MessageSquare className="h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
