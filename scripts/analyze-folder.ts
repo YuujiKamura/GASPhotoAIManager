@@ -8,6 +8,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { validateAgainstMaster, getMergedHierarchy } from '../utils/constructionMaster.js';
+import { getSystemInstruction } from '../services/geminiService.js';
 
 // ESM compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +45,7 @@ interface AnalysisResult {
   station: string;
   remarks: string;
   description: string;
+  measurements: string;
   hasBoard: boolean;
   detectedText: string;
 }
@@ -56,25 +58,8 @@ async function loadImage(filePath: string): Promise<string> {
 async function analyzePhoto(genAI: GoogleGenAI, base64: string, fileName: string): Promise<AnalysisResult> {
   const hierarchy = getMergedHierarchy();
 
-  const systemInstruction = `
-You are a Japanese construction site supervisor creating a formal photo ledger (工事写真帳).
-The hierarchy provided is a STRICT SUBSET of the MLIT standards.
-
-**CRITICAL CONSTRAINT**:
-You MUST NOT use any Work Types, Varieties, or Details that are not explicitly defined in the provided MASTER DATA JSON.
-
---- MASTER DATA HIERARCHY ---
-${JSON.stringify(hierarchy, null, 2)}
-
---- HIERARCHY MAPPING RULES ---
-*   **Level 1 (Root)**: Work Type (工種) -> Output to **'workType'**.
-*   **Level 2**: Variety (種別) -> Output to **'variety'**.
-*   **Level 3**: Detail (細別) -> Output to **'detail'**.
-*   **Level 4 (Leaf)**: Remarks (備考) -> Output to **'remarks'**.
-
-**OUTPUT FORMAT**: JSON only.
-keys: workType, variety, detail, station, remarks, description, hasBoard, detectedText.
-  `.trim();
+  // メインアプリと同じプロンプトを使用
+  const systemInstruction = getSystemInstruction('construction', undefined, hierarchy);
 
   const schema = {
     type: Type.OBJECT,
@@ -85,6 +70,7 @@ keys: workType, variety, detail, station, remarks, description, hasBoard, detect
       station: { type: Type.STRING },
       remarks: { type: Type.STRING },
       description: { type: Type.STRING },
+      measurements: { type: Type.STRING },
       hasBoard: { type: Type.BOOLEAN },
       detectedText: { type: Type.STRING }
     },
@@ -122,6 +108,7 @@ keys: workType, variety, detail, station, remarks, description, hasBoard, detect
         station: parsed.station || '',
         remarks: parsed.remarks || '',
         description: parsed.description || '',
+        measurements: parsed.measurements || '',
         hasBoard: !!parsed.hasBoard,
         detectedText: parsed.detectedText || ''
       };
@@ -205,6 +192,9 @@ async function main() {
       console.log(`  種別: ${result.variety || '(空白)'}`);
       console.log(`  細別: ${result.detail || '(空白)'}`);
       console.log(`  備考: ${result.remarks}`);
+      if (result.measurements) {
+        console.log(`  測定値: ${result.measurements}`);
+      }
       console.log(`  測点: ${result.station || '(なし)'}`);
       console.log(`  黒板: ${result.hasBoard ? 'あり' : 'なし'}`);
       console.log('');

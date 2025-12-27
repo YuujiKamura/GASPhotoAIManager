@@ -172,7 +172,7 @@ const formatDuration = (ms: number): string => {
   return `${(ms / 1000).toFixed(2)}s`;
 };
 
-const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
+export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
   if (appMode === 'general') {
     return `
 You are a professional photo archivist. Analyze the image and provide structured metadata.
