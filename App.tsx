@@ -1177,6 +1177,7 @@ export default function App() {
         onImportJson={handleImportJson}
         onClearCache={handleClearCache}
         onShowPreview={() => setShowPreview(true)}
+        onOpenSettings={() => setShowApiKeySetup(true)}
       />
     );
   }
