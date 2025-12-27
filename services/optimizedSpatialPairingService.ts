@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
+import { trackUsage } from "./usageTracker";
 
 const PRIMARY_MODEL = "gemini-3-pro-preview";
 const FAST_MODEL = "gemini-1.5-flash"; // 高速モデル
@@ -107,7 +108,9 @@ const quickClassifyImages = async (
         }
       });
 
-      const response = JSON.parse(result.text);
+      const responseText = result.text;
+      trackUsage(FAST_MODEL, 'quickClassify', responseText, batch.length, 'quickClassifyPhotos');
+      const response = JSON.parse(responseText);
       Object.entries(response.classifications).forEach(([fileName, type]) => {
         classification.set(fileName, type as 'before' | 'after' | 'unknown');
       });
@@ -205,7 +208,9 @@ export const extractSpatialFeaturesOptimized = async (
         }
       });
 
-      const response = JSON.parse(result.text);
+      const responseText = result.text;
+      trackUsage(PRIMARY_MODEL, 'spatialAnalysis', responseText, batch.length, 'extractSpatialFeatures');
+      const response = JSON.parse(responseText);
 
       // キャッシュに保存
       response.analyses.forEach((analysis: SpatialAnalysis) => {

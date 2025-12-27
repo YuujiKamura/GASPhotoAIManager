@@ -14,6 +14,7 @@ import PreviewView from './components/PreviewView';
 import LimitModal from './components/LimitModal';
 import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
+import UsagePanel from './components/UsagePanel';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -1198,6 +1199,12 @@ export default function App() {
         onSelectCacheFolder={handleSelectCacheFolder}
         onClearFileSystemCache={handleClearFileSystemCache}
         onReanalyzePhoto={handleSingleReanalysis}
+      />
+
+      {/* Usage Panel */}
+      <UsagePanel
+        photoCount={photos.length}
+        totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)}
       />
 
       {pendingFiles && (

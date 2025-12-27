@@ -2,6 +2,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes } from "../utils/constructionMaster";
+import { trackUsage } from "./usageTracker";
 
 // API Key Management (localStorage)
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
@@ -204,6 +205,7 @@ ${selectorPrompt}
     });
 
     const text = result.text || "{}";
+    trackUsage(SELECTOR_MODEL, prompt, text, samples.length, 'selectWorkTypes');
     const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
     const selectedTypes = (json.workTypes || []).filter((t: string) => availableWorkTypes.includes(t));
 
@@ -270,7 +272,9 @@ export const identifyTargetPhotos = async (
       }
     });
 
-    const json = JSON.parse(result.text || "{}");
+    const responseText = result.text || "{}";
+    trackUsage(PRIMARY_MODEL, prompt, responseText, 0, 'identifyTargetPhotos');
+    const json = JSON.parse(responseText);
     const totalTime = performance.now() - startTime;
     onLog?.(`[PROFILER] identifyTargetPhotos: Total=${formatDuration(totalTime)}, Found ${json.targetFiles?.length || 0} targets`, "info");
     return json.targetFiles || [];
@@ -341,6 +345,7 @@ export const normalizeDataConsistency = async (
       const text = result.text;
       if (!text) throw new Error("No text response");
 
+      trackUsage(modelToUse, prompt, text, 0, 'normalizeDataConsistency');
       const json = JSON.parse(text);
       onLog?.("Normalization Result Received", "json", json);
 
@@ -464,6 +469,7 @@ export const assignSceneIds = async (
         });
 
         const text = result.text || "{}";
+        trackUsage(COMPLEX_MODEL, 'featureExtraction', text, batch.length, 'assignSceneIds:extract');
         const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
         if (json.features) {
           newFeatures = [...newFeatures, ...json.features];
@@ -511,6 +517,7 @@ export const assignSceneIds = async (
     });
 
     const text = result.text || "{}";
+    trackUsage(PRIMARY_MODEL, clusteringPrompt, text, 0, 'assignSceneIds:cluster');
     const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
     return json.assignments || [];
 
@@ -675,6 +682,9 @@ export const analyzePhotoBatch = async (
       onLog?.(`[PROFILER] API stream complete: ${formatDuration(apiTime)} (${chunkCount} chunks, ${fullText.length} chars)`, "info");
 
       const text = fullText;
+
+      // Track usage for this batch
+      trackUsage(modelToUse, prompt + systemPrompt, text, records.length, 'analyzePhotoBatch');
 
       onLog?.("Gemini Raw Response", 'json', text);
 

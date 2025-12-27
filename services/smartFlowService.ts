@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { createSpatialPairs } from "./spatialPairingService";
+import { trackUsage } from "./usageTracker";
 
 const PRIMARY_MODEL = "gemini-2.5-flash";
 const DETECTION_MODEL = "gemini-2.5-flash"; // Fast model for initial detection
@@ -76,7 +77,9 @@ export const detectPhotoType = async (
       }
     });
 
-    const detection = JSON.parse(result.text);
+    const responseText = result.text;
+    trackUsage(DETECTION_MODEL, prompt, responseText, sampleRecords.length, 'detectPhotoType');
+    const detection = JSON.parse(responseText);
     onLog?.(`写真タイプ: ${detection.type === 'WITH_BOARD' ? '黒板あり' : '景観のみ'} (確信度: ${detection.confidence})`, 'success');
 
     // 判定理由も表示

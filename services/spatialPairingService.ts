@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
+import { trackUsage } from "./usageTracker";
 
 const PRIMARY_MODEL = "gemini-3-pro-preview"; // 高精度モデルを使用
 
@@ -135,7 +136,9 @@ export const extractSpatialFeatures = async (
       }
     });
 
-    const response = JSON.parse(result.text);
+    const responseText = result.text;
+    trackUsage(PRIMARY_MODEL, prompt, responseText, records.length, 'extractSpatialFeatures');
+    const response = JSON.parse(responseText);
     onLog?.(`${response.analyses.length}枚の写真から空間特徴を抽出しました`, 'success');
     return response.analyses;
 
