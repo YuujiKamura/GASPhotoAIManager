@@ -1073,6 +1073,12 @@ export default function App() {
 
           // PARALLEL_BATCHES個ずつ並列実行
           for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+            // Check abort at start of each batch group
+            if (shouldAbortRef.current) {
+              addLog("解析が中断されました", 'info');
+              break;
+            }
+
             const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
             const processedCount = i * batchSize;
             const currentBatchNum = Math.floor(i / PARALLEL_BATCHES) + 1;

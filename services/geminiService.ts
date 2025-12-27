@@ -745,6 +745,12 @@ export const analyzePhotoBatch = async (
       let fullText = "";
       let chunkCount = 0;
       for await (const chunk of result) {
+        // Check abort during streaming
+        if (shouldAbort?.()) {
+          onLog?.("Analysis aborted by user during streaming", "info");
+          throw new Error("Analysis aborted by user");
+        }
+
         if (firstChunkTime === null) {
           firstChunkTime = performance.now() - apiStartTime;
           onLog?.(`[PROFILER] Time to first chunk: ${formatDuration(firstChunkTime)}`, "info");
