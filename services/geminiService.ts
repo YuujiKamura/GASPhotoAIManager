@@ -23,24 +23,37 @@ export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void =
   }
 };
 
-// API Key Management (localStorage)
+// API Key Management (sessionStorage for security - cleared on browser close)
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
 
 export const getApiKey = (): string | null => {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
+  return sessionStorage.getItem(API_KEY_STORAGE_KEY);
 };
 
 export const setApiKey = (key: string): void => {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
 export const clearApiKey = (): void => {
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
 };
 
 export const hasApiKey = (): boolean => {
   const key = getApiKey();
   return !!key && key.startsWith('AIza');
+};
+
+// Sanitize error messages to prevent API key leakage in logs
+const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
+  if (!message) return message;
+  let sanitized = message;
+  // Remove API key if present
+  if (apiKey) {
+    sanitized = sanitized.replace(new RegExp(apiKey, 'g'), '[API_KEY_REDACTED]');
+  }
+  // Also redact any AIza... patterns
+  sanitized = sanitized.replace(/AIza[A-Za-z0-9_-]{30,}/g, '[API_KEY_REDACTED]');
+  return sanitized;
 };
 
 // Model Selection
@@ -76,7 +89,9 @@ export const validateApiKey = async (apiKey: string, model?: ModelType): Promise
     });
     return { valid: true };
   } catch (e: any) {
-    console.error(`API Key validation failed for ${testModel}:`, e);
+    // Sanitize error message to prevent API key leakage
+    const safeMessage = sanitizeErrorMessage(e.message || '', apiKey);
+    console.error(`API Key validation failed for ${testModel}:`, safeMessage);
     if (e.message?.includes('API_KEY_INVALID') || e.message?.includes('401')) {
       return { valid: false, error: 'APIキーが無効です' };
     }
@@ -86,7 +101,7 @@ export const validateApiKey = async (apiKey: string, model?: ModelType): Promise
     if (e.message?.includes('not found') || e.message?.includes('404')) {
       return { valid: false, error: 'モデルが利用不可' };
     }
-    return { valid: false, error: e.message || '接続エラー' };
+    return { valid: false, error: safeMessage || '接続エラー' };
   }
 };
 

@@ -191,7 +191,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
           <div className="flex items-center gap-2">
             <Key size={18} className="text-slate-500 shrink-0" />
             <input
-              type="text"
+              type="password"
               value={apiKey}
               onChange={(e) => {
                 setApiKey(e.target.value);
