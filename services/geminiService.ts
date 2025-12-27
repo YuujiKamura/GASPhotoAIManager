@@ -126,11 +126,13 @@ export const isAutoApiEnabled = (feature: keyof AutoApiSettings): boolean => {
 };
 
 // Model Selection
-export type ModelType = 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash';
+export type ModelType = 'gemini-3.0-flash' | 'gemini-3.0-pro' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash';
 const MODEL_STORAGE_KEY = 'construction_album_model';
 
 export const AVAILABLE_MODELS: { id: ModelType; name: string; description: string }[] = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: '高速・低コスト（推奨）' },
+  { id: 'gemini-3.0-flash', name: 'Gemini 3.0 Flash', description: '最新・高性能（推奨）' },
+  { id: 'gemini-3.0-pro', name: 'Gemini 3.0 Pro', description: '最新・最高精度' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: '高速・低コスト' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: '高精度・高コスト' },
   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: '最速・最低コスト' },
 ];
@@ -140,7 +142,7 @@ export const getSelectedModel = (): ModelType => {
   if (saved && AVAILABLE_MODELS.some(m => m.id === saved)) {
     return saved as ModelType;
   }
-  return 'gemini-2.5-flash'; // デフォルト
+  return 'gemini-3.0-flash'; // デフォルト
 };
 
 export const setSelectedModel = (model: ModelType): void => {
@@ -227,8 +229,8 @@ export const validateAllModels = async (
 
 // Get the best available model (first available in priority order)
 export const getBestAvailableModel = (availabilities: ModelAvailability[]): ModelType | null => {
-  // Priority: Flash > Pro > 2.0 Flash (balance of speed and capability)
-  const priority: ModelType[] = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+  // Priority: 3.0 Flash > 3.0 Pro > 2.5 Flash > 2.5 Pro > 2.0 Flash
+  const priority: ModelType[] = ['gemini-3.0-flash', 'gemini-3.0-pro', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
 
   for (const modelId of priority) {
     const model = availabilities.find(m => m.id === modelId);
@@ -241,10 +243,10 @@ export const getBestAvailableModel = (availabilities: ModelAvailability[]): Mode
 
 // Configuration - Use selected model dynamically
 const getPrimaryModel = () => getSelectedModel();
-const PRIMARY_MODEL = 'gemini-2.5-flash'; // Fallback, actual value comes from getPrimaryModel()
-const COMPLEX_MODEL = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemini-2.0-flash';
-const SELECTOR_MODEL = 'gemini-2.0-flash';
+const PRIMARY_MODEL = 'gemini-3.0-flash'; // Fallback, actual value comes from getPrimaryModel()
+const COMPLEX_MODEL = 'gemini-3.0-flash';
+const FALLBACK_MODEL = 'gemini-2.5-flash';
+const SELECTOR_MODEL = 'gemini-2.5-flash';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
