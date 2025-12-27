@@ -1,12 +1,15 @@
-import { PhotoRecord, AIAnalysisResult } from "../types";
+import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, PhotoCategory } from "../types";
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 3; // Version 3 handles File storage in Session Store implicitly
+const DB_VERSION = 5; // Version 5: Added analysisSessions store
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
-const STORE_RULES = 'analysisRules'; // New: Store for custom prompt rules
+const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
+const STORE_EXAMPLES = 'analysisExamples'; // Store for few-shot examples
+const STORE_SESSIONS = 'analysisSessions'; // NEW: Store for saved sessions (お手本セッション)
 const KEY_SESSION = 'currentSession';
+const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
 
 export interface AnalysisRule {
   id: string;
@@ -32,9 +35,22 @@ const openDB = (): Promise<IDBDatabase> => {
         db.createObjectStore(STORE_CACHE);
       }
 
-      // New Store for Rules
+      // Store for Rules
       if (!db.objectStoreNames.contains(STORE_RULES)) {
         db.createObjectStore(STORE_RULES, { keyPath: 'id' });
+      }
+
+      // Store for Few-shot Examples (お手本)
+      if (!db.objectStoreNames.contains(STORE_EXAMPLES)) {
+        const examplesStore = db.createObjectStore(STORE_EXAMPLES, { keyPath: 'id' });
+        examplesStore.createIndex('category', 'category', { unique: false });
+        examplesStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+
+      // NEW: Store for saved sessions (お手本セッション)
+      if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
+        const sessionsStore = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
+        sessionsStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
@@ -213,6 +229,336 @@ export const deleteRule = async (id: string): Promise<void> => {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+};
+
+// --- Examples Management (お手本 - Few-shot Examples) ---
+
+/**
+ * 解析例（お手本）を保存
+ * PhotoRecordから必要な情報を抽出してExampleを作成
+ */
+export const saveExample = async (
+  record: PhotoRecord,
+  name: string,
+  tags?: string[]
+): Promise<AnalysisExample> => {
+  if (!record.analysis) {
+    throw new Error('解析結果がありません');
+  }
+
+  const example: AnalysisExample = {
+    id: `ex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    thumbnail: record.base64, // 既にリサイズ済みのbase64を使用
+    analysis: { ...record.analysis },
+    category: detectPhotoCategory(record.analysis),
+    tags: tags || [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.put(example);
+    request.onsuccess = () => resolve(example);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 解析結果から写真区分を推定
+ */
+const detectPhotoCategory = (analysis: AIAnalysisResult): PhotoCategory => {
+  const remarks = analysis.remarks?.toLowerCase() || '';
+
+  if (remarks.includes('着手前') || remarks.includes('竣工') || remarks.includes('完成')) {
+    return '着手前及び完成写真';
+  }
+  if (remarks.includes('状況') && !remarks.includes('出来形')) {
+    return '施工状況写真';
+  }
+  if (remarks.includes('出来形') || analysis.measurements) {
+    return '出来形管理写真';
+  }
+  if (remarks.includes('安全') || remarks.includes('朝礼') || remarks.includes('KY')) {
+    return '安全管理写真';
+  }
+  if (remarks.includes('材料')) {
+    return '使用材料写真';
+  }
+  if (remarks.includes('品質')) {
+    return '品質管理写真';
+  }
+
+  return 'その他';
+};
+
+/**
+ * すべてのお手本を取得
+ */
+export const getExamples = async (): Promise<AnalysisExample[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const examples = request.result as AnalysisExample[];
+      // 作成日時の降順でソート（新しい順）
+      examples.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(examples);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * カテゴリーでフィルタしてお手本を取得
+ */
+export const getExamplesByCategory = async (category: PhotoCategory): Promise<AnalysisExample[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const index = store.index('category');
+    const request = index.getAll(category);
+    request.onsuccess = () => resolve(request.result as AnalysisExample[]);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * お手本を更新
+ */
+export const updateExample = async (example: AnalysisExample): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.put({ ...example, updatedAt: Date.now() });
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * お手本を削除
+ */
+export const deleteExample = async (id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * すべてのお手本をクリア
+ */
+export const clearExamples = async (): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 解析に使用するお手本を選択
+ * アクティブなセッションがあればそのセッションの例を返す
+ * なければ全体からスコアリングで選択
+ */
+export const getRelevantExamples = async (
+  workType?: string,
+  category?: PhotoCategory,
+  limit: number = 3
+): Promise<AnalysisExample[]> => {
+  // まずアクティブなセッションをチェック
+  const activeSessionId = getActiveSessionId();
+  if (activeSessionId) {
+    const session = await getSession(activeSessionId);
+    if (session && session.examples.length > 0) {
+      // セッション内からスコアリング
+      const scored = session.examples.map(ex => {
+        let score = 0;
+        if (category && ex.category === category) score += 3;
+        if (workType && ex.analysis.workType === workType) score += 2;
+        score += 1;
+        return { example: ex, score };
+      });
+      return scored
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(s => s.example);
+    }
+  }
+
+  // アクティブセッションがなければ全体から
+  const all = await getExamples();
+  if (all.length === 0) return [];
+
+  const scored = all.map(ex => {
+    let score = 0;
+    if (category && ex.category === category) score += 3;
+    if (workType && ex.analysis.workType === workType) score += 2;
+    score += 1;
+    return { example: ex, score };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(s => s.example);
+};
+
+// --- Session Management (お手本セッション) ---
+
+/**
+ * 現在のセッション（写真一覧）をお手本セッションとして保存
+ */
+export const saveCurrentSessionAsExample = async (
+  records: PhotoRecord[],
+  name: string,
+  description?: string
+): Promise<AnalysisSession> => {
+  const analyzedRecords = records.filter(r => r.analysis && r.status === 'done');
+  if (analyzedRecords.length === 0) {
+    throw new Error('解析済みの写真がありません');
+  }
+
+  const now = Date.now();
+  const examples: AnalysisExample[] = analyzedRecords.map((record, i) => ({
+    id: `ex_${now}_${i}`,
+    name: `${record.analysis!.workType || ''} - ${record.analysis!.remarks || record.fileName}`,
+    thumbnail: record.base64,
+    analysis: { ...record.analysis! },
+    category: detectPhotoCategory(record.analysis!),
+    tags: [],
+    createdAt: now,
+    updatedAt: now
+  }));
+
+  const session: AnalysisSession = {
+    id: `session_${now}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    description,
+    examples,
+    photoCount: examples.length,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.put(session);
+    request.onsuccess = () => resolve(session);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 保存されたセッション一覧を取得
+ */
+export const getSessions = async (): Promise<AnalysisSession[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readonly');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const sessions = request.result as AnalysisSession[];
+      sessions.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(sessions);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 特定のセッションを取得
+ */
+export const getSession = async (id: string): Promise<AnalysisSession | null> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readonly');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.get(id);
+    request.onsuccess = () => resolve(request.result as AnalysisSession || null);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * セッションを削除
+ */
+export const deleteSession = async (id: string): Promise<void> => {
+  const db = await openDB();
+  // アクティブだった場合はクリア
+  if (getActiveSessionId() === id) {
+    clearActiveSession();
+  }
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 全セッションをクリア
+ */
+export const clearSessions = async (): Promise<void> => {
+  clearActiveSession();
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * アクティブなお手本セッションを設定
+ */
+export const setActiveSession = (sessionId: string): void => {
+  localStorage.setItem(KEY_ACTIVE_SESSION, sessionId);
+};
+
+/**
+ * アクティブなお手本セッションIDを取得
+ */
+export const getActiveSessionId = (): string | null => {
+  return localStorage.getItem(KEY_ACTIVE_SESSION);
+};
+
+/**
+ * アクティブなお手本セッションをクリア
+ */
+export const clearActiveSession = (): void => {
+  localStorage.removeItem(KEY_ACTIVE_SESSION);
+};
+
+/**
+ * アクティブなセッションの情報を取得（表示用）
+ */
+export const getActiveSession = async (): Promise<AnalysisSession | null> => {
+  const id = getActiveSessionId();
+  if (!id) return null;
+  return getSession(id);
 };
 
 // --- Export / Import Utilities ---

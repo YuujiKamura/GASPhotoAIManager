@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { Database, Trash2, Wand2 } from 'lucide-react';
+import { Database, Trash2, Wand2, Star } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
+import { saveExample } from '../utils/storage';
 
 interface Props {
   records: PhotoRecord[];
@@ -120,6 +121,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [isSavingExample, setIsSavingExample] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -143,6 +145,36 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const executeDelete = () => {
     if (contextMenu && onDeletePhoto) {
       onDeletePhoto(contextMenu.targetFileName);
+      setContextMenu(null);
+    }
+  };
+
+  const executeSaveAsExample = async () => {
+    if (!contextMenu) return;
+
+    const record = records.find(r => r.fileName === contextMenu.targetFileName);
+    if (!record?.analysis) {
+      alert(lang === 'ja' ? '解析結果がありません' : 'No analysis result');
+      setContextMenu(null);
+      return;
+    }
+
+    setIsSavingExample(true);
+    try {
+      const exampleName = prompt(
+        lang === 'ja' ? 'お手本の名前を入力してください:' : 'Enter a name for this example:',
+        `${record.analysis.workType || ''} - ${record.analysis.remarks || record.fileName}`
+      );
+
+      if (exampleName) {
+        await saveExample(record, exampleName);
+        alert(lang === 'ja' ? 'お手本として保存しました' : 'Saved as example');
+      }
+    } catch (e) {
+      console.error('Failed to save example:', e);
+      alert(lang === 'ja' ? '保存に失敗しました' : 'Failed to save');
+    } finally {
+      setIsSavingExample(false);
       setContextMenu(null);
     }
   };
@@ -325,6 +357,14 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
           >
             <Wand2 className="w-4 h-4" />
             {lang === 'ja' ? 'この画像を再解析' : 'Re-analyze Photo'}
+          </button>
+          <button
+            onClick={executeSaveAsExample}
+            disabled={isSavingExample}
+            className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2 disabled:opacity-50"
+          >
+            <Star className="w-4 h-4" />
+            {lang === 'ja' ? 'お手本として保存' : 'Save as Example'}
           </button>
           <button
             onClick={executeDelete}

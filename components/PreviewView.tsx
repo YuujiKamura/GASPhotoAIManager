@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical, Star } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
+import ExamplesModal from './ExamplesModal';
 import { generateZip } from '../utils/zipGenerator';
 
 // Declare html2pdf and saveAs
@@ -90,6 +91,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
   const [draggedPhotoIndex, setDraggedPhotoIndex] = useState<number | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [showExamplesModal, setShowExamplesModal] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -403,19 +405,24 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                     </button>
 
                     {/* Settings Section */}
+                    <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 border-t mt-1">
+                      {lang === 'ja' ? '設定' : 'Settings'}
+                    </div>
+                    <button
+                      onClick={() => { setShowExamplesModal(true); setShowToolsMenu(false); }}
+                      className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-amber-600 flex items-center gap-2 transition-colors"
+                    >
+                      <Star className="w-4 h-4 text-amber-400" />
+                      {lang === 'ja' ? 'お手本管理' : 'Examples'}
+                    </button>
                     {onOpenMasterEditor && (
-                      <>
-                        <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 border-t mt-1">
-                          {lang === 'ja' ? '設定' : 'Settings'}
-                        </div>
-                        <button
-                          onClick={() => { onOpenMasterEditor(); setShowToolsMenu(false); }}
-                          className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-slate-600 flex items-center gap-2 transition-colors"
-                        >
-                          <Settings className="w-4 h-4 text-slate-400" />
-                          {lang === 'ja' ? 'マスタ管理' : 'Master Data'}
-                        </button>
-                      </>
+                      <button
+                        onClick={() => { onOpenMasterEditor(); setShowToolsMenu(false); }}
+                        className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-slate-600 flex items-center gap-2 transition-colors"
+                      >
+                        <Settings className="w-4 h-4 text-slate-400" />
+                        {lang === 'ja' ? 'マスタ管理' : 'Master Data'}
+                      </button>
                     )}
                   </div>
                 )}
@@ -612,7 +619,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          )}
          
          {/* Console Panel Component */}
-         <ConsolePanel 
+         <ConsolePanel
            logs={logs}
            isOpen={showConsole}
            onToggle={() => setShowConsole(!showConsole)}
@@ -621,6 +628,14 @@ const PreviewView: React.FC<PreviewViewProps> = ({
            onSendInstruction={onSendInstruction}
          />
       </div>
+
+      {/* Examples Modal */}
+      <ExamplesModal
+        isOpen={showExamplesModal}
+        onClose={() => setShowExamplesModal(false)}
+        lang={lang}
+        currentPhotos={photos}
+      />
     </div>
   );
 };

@@ -1,8 +1,9 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
+import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
+import { getRelevantExamples, getActiveSession } from "../utils/storage";
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -170,6 +171,37 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
+};
+
+/**
+ * お手本をプロンプト用のテキストに整形
+ * Few-shot examples として AI に渡す
+ */
+const formatExamplesForPrompt = (examples: AnalysisExample[]): string => {
+  if (examples.length === 0) return '';
+
+  const exampleTexts = examples.map((ex, i) => {
+    const a = ex.analysis;
+    return `
+Example ${i + 1}: "${ex.name}"
+- workType: "${a.workType}"
+- variety: "${a.variety || ''}"
+- detail: "${a.detail || ''}"
+- station: "${a.station}"
+- remarks: "${a.remarks}"
+- description: "${a.description}"
+- hasBoard: ${a.hasBoard}
+`.trim();
+  });
+
+  return `
+--- FEW-SHOT EXAMPLES (お手本) ---
+The following are correct examples of analysis output. Use them as reference for similar photos:
+
+${exampleTexts.join('\n\n')}
+
+--- END EXAMPLES ---
+`;
 };
 
 export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
@@ -788,7 +820,29 @@ export const analyzePhotoBatch = async (
   const prepTime = performance.now() - prepStartTime;
   onLog?.(`[PROFILER] Image prep: ${formatDuration(prepTime)}`, "info");
 
+  // Fetch relevant examples (お手本) for few-shot learning
+  let examplesPrompt = "";
+  if (appMode === 'construction') {
+    try {
+      // アクティブなセッションを確認してログに表示
+      const activeSession = await getActiveSession();
+      if (activeSession) {
+        onLog?.(`[EXAMPLES] お手本セッション適用中: "${activeSession.name}" (${activeSession.photoCount}枚)`, "info");
+      }
+
+      const examples = await getRelevantExamples(undefined, undefined, 5); // セッションから最大5件
+      if (examples.length > 0) {
+        examplesPrompt = formatExamplesForPrompt(examples);
+        onLog?.(`[EXAMPLES] ${examples.length}件のお手本をプロンプトに適用`, "success");
+      }
+    } catch (e) {
+      // Examples are optional, continue without them
+      console.warn('Failed to load examples:', e);
+    }
+  }
+
   const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy);
+  const fullSystemPrompt = examplesPrompt ? `${systemPrompt}\n\n${examplesPrompt}` : systemPrompt;
 
   // Context relay: Build context hint from previously analyzed photos in this batch
   let contextHint = "";
@@ -851,7 +905,7 @@ export const analyzePhotoBatch = async (
           { role: 'user', parts: [...inputs, { text: prompt }] }
         ],
         config: {
-          systemInstruction: systemPrompt,
+          systemInstruction: fullSystemPrompt,
           responseMimeType: "application/json",
           responseSchema: schema,
           temperature: 0.1
