@@ -415,6 +415,34 @@ export default function App() {
         return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
       }
 
+      case 'by_detail_safety_first': {
+        const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
+        const others = records.filter(r => !isSafetyPhoto(r));
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        others.forEach(r => {
+          const key = r.analysis?.detail || r.analysis?.variety || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        const sortedKeys = Object.keys(groups).sort();
+        const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+        return [...safety, ...sortedOthers];
+      }
+
+      case 'by_detail_safety_last': {
+        const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
+        const others = records.filter(r => !isSafetyPhoto(r));
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        others.forEach(r => {
+          const key = r.analysis?.detail || r.analysis?.variety || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        const sortedKeys = Object.keys(groups).sort();
+        const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+        return [...sortedOthers, ...safety];
+      }
+
       case 'by_worktype': {
         const groups: { [key: string]: PhotoRecord[] } = {};
         records.forEach(r => {
@@ -424,6 +452,34 @@ export default function App() {
         });
         const sortedKeys = Object.keys(groups).sort();
         return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+      }
+
+      case 'by_worktype_safety_first': {
+        const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
+        const others = records.filter(r => !isSafetyPhoto(r));
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        others.forEach(r => {
+          const key = r.analysis?.workType || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        const sortedKeys = Object.keys(groups).sort();
+        const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+        return [...safety, ...sortedOthers];
+      }
+
+      case 'by_worktype_safety_last': {
+        const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
+        const others = records.filter(r => !isSafetyPhoto(r));
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        others.forEach(r => {
+          const key = r.analysis?.workType || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        const sortedKeys = Object.keys(groups).sort();
+        const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
+        return [...sortedOthers, ...safety];
       }
 
       default:
