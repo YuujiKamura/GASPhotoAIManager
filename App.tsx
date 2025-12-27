@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey } from './services/geminiService';
@@ -85,8 +85,8 @@ export default function App() {
   const [fsCacheEnabled, setFsCacheEnabled] = useState(false);
   const [fsCacheStats, setFsCacheStats] = useState<{ totalFiles: number; lastUpdated: string } | null>(null);
 
-  // Analysis Abort Control
-  const [shouldAbortAnalysis, setShouldAbortAnalysis] = useState(false);
+  // Analysis Abort Control (useRef to avoid stale closure issues)
+  const shouldAbortRef = useRef(false);
 
   // Detect Language
   useEffect(() => {
@@ -142,7 +142,7 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isProcessing) {
-        setShouldAbortAnalysis(true);
+        shouldAbortRef.current = true;
         addLog("ESC pressed - aborting analysis...", 'info');
       }
     };
@@ -777,7 +777,7 @@ export default function App() {
 
   const startAnalysisPipeline = async (files: File[], instruction: string, useCache: boolean) => {
     setIsProcessing(true);
-    setShouldAbortAnalysis(false); // Reset abort flag
+    shouldAbortRef.current = false; // Reset abort flag
     setErrorMsg(null);
     setSuccessMsg(null);
     clearLogs();
@@ -969,7 +969,7 @@ export default function App() {
                   apiKey,
                   addLog,
                   logIndividualResult,
-                  () => shouldAbortAnalysis
+                  () => shouldAbortRef.current
                 );
 
                 return batch.map(record => {
@@ -1101,7 +1101,7 @@ export default function App() {
               apiKey,
               addLog,
               logIndividualResult,
-              () => shouldAbortAnalysis
+              () => shouldAbortRef.current
             );
 
             return batch.map(record => {
@@ -1183,7 +1183,7 @@ export default function App() {
     } catch (e: any) {
       console.error(e);
       setErrorMsg("Refine failed: " + e.message);
-      setShouldAbortAnalysis(false); // Reset abort flag
+      shouldAbortRef.current = false; // Reset abort flag
     }
   };
 
@@ -1191,7 +1191,7 @@ export default function App() {
     setIsProcessing(true);
     setCurrentStep(`Re-analyzing ${fileName}...`);
     clearLogs();
-    setShouldAbortAnalysis(false);
+    shouldAbortRef.current = false;
 
     try {
       const target = photos.find(p => p.fileName === fileName);
@@ -1205,7 +1205,7 @@ export default function App() {
         apiKey,
         addLog,
         logIndividualResult,
-        () => shouldAbortAnalysis,
+        () => shouldAbortRef.current,
         (reasoningText) => {
           setCurrentStep(`Thinking: ${reasoningText.slice(0, 100)}${reasoningText.length > 100 ? '...' : ''}`);
         }
@@ -1328,7 +1328,7 @@ export default function App() {
         fsCacheEnabled={fsCacheEnabled}
         fsCacheStats={fsCacheStats}
         onClearLogs={clearLogs}
-        onGoHome={() => { setShouldAbortAnalysis(true); setShowPreview(false); setInitialLayout(3); }}
+        onGoHome={() => { shouldAbortRef.current = true; setShowPreview(false); setInitialLayout(3); }}
         onCloseProject={handleCloseProject}
         onRefine={() => setShowRefineModal(true)}
         onExportExcel={(layout) => generateExcel(photos, appMode, layout)}
