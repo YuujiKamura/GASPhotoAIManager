@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, Replace, Search, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { PhotoRecord } from '../types';
 
@@ -19,8 +19,14 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
   const [replaceText, setReplaceText] = useState('');
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set());
 
+  // Debug: Log props on mount
+  console.log('[DEBUG StationReplaceModal] photos received:', photos.length);
+  console.log('[DEBUG StationReplaceModal] photos with station:',
+    photos.filter(p => p.analysis?.station).length);
+
   // Get unique stations with their counts
   const stationStats = useMemo(() => {
+    console.log('[DEBUG stationStats] Computing for', photos.length, 'photos');
     const stats = new Map<string, { count: number; fileNames: string[] }>();
     photos.forEach(photo => {
       const station = photo.analysis?.station || '';
@@ -33,9 +39,11 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
         s.fileNames.push(photo.fileName);
       }
     });
-    return Array.from(stats.entries())
+    const result = Array.from(stats.entries())
       .map(([station, data]) => ({ station, ...data }))
       .sort((a, b) => b.count - a.count);
+    console.log('[DEBUG stationStats] Found stations:', result.map(r => `"${r.station}" (${r.count})`));
+    return result;
   }, [photos]);
 
   // Preview replacements
@@ -51,6 +59,18 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
     });
     return replacements;
   }, [searchText, replaceText, stationStats]);
+
+  // Auto-select all matching stations when search text changes
+  useEffect(() => {
+    if (previewReplacements.length > 0) {
+      const matching = new Set<string>();
+      previewReplacements.forEach(r => matching.add(r.original));
+      setSelectedStations(matching);
+      console.log('[DEBUG] Auto-selected', matching.size, 'stations');
+    } else {
+      setSelectedStations(new Set());
+    }
+  }, [previewReplacements]);
 
   // Handle select all matching
   const handleSelectAllMatching = () => {
@@ -72,9 +92,14 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
 
   // Apply replacements
   const handleApply = () => {
+    console.log('[DEBUG handleApply] Called');
+    console.log('[DEBUG handleApply] selectedStations:', Array.from(selectedStations));
+    console.log('[DEBUG handleApply] previewReplacements:', previewReplacements);
+
     const replacements: Array<{ fileName: string; newStation: string }> = [];
 
     previewReplacements.forEach(({ original, replaced, fileNames }) => {
+      console.log(`[DEBUG] Checking "${original}" - selected: ${selectedStations.has(original)}`);
       if (selectedStations.has(original)) {
         fileNames.forEach(fileName => {
           replacements.push({ fileName, newStation: replaced });
@@ -82,9 +107,14 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
       }
     });
 
+    console.log('[DEBUG handleApply] Final replacements:', replacements);
+
     if (replacements.length > 0) {
+      console.log('[DEBUG handleApply] Calling onReplace with', replacements.length, 'items');
       onReplace(replacements);
       onClose();
+    } else {
+      console.warn('[DEBUG handleApply] No replacements to apply - nothing selected?');
     }
   };
 
