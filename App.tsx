@@ -8,6 +8,7 @@ import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, 
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
+import { learnFromOrder, getLearnedOrderValue } from './utils/learnedSortOrder';
 
 // Components
 import UploadView from './components/UploadView';
@@ -296,6 +297,17 @@ export default function App() {
     }
   };
 
+  // 並べ替え後の順序を学習して保存
+  const handleReorderPhotos = (reorderedPhotos: PhotoRecord[]) => {
+    // 順序を学習（detail値の順序を記録）
+    const orderedDetails = reorderedPhotos.map(p => p.analysis?.detail || p.analysis?.variety || '');
+    learnFromOrder(orderedDetails);
+
+    // 写真の順序を更新
+    setPhotos(reorderedPhotos);
+    addLog(`順序を学習しました: ${orderedDetails.filter(d => d).join(' → ')}`, 'info');
+  };
+
   const handleUpdatePhoto = (fileName: string, field: keyof AIAnalysisResult, value: string) => {
     setPhotos(prev => prev.map(p => {
       if (p.fileName === fileName && p.analysis) {
@@ -414,10 +426,13 @@ export default function App() {
           if (!groups[key]) groups[key] = [];
           groups[key].push(r);
         });
-        // マスタ順でソート（マスタにないものは末尾）
+        // マスタ順でソート、マッチしない場合は学習済み順序を使用
         const sortedKeys = Object.keys(groups).sort((a, b) => {
-          const orderA = detailOrder.get(a) ?? 9999;
-          const orderB = detailOrder.get(b) ?? 9999;
+          const masterOrderA = detailOrder.get(a);
+          const masterOrderB = detailOrder.get(b);
+          // マスタにある場合はマスタ順、なければ学習済み順序を使用
+          const orderA = masterOrderA ?? (5000 + getLearnedOrderValue(a));
+          const orderB = masterOrderB ?? (5000 + getLearnedOrderValue(b));
           return orderA - orderB;
         });
         return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
@@ -433,10 +448,12 @@ export default function App() {
           if (!groups[key]) groups[key] = [];
           groups[key].push(r);
         });
-        // マスタ順でソート
+        // マスタ順でソート、マッチしない場合は学習済み順序を使用
         const sortedKeys = Object.keys(groups).sort((a, b) => {
-          const orderA = detailOrderSF.get(a) ?? 9999;
-          const orderB = detailOrderSF.get(b) ?? 9999;
+          const masterOrderA = detailOrderSF.get(a);
+          const masterOrderB = detailOrderSF.get(b);
+          const orderA = masterOrderA ?? (5000 + getLearnedOrderValue(a));
+          const orderB = masterOrderB ?? (5000 + getLearnedOrderValue(b));
           return orderA - orderB;
         });
         const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
@@ -453,10 +470,12 @@ export default function App() {
           if (!groups[key]) groups[key] = [];
           groups[key].push(r);
         });
-        // マスタ順でソート
+        // マスタ順でソート、マッチしない場合は学習済み順序を使用
         const sortedKeys = Object.keys(groups).sort((a, b) => {
-          const orderA = detailOrderSL.get(a) ?? 9999;
-          const orderB = detailOrderSL.get(b) ?? 9999;
+          const masterOrderA = detailOrderSL.get(a);
+          const masterOrderB = detailOrderSL.get(b);
+          const orderA = masterOrderA ?? (5000 + getLearnedOrderValue(a));
+          const orderB = masterOrderB ?? (5000 + getLearnedOrderValue(b));
           return orderA - orderB;
         });
         const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
@@ -1442,6 +1461,7 @@ export default function App() {
         onReanalyzePhoto={handleSingleReanalysis}
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
         onOpenMasterEditor={() => setShowMasterEditor(true)}
+        onReorderPhotos={handleReorderPhotos}
       />
       )}
 
