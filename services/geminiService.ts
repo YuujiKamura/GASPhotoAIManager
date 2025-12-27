@@ -829,11 +829,23 @@ export const analyzePhotoBatch = async (
 
       // Apply context relay: inherit station, variety, and workType from previous photos
       // This ensures continuity across sequential photos (e.g., 未舗装部舗装工 persists)
+      // BUT: Do NOT apply to safety management photos (they legitimately have empty workType)
+      const isSafetyRemarks = (remarks: string) => {
+        const safetyKeywords = ['朝礼', 'KY', '安全', '新規入場', '点灯', '巡視'];
+        return safetyKeywords.some(kw => remarks.includes(kw));
+      };
+
       let lastKnownStation = "";
       let lastKnownVariety = "";
       let lastKnownWorkType = "";
       const finalResults = matchedResults.map((res) => {
-        // Apply context relay for empty fields
+        // Safety management photos should keep empty workType/variety
+        if (isSafetyRemarks(res.remarks || '')) {
+          // Don't inherit - keep original empty values
+          return res;
+        }
+
+        // Apply context relay for empty fields (non-safety photos only)
         const station = res.station || lastKnownStation;
         const variety = res.variety || lastKnownVariety;
         const workType = res.workType || lastKnownWorkType;
