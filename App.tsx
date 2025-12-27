@@ -351,58 +351,33 @@ export default function App() {
   };
 
   /**
-   * Sorts photos based on Scene ID or Station.
-   * This is the "Loose" sort used for initial display.
+   * Sorts photos by time first, then by scene/station.
+   * Time is the primary sort key to maintain chronological order.
    */
   const sortPhotosLogical = (records: PhotoRecord[]): PhotoRecord[] => {
-    const groups: { [key: string]: PhotoRecord[] } = {};
-    const orphans: PhotoRecord[] = [];
+    // 時間優先ソート：まず日時でソートし、同時刻帯はフェーズで調整
+    return [...records].sort((a, b) => {
+      const dateA = a.date || 0;
+      const dateB = b.date || 0;
 
-    records.forEach(r => {
-      let key = r.analysis?.sceneId;
-      if (!key) {
-        const station = normalizeStationName(r.analysis?.station);
-        if (station && station !== "UNKNOWN") {
-          key = "STATION_" + station;
-        }
-      }
+      // 5分以内の写真は同時刻帯とみなす
+      const TIME_WINDOW = 5 * 60 * 1000; // 5 minutes
+      const timeDiff = Math.abs(dateA - dateB);
 
-      if (key) {
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(r);
-      } else {
-        orphans.push(r);
-      }
-    });
+      if (timeDiff <= TIME_WINDOW) {
+        // 同時刻帯の場合：測点→フェーズ順
+        const stationA = normalizeStationName(a.analysis?.station) || "ZZZ";
+        const stationB = normalizeStationName(b.analysis?.station) || "ZZZ";
+        if (stationA !== stationB) return stationA.localeCompare(stationB);
 
-    const sortGroup = (group: PhotoRecord[]) => {
-      return group.sort((a, b) => {
         const scoreA = getPhaseScore(a);
         const scoreB = getPhaseScore(b);
         if (scoreA !== scoreB) return scoreA - scoreB;
-        return (a.date || 0) - (b.date || 0);
-      });
-    };
+      }
 
-    Object.keys(groups).forEach(key => {
-      groups[key] = sortGroup(groups[key]);
+      // 時間順
+      return dateA - dateB;
     });
-
-    const groupKeys = Object.keys(groups).sort((keyA, keyB) => {
-      const groupA = groups[keyA];
-      const groupB = groups[keyB];
-      const maxDateA = Math.max(...groupA.map(r => r.date || 0));
-      const maxDateB = Math.max(...groupB.map(r => r.date || 0));
-      return maxDateA - maxDateB;
-    });
-
-    const sorted: PhotoRecord[] = [];
-    groupKeys.forEach(key => {
-      sorted.push(...groups[key]);
-    });
-    sorted.push(...orphans.sort((a, b) => (a.date || 0) - (b.date || 0)));
-
-    return sorted;
   };
 
   /**
