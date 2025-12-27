@@ -18,7 +18,8 @@ import ApiKeySetup from './components/ApiKeySetup';
 // Declare saveAs for export
 declare const saveAs: any;
 
-const DEFAULT_BATCH_SIZE = 3;
+const DEFAULT_BATCH_SIZE = 6;
+const PARALLEL_BATCHES = 2; // 同時実行バッチ数
 const MAX_PHOTOS = 30;
 
 type PendingFile = { file: File, date: number };
@@ -826,47 +827,56 @@ export default function App() {
 
           setInitialLayout(2); // 2-upレイアウトに自動切り替え
         } else {
-          // 黒板ありモード：従来の詳細解析
+          // 黒板ありモード：従来の詳細解析（並列バッチ処理）
           const batchSize = DEFAULT_BATCH_SIZE;
+
+          // バッチに分割
+          const batches: PhotoRecord[][] = [];
           for (let i = 0; i < pendingPhotos.length; i += batchSize) {
-            const batch = pendingPhotos.slice(i, i + batchSize);
-            setCurrentStep(`${txt.analyzing} (${i + 1}/${pendingPhotos.length})`);
+            batches.push(pendingPhotos.slice(i, i + batchSize));
+          }
 
-            try {
-              const results = await analyzePhotoBatch(
-                batch,
-                instruction,
-                batchSize,
-                appMode,
-                apiKey,
-                addLog,
-                logIndividualResult,
-                () => shouldAbortAnalysis
-              );
+          // PARALLEL_BATCHES個ずつ並列実行
+          for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+            const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
+            const processedCount = i * batchSize;
+            setCurrentStep(`${txt.analyzing} (${processedCount + 1}/${pendingPhotos.length}) - ${parallelBatches.length}並列`);
 
-              const updatedBatch = batch.map(record => {
-                const res = results.find(r => r.fileName === record.fileName);
-                if (res) {
-                  cacheAnalysis(record, res).catch(console.error);
-                  return { ...record, analysis: res, status: 'done' as const };
-                }
-                return { ...record, status: 'error' as const };
-              });
+            const batchPromises = parallelBatches.map(async (batch, idx) => {
+              try {
+                const results = await analyzePhotoBatch(
+                  batch,
+                  instruction,
+                  batchSize,
+                  appMode,
+                  apiKey,
+                  addLog,
+                  logIndividualResult,
+                  () => shouldAbortAnalysis
+                );
 
-              setPhotos(prev => prev.map(p => {
-                const updated = updatedBatch.find(u => u.fileName === p.fileName);
-                return updated || p;
-              }));
-            } catch (e: any) {
-              console.error("Batch failed", e);
-              addLog(`Batch analysis failed: ${e.message}`, 'error');
-              setPhotos(prev => prev.map(p => {
-                if (batch.find(b => b.fileName === p.fileName)) {
-                  return { ...p, status: 'error' as const };
-                }
-                return p;
-              }));
-            }
+                return batch.map(record => {
+                  const res = results.find(r => r.fileName === record.fileName);
+                  if (res) {
+                    cacheAnalysis(record, res).catch(console.error);
+                    return { ...record, analysis: res, status: 'done' as const };
+                  }
+                  return { ...record, status: 'error' as const };
+                });
+              } catch (e: any) {
+                console.error(`Batch ${i + idx} failed`, e);
+                addLog(`Batch analysis failed: ${e.message}`, 'error');
+                return batch.map(record => ({ ...record, status: 'error' as const }));
+              }
+            });
+
+            const batchResults = await Promise.all(batchPromises);
+            const allUpdated = batchResults.flat();
+
+            setPhotos(prev => prev.map(p => {
+              const updated = allUpdated.find(u => u.fileName === p.fileName);
+              return updated || p;
+            }));
           }
         }
       }
@@ -950,53 +960,64 @@ export default function App() {
       const targets = photos.filter(p => targetFileNames.includes(p.fileName));
       let updatedTargets: PhotoRecord[] = [];
 
+      // バッチに分割
+      const batches: PhotoRecord[][] = [];
       for (let i = 0; i < targets.length; i += batchSize) {
-        const batch = targets.slice(i, i + batchSize);
-        setCurrentStep(`${txt.analyzing} (${i + 1}/${targets.length})`);
+        batches.push(targets.slice(i, i + batchSize));
+      }
 
-        try {
-          const results = await analyzePhotoBatch(
-            batch,
-            instruction === "__REANALYZE__" ? "" : instruction,
-            batchSize,
-            appMode,
-            apiKey,
-            addLog,
-            logIndividualResult,
-            () => shouldAbortAnalysis
-          );
+      // PARALLEL_BATCHES個ずつ並列実行
+      for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+        const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
+        const processedCount = i * batchSize;
+        setCurrentStep(`${txt.analyzing} (${processedCount + 1}/${targets.length}) - ${parallelBatches.length}並列`);
 
-          const processedBatch = batch.map(record => {
-            const res = results.find(r => r.fileName === record.fileName);
-            if (res) {
-              let finalAnalysis = res;
+        const batchPromises = parallelBatches.map(async (batch) => {
+          try {
+            const results = await analyzePhotoBatch(
+              batch,
+              instruction === "__REANALYZE__" ? "" : instruction,
+              batchSize,
+              appMode,
+              apiKey,
+              addLog,
+              logIndividualResult,
+              () => shouldAbortAnalysis
+            );
 
-              // Preserve Edited Fields
-              if (record.analysis?.editedFields) {
-                finalAnalysis = { ...res, editedFields: record.analysis.editedFields };
-                record.analysis.editedFields.forEach(field => {
-                  // @ts-ignore
-                  finalAnalysis[field] = record.analysis![field];
-                });
+            return batch.map(record => {
+              const res = results.find(r => r.fileName === record.fileName);
+              if (res) {
+                let finalAnalysis = res;
+
+                // Preserve Edited Fields
+                if (record.analysis?.editedFields) {
+                  finalAnalysis = { ...res, editedFields: record.analysis.editedFields };
+                  record.analysis.editedFields.forEach(field => {
+                    // @ts-ignore
+                    finalAnalysis[field] = record.analysis![field];
+                  });
+                }
+                // Preserve SceneID if it exists (so we don't break pairing)
+                if (record.analysis?.sceneId) {
+                  finalAnalysis.sceneId = record.analysis.sceneId;
+                  finalAnalysis.phase = record.analysis.phase;
+                  finalAnalysis.visualAnchors = record.analysis.visualAnchors; // Preserve anchors
+                }
+
+                cacheAnalysis(record, finalAnalysis).catch(console.error);
+                return { ...record, analysis: finalAnalysis, status: 'done' as const };
               }
-              // Preserve SceneID if it exists (so we don't break pairing)
-              if (record.analysis?.sceneId) {
-                finalAnalysis.sceneId = record.analysis.sceneId;
-                finalAnalysis.phase = record.analysis.phase;
-                finalAnalysis.visualAnchors = record.analysis.visualAnchors; // Preserve anchors
-              }
+              return record;
+            });
+          } catch (e: any) {
+            addLog(`Refine batch failed: ${e.message}`, 'error');
+            return batch;
+          }
+        });
 
-              cacheAnalysis(record, finalAnalysis).catch(console.error);
-              return { ...record, analysis: finalAnalysis, status: 'done' as const };
-            }
-            return record;
-          });
-          updatedTargets = [...updatedTargets, ...processedBatch];
-
-        } catch (e: any) {
-          addLog(`Refine batch failed: ${e.message}`, 'error');
-          updatedTargets = [...updatedTargets, ...batch];
-        }
+        const batchResults = await Promise.all(batchPromises);
+        updatedTargets = [...updatedTargets, ...batchResults.flat()];
       }
 
       // If refinement had station override, apply to ALL photos (including non-targets)
