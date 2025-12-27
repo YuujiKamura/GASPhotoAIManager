@@ -507,29 +507,57 @@ export const identifyTargetPhotos = async (
   }
 };
 
-export const normalizeDataConsistency = async (
+// 正規化の修正提案の型
+export interface NormalizationCorrection {
+  fileName: string;
+  workType?: string;
+  variety?: string;
+  detail?: string;
+  station?: string;
+  remarks?: string;
+}
+
+export interface NormalizationResult {
+  corrections: NormalizationCorrection[];
+  originalData: Array<{
+    fileName: string;
+    workType: string;
+    variety: string;
+    detail: string;
+    station: string;
+    remarks: string;
+  }>;
+}
+
+// 修正提案を取得（適用はしない）
+export const getNormalizationProposals = async (
   records: PhotoRecord[],
   apiKey: string,
+  customPrompt?: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
-): Promise<PhotoRecord[]> => {
-  checkAbort(shouldAbort, 'normalizeDataConsistency開始前');
+): Promise<NormalizationResult> => {
+  checkAbort(shouldAbort, 'getNormalizationProposals開始前');
 
   const completedRecords = records.filter(r => r.status === 'done' && r.analysis);
-  if (completedRecords.length === 0) return records;
+  if (completedRecords.length === 0) {
+    return { corrections: [], originalData: [] };
+  }
 
   const genAI = new GoogleGenAI({ apiKey });
 
   const dataSnapshot = completedRecords.map(r => ({
     fileName: r.fileName,
-    workType: r.analysis!.workType,
-    variety: r.analysis!.variety,
-    detail: r.analysis!.detail,
-    station: r.analysis!.station,
-    remarks: r.analysis!.remarks
+    workType: r.analysis!.workType || '',
+    variety: r.analysis!.variety || '',
+    detail: r.analysis!.detail || '',
+    station: r.analysis!.station || '',
+    remarks: r.analysis!.remarks || ''
   }));
 
-  onLog?.(`Running consistency normalization pass with ${COMPLEX_MODEL}...`, "info");
+  onLog?.(`Running consistency check with ${COMPLEX_MODEL}...`, "info");
+
+  const userInstruction = customPrompt ? `\n\n**USER INSTRUCTION:** ${customPrompt}` : '';
 
   const prompt = `
     You are a data consistency expert for construction photos.
@@ -554,6 +582,7 @@ export const normalizeDataConsistency = async (
        - Keep measurement values intact (e.g., "出荷時156℃", "t=50mm")
        - Keep specific descriptions from board photos
        - DO NOT simplify "アスファルト混合物温度測定 出荷時156℃" to just "温度測定"
+    ${userInstruction}
 
     INPUT DATA:
     ${JSON.stringify(dataSnapshot, null, 2)}
@@ -567,7 +596,7 @@ export const normalizeDataConsistency = async (
   let attempt = 0;
 
   while (attempt < MAX_RETRIES) {
-    checkAbort(shouldAbort, 'normalizeDataConsistency リトライループ');
+    checkAbort(shouldAbort, 'getNormalizationProposals リトライループ');
     try {
       const result = await genAI.models.generateContent({
         model: modelToUse,
@@ -580,58 +609,26 @@ export const normalizeDataConsistency = async (
       const text = result.text;
       if (!text) throw new Error("No text response");
 
-      trackUsage(modelToUse, prompt, text, 0, 'normalizeDataConsistency');
+      trackUsage(modelToUse, prompt, text, 0, 'getNormalizationProposals');
       const json = JSON.parse(text);
-      onLog?.("Normalization Result Received", "json", json);
+      onLog?.("Normalization proposals received", "json", json);
 
-      const corrections = json.corrections as { fileName: string, workType?: string, variety?: string, detail?: string, station: string, remarks: string }[];
+      const corrections = (json.corrections || []) as NormalizationCorrection[];
 
-      if (!corrections || corrections.length === 0) {
-        onLog?.("No consistency corrections needed.", "success");
-        return records;
-      }
-
-      // Apply corrections
-      const updatedRecords = records.map(r => {
-        const fix = corrections.find(c => c.fileName === r.fileName);
-        if (fix && r.analysis) {
-          return {
-            ...r,
-            analysis: {
-              ...r.analysis,
-              workType: fix.workType !== undefined ? fix.workType : r.analysis.workType,
-              variety: fix.variety !== undefined ? fix.variety : r.analysis.variety,
-              detail: fix.detail !== undefined ? fix.detail : r.analysis.detail,
-              station: fix.station,
-              remarks: fix.remarks
-            }
-          };
-        }
-        return r;
-      });
-
-      // マスタ外用語の検出（警告のみ、値は変更しない）
-      let unknownTermWarnings: string[] = [];
-      for (const r of updatedRecords) {
-        if (r.analysis) {
-          const warnings = detectUnknownTerms(
-            r.analysis.workType || '',
-            r.analysis.variety || '',
-            r.analysis.detail || '',
-            r.analysis.remarks || ''
-          );
-          if (warnings.length > 0) {
-            unknownTermWarnings.push(`${r.fileName}: ${warnings.join(', ')}`);
-          }
+      // マスタ外用語の検出（警告のみ）
+      for (const c of corrections) {
+        const warnings = detectUnknownTerms(
+          c.workType || '',
+          c.variety || '',
+          c.detail || '',
+          c.remarks || ''
+        );
+        if (warnings.length > 0) {
+          onLog?.(`🚨 提案に問題: ${c.fileName}: ${warnings.join(', ')}`, "error");
         }
       }
-      if (unknownTermWarnings.length > 0) {
-        onLog?.(`🚨 AI創作の可能性がある用語を検出:`, "error");
-        unknownTermWarnings.forEach(w => onLog?.(w, "error"));
-      }
 
-      onLog?.(`Applied consistency corrections to ${corrections.length} records.`, "success");
-      return updatedRecords;
+      return { corrections, originalData: dataSnapshot };
 
     } catch (e: any) {
       attempt++;
@@ -639,19 +636,53 @@ export const normalizeDataConsistency = async (
       onLog?.(`Normalization Error (${modelToUse}) - ${attempt}/${MAX_RETRIES}`, "error", e.message);
 
       if (attempt < MAX_RETRIES) {
-        // Fallback to lighter model on quota errors
         if (isQuotaError && modelToUse !== FALLBACK_MODEL) {
           modelToUse = FALLBACK_MODEL;
           onLog?.(`Rate limit hit, switching to ${FALLBACK_MODEL}`, "info");
         }
         await sleep(RETRY_DELAY_MS);
-      } else {
-        onLog?.("Normalization failed (Non-fatal)", "error");
-        return records;
       }
     }
   }
-  return records;
+
+  onLog?.("Normalization failed (Non-fatal)", "error");
+  return { corrections: [], originalData: dataSnapshot };
+};
+
+// 承認された修正を適用
+export const applyNormalizationCorrections = (
+  records: PhotoRecord[],
+  corrections: NormalizationCorrection[]
+): PhotoRecord[] => {
+  return records.map(r => {
+    const fix = corrections.find(c => c.fileName === r.fileName);
+    if (fix && r.analysis) {
+      return {
+        ...r,
+        analysis: {
+          ...r.analysis,
+          workType: fix.workType !== undefined ? fix.workType : r.analysis.workType,
+          variety: fix.variety !== undefined ? fix.variety : r.analysis.variety,
+          detail: fix.detail !== undefined ? fix.detail : r.analysis.detail,
+          station: fix.station !== undefined ? fix.station : r.analysis.station,
+          remarks: fix.remarks !== undefined ? fix.remarks : r.analysis.remarks
+        }
+      };
+    }
+    return r;
+  });
+};
+
+// 後方互換性のため残す（内部で新しい関数を使用）
+export const normalizeDataConsistency = async (
+  records: PhotoRecord[],
+  apiKey: string,
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
+  shouldAbort?: AbortChecker
+): Promise<PhotoRecord[]> => {
+  const { corrections } = await getNormalizationProposals(records, apiKey, undefined, onLog, shouldAbort);
+  if (corrections.length === 0) return records;
+  return applyNormalizationCorrections(records, corrections);
 };
 
 /**

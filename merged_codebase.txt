@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 17:22:19
+生成日時: 2025-12-27 17:37:48
 ================================================================================
 
 === ファイル一覧 ===
@@ -16,6 +16,7 @@ components/ExamplesModal.tsx
 components/LimitModal.tsx
 components/ManualPairingModal.tsx
 components/MasterEditorModal.tsx
+components/NormalizationPreviewModal.tsx
 components/PhotoAlbumView.tsx
 components/PreviewView.tsx
 components/RefineModal.tsx
@@ -53,7 +54,7 @@ vite.config.ts
 import React, { useState, useEffect, useRef } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
@@ -72,6 +73,7 @@ import UsagePanel from './components/UsagePanel';
 import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
 import StationReplaceModal from './components/StationReplaceModal';
+import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -127,6 +129,12 @@ export default function App() {
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
+
+  // Normalization approval flow
+  const [showNormalizationModal, setShowNormalizationModal] = useState(false);
+  const [normalizationProposals, setNormalizationProposals] = useState<NormalizationCorrection[]>([]);
+  const [normalizationOriginals, setNormalizationOriginals] = useState<OriginalData[]>([]);
+  const [photosForNormalization, setPhotosForNormalization] = useState<PhotoRecord[]>([]);
   // Store initial instruction if files are pending selection
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
@@ -366,6 +374,87 @@ export default function App() {
     }));
     setSuccessMsg(`${replacements.length}枚の測点を更新しました`);
     addLog(`測点を一括置換: ${replacements.length}枚`, 'success');
+  };
+
+  // --- Normalization Approval Handlers ---
+
+  const handleNormalizationApprove = (approvedCorrections: NormalizationCorrection[]) => {
+    if (approvedCorrections.length > 0) {
+      // Apply corrections using the service function
+      const corrected = applyNormalizationCorrections(photosForNormalization, approvedCorrections);
+
+      // Update photos state and cache
+      setPhotos(prev => prev.map(p => {
+        const correctedPhoto = corrected.find(c => c.fileName === p.fileName);
+        if (correctedPhoto && correctedPhoto.analysis) {
+          cacheAnalysis(correctedPhoto, correctedPhoto.analysis).catch(console.error);
+          return correctedPhoto;
+        }
+        return p;
+      }));
+
+      addLog(`${approvedCorrections.length}件の修正を適用しました`, 'success');
+      setSuccessMsg(`${approvedCorrections.length}件の修正を適用しました`);
+    } else {
+      addLog('修正をスキップしました', 'info');
+    }
+
+    // Final sort and cleanup
+    setPhotos(prev => sortPhotosLogical(prev));
+    setShowNormalizationModal(false);
+    setNormalizationProposals([]);
+    setNormalizationOriginals([]);
+    setPhotosForNormalization([]);
+  };
+
+  const handleNormalizationReject = () => {
+    addLog('全ての修正提案を却下しました', 'info');
+    setSuccessMsg('整合性チェックの修正を却下しました');
+
+    // Final sort without applying corrections
+    setPhotos(prev => sortPhotosLogical(prev));
+    setShowNormalizationModal(false);
+    setNormalizationProposals([]);
+    setNormalizationOriginals([]);
+    setPhotosForNormalization([]);
+  };
+
+  const handleNormalizationRetry = async (customPrompt: string) => {
+    if (!apiKey) return;
+
+    setShowNormalizationModal(false);
+    setIsProcessing(true);
+    setCurrentStep("カスタム指示で再解析中...");
+    addLog(`カスタム指示で再解析: "${customPrompt.substring(0, 50)}..."`, 'info');
+
+    try {
+      const result = await getNormalizationProposals(
+        photosForNormalization,
+        apiKey,
+        customPrompt,
+        addLog,
+        () => shouldAbortRef.current
+      );
+
+      if (result.corrections.length > 0) {
+        setNormalizationProposals(result.corrections);
+        addLog(`${result.corrections.length}件の新しい修正提案があります`, 'info');
+        setShowNormalizationModal(true);
+      } else {
+        addLog('修正提案なし - データは整合しています', 'success');
+        setPhotos(prev => sortPhotosLogical(prev));
+        setSuccessMsg('データは整合しています');
+        setPhotosForNormalization([]);
+        setNormalizationOriginals([]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "再解析に失敗しました");
+      addLog("再解析エラー", 'error', err);
+    } finally {
+      setIsProcessing(false);
+      setCurrentStep("");
+    }
   };
 
   // 並べ替え後の順序を学習して保存
@@ -1197,22 +1286,48 @@ export default function App() {
         }
       }
 
-      // 3. Normalize Consistency (Only for NEW records)
+      // 3. Normalize Consistency (Only for NEW records) - With user approval flow
       addLog(`=== STEP 4/4: データ整合性チェック ===`, 'info');
-      const newlyAnalyzed = photos.filter(p => !p.fromCache && p.status === 'done');
+
+      // Get current photos state using a callback to setPhotos
+      let currentPhotos: PhotoRecord[] = [];
+      setPhotos(prev => {
+        currentPhotos = prev;
+        return prev;
+      });
+      // Wait for state to be readable
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const newlyAnalyzed = currentPhotos.filter(p => !p.fromCache && p.status === 'done');
       if (newlyAnalyzed.length > 0) {
         addLog(`${newlyAnalyzed.length}枚の解析結果を正規化中...`, 'info');
         setCurrentStep("Finalizing data consistency...");
-        const normalizedNew = await normalizeDataConsistency(newlyAnalyzed, apiKey, addLog, () => shouldAbortRef.current);
 
-        setPhotos(prev => prev.map(p => {
-          const norm = normalizedNew.find(n => n.fileName === p.fileName);
-          if (norm && norm.analysis) {
-            cacheAnalysis(norm, norm.analysis).catch(console.error);
-            return norm;
-          }
-          return p;
-        }));
+        const result = await getNormalizationProposals(newlyAnalyzed, apiKey, undefined, addLog, () => shouldAbortRef.current);
+
+        if (result.corrections.length > 0) {
+          // Store for modal
+          setNormalizationProposals(result.corrections);
+          setNormalizationOriginals(newlyAnalyzed.map(p => ({
+            fileName: p.fileName,
+            workType: p.analysis?.workType || '',
+            variety: p.analysis?.variety || '',
+            detail: p.analysis?.detail || '',
+            station: p.analysis?.station || '',
+            remarks: p.analysis?.remarks || ''
+          })));
+          setPhotosForNormalization(newlyAnalyzed);
+
+          addLog(`${result.corrections.length}件の修正提案があります。ユーザー承認を待機中...`, 'info');
+          setShowNormalizationModal(true);
+
+          // Don't proceed with final sort - wait for user approval
+          setIsProcessing(false);
+          setCurrentStep("");
+          return; // Exit pipeline here, continue in approval handler
+        } else {
+          addLog('修正提案なし - データは整合しています', 'success');
+        }
       }
 
       // 4. Final Sort (Logical)
@@ -1582,6 +1697,17 @@ export default function App() {
           lang={lang}
           onClose={() => setShowStationReplace(false)}
           onReplace={handleStationReplace}
+        />
+      )}
+
+      {showNormalizationModal && (
+        <NormalizationPreviewModal
+          corrections={normalizationProposals}
+          originalData={normalizationOriginals}
+          onApprove={handleNormalizationApprove}
+          onReject={handleNormalizationReject}
+          onRetry={handleNormalizationRetry}
+          lang={lang}
         />
       )}
     </>
@@ -3474,6 +3600,238 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
 export default MasterEditorModal;
 
 === END: components/MasterEditorModal.tsx ===
+
+=== FILE: components/NormalizationPreviewModal.tsx ===
+
+import React, { useState } from 'react';
+import { X, Check, RotateCcw, AlertTriangle, ArrowRight } from 'lucide-react';
+
+export interface NormalizationCorrection {
+  fileName: string;
+  workType?: string;
+  variety?: string;
+  detail?: string;
+  station?: string;
+  remarks?: string;
+}
+
+export interface OriginalData {
+  fileName: string;
+  workType: string;
+  variety: string;
+  detail: string;
+  station: string;
+  remarks: string;
+}
+
+interface Props {
+  corrections: NormalizationCorrection[];
+  originalData: OriginalData[];
+  onApprove: (corrections: NormalizationCorrection[]) => void;
+  onReject: () => void;
+  onRetry: (customPrompt: string) => void;
+  lang: 'en' | 'ja';
+}
+
+const NormalizationPreviewModal: React.FC<Props> = ({
+  corrections,
+  originalData,
+  onApprove,
+  onReject,
+  onRetry,
+  lang
+}) => {
+  const [selectedCorrections, setSelectedCorrections] = useState<Set<string>>(
+    new Set(corrections.map(c => c.fileName))
+  );
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [showRetryInput, setShowRetryInput] = useState(false);
+
+  const toggleCorrection = (fileName: string) => {
+    const newSet = new Set(selectedCorrections);
+    if (newSet.has(fileName)) {
+      newSet.delete(fileName);
+    } else {
+      newSet.add(fileName);
+    }
+    setSelectedCorrections(newSet);
+  };
+
+  const handleApprove = () => {
+    const approved = corrections.filter(c => selectedCorrections.has(c.fileName));
+    onApprove(approved);
+  };
+
+  const handleRetry = () => {
+    if (customPrompt.trim()) {
+      onRetry(customPrompt.trim());
+    }
+  };
+
+  const getOriginal = (fileName: string) => {
+    return originalData.find(o => o.fileName === fileName);
+  };
+
+  const hasChanges = (correction: NormalizationCorrection, original: OriginalData | undefined) => {
+    if (!original) return false;
+    return (
+      (correction.workType !== undefined && correction.workType !== original.workType) ||
+      (correction.variety !== undefined && correction.variety !== original.variety) ||
+      (correction.detail !== undefined && correction.detail !== original.detail) ||
+      (correction.station !== undefined && correction.station !== original.station) ||
+      (correction.remarks !== undefined && correction.remarks !== original.remarks)
+    );
+  };
+
+  const renderChange = (label: string, oldVal: string, newVal: string | undefined) => {
+    if (newVal === undefined || newVal === oldVal) return null;
+    return (
+      <div className="flex items-center gap-2 text-sm py-1">
+        <span className="text-gray-500 w-16 flex-shrink-0">{label}</span>
+        <span className="text-red-600 line-through bg-red-50 px-1 rounded max-w-[150px] truncate" title={oldVal}>
+          {oldVal || '(空)'}
+        </span>
+        <ArrowRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <span className="text-green-600 bg-green-50 px-1 rounded max-w-[150px] truncate" title={newVal}>
+          {newVal || '(空)'}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="bg-amber-500 text-white p-4 rounded-t-2xl flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-6 h-6" />
+            <h2 className="text-lg font-bold">
+              {lang === 'ja' ? '整合性チェック結果の確認' : 'Review Normalization Changes'}
+            </h2>
+          </div>
+          <button onClick={onReject} className="p-1 hover:bg-white/20 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {corrections.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              {lang === 'ja' ? '修正提案はありません' : 'No corrections proposed'}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 mb-4">
+                {lang === 'ja'
+                  ? `AIが ${corrections.length} 件の修正を提案しています。適用する項目を選択してください。`
+                  : `AI proposed ${corrections.length} corrections. Select which to apply.`}
+              </p>
+
+              {corrections.map(correction => {
+                const original = getOriginal(correction.fileName);
+                if (!original || !hasChanges(correction, original)) return null;
+
+                const isSelected = selectedCorrections.has(correction.fileName);
+
+                return (
+                  <div
+                    key={correction.fileName}
+                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 bg-gray-50 opacity-60'
+                    }`}
+                    onClick={() => toggleCorrection(correction.fileName)}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleCorrection(correction.fileName)}
+                        className="w-4 h-4"
+                      />
+                      <span className="font-mono text-sm font-bold text-gray-700">
+                        {correction.fileName}
+                      </span>
+                    </div>
+                    <div className="pl-6 space-y-0.5">
+                      {renderChange('工種', original.workType, correction.workType)}
+                      {renderChange('種別', original.variety, correction.variety)}
+                      {renderChange('細別', original.detail, correction.detail)}
+                      {renderChange('測点', original.station, correction.station)}
+                      {renderChange('備考', original.remarks, correction.remarks)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Retry with custom prompt */}
+          {showRetryInput && (
+            <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                {lang === 'ja' ? '追加指示（やり直し用）' : 'Additional Instructions (for retry)'}
+              </label>
+              <textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder={lang === 'ja'
+                  ? '例: 備考は変更しないで。測点のOCRエラーだけ修正して。'
+                  : 'e.g., Do not change remarks. Only fix station OCR errors.'}
+                className="w-full h-24 p-2 border border-gray-300 rounded-lg text-sm resize-none"
+              />
+              <button
+                onClick={handleRetry}
+                disabled={!customPrompt.trim()}
+                className="mt-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-bold disabled:opacity-50 flex items-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                {lang === 'ja' ? 'この指示でやり直し' : 'Retry with this prompt'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t p-4 flex justify-between items-center bg-gray-50 rounded-b-2xl">
+          <button
+            onClick={() => setShowRetryInput(!showRetryInput)}
+            className="px-4 py-2 text-purple-600 hover:bg-purple-50 rounded-lg font-medium flex items-center gap-2"
+          >
+            <RotateCcw className="w-4 h-4" />
+            {lang === 'ja' ? 'やり直し' : 'Retry'}
+          </button>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onReject}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100"
+            >
+              {lang === 'ja' ? '全て却下' : 'Reject All'}
+            </button>
+            <button
+              onClick={handleApprove}
+              disabled={selectedCorrections.size === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2 disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" />
+              {lang === 'ja'
+                ? `選択した ${selectedCorrections.size} 件を適用`
+                : `Apply ${selectedCorrections.size} selected`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default NormalizationPreviewModal;
+
+=== END: components/NormalizationPreviewModal.tsx ===
 
 === FILE: components/PhotoAlbumView.tsx ===
 
@@ -7737,29 +8095,57 @@ export const identifyTargetPhotos = async (
   }
 };
 
-export const normalizeDataConsistency = async (
+// 正規化の修正提案の型
+export interface NormalizationCorrection {
+  fileName: string;
+  workType?: string;
+  variety?: string;
+  detail?: string;
+  station?: string;
+  remarks?: string;
+}
+
+export interface NormalizationResult {
+  corrections: NormalizationCorrection[];
+  originalData: Array<{
+    fileName: string;
+    workType: string;
+    variety: string;
+    detail: string;
+    station: string;
+    remarks: string;
+  }>;
+}
+
+// 修正提案を取得（適用はしない）
+export const getNormalizationProposals = async (
   records: PhotoRecord[],
   apiKey: string,
+  customPrompt?: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
-): Promise<PhotoRecord[]> => {
-  checkAbort(shouldAbort, 'normalizeDataConsistency開始前');
+): Promise<NormalizationResult> => {
+  checkAbort(shouldAbort, 'getNormalizationProposals開始前');
 
   const completedRecords = records.filter(r => r.status === 'done' && r.analysis);
-  if (completedRecords.length === 0) return records;
+  if (completedRecords.length === 0) {
+    return { corrections: [], originalData: [] };
+  }
 
   const genAI = new GoogleGenAI({ apiKey });
 
   const dataSnapshot = completedRecords.map(r => ({
     fileName: r.fileName,
-    workType: r.analysis!.workType,
-    variety: r.analysis!.variety,
-    detail: r.analysis!.detail,
-    station: r.analysis!.station,
-    remarks: r.analysis!.remarks
+    workType: r.analysis!.workType || '',
+    variety: r.analysis!.variety || '',
+    detail: r.analysis!.detail || '',
+    station: r.analysis!.station || '',
+    remarks: r.analysis!.remarks || ''
   }));
 
-  onLog?.(`Running consistency normalization pass with ${COMPLEX_MODEL}...`, "info");
+  onLog?.(`Running consistency check with ${COMPLEX_MODEL}...`, "info");
+
+  const userInstruction = customPrompt ? `\n\n**USER INSTRUCTION:** ${customPrompt}` : '';
 
   const prompt = `
     You are a data consistency expert for construction photos.
@@ -7784,6 +8170,7 @@ export const normalizeDataConsistency = async (
        - Keep measurement values intact (e.g., "出荷時156℃", "t=50mm")
        - Keep specific descriptions from board photos
        - DO NOT simplify "アスファルト混合物温度測定 出荷時156℃" to just "温度測定"
+    ${userInstruction}
 
     INPUT DATA:
     ${JSON.stringify(dataSnapshot, null, 2)}
@@ -7797,7 +8184,7 @@ export const normalizeDataConsistency = async (
   let attempt = 0;
 
   while (attempt < MAX_RETRIES) {
-    checkAbort(shouldAbort, 'normalizeDataConsistency リトライループ');
+    checkAbort(shouldAbort, 'getNormalizationProposals リトライループ');
     try {
       const result = await genAI.models.generateContent({
         model: modelToUse,
@@ -7810,58 +8197,26 @@ export const normalizeDataConsistency = async (
       const text = result.text;
       if (!text) throw new Error("No text response");
 
-      trackUsage(modelToUse, prompt, text, 0, 'normalizeDataConsistency');
+      trackUsage(modelToUse, prompt, text, 0, 'getNormalizationProposals');
       const json = JSON.parse(text);
-      onLog?.("Normalization Result Received", "json", json);
+      onLog?.("Normalization proposals received", "json", json);
 
-      const corrections = json.corrections as { fileName: string, workType?: string, variety?: string, detail?: string, station: string, remarks: string }[];
+      const corrections = (json.corrections || []) as NormalizationCorrection[];
 
-      if (!corrections || corrections.length === 0) {
-        onLog?.("No consistency corrections needed.", "success");
-        return records;
-      }
-
-      // Apply corrections
-      const updatedRecords = records.map(r => {
-        const fix = corrections.find(c => c.fileName === r.fileName);
-        if (fix && r.analysis) {
-          return {
-            ...r,
-            analysis: {
-              ...r.analysis,
-              workType: fix.workType !== undefined ? fix.workType : r.analysis.workType,
-              variety: fix.variety !== undefined ? fix.variety : r.analysis.variety,
-              detail: fix.detail !== undefined ? fix.detail : r.analysis.detail,
-              station: fix.station,
-              remarks: fix.remarks
-            }
-          };
-        }
-        return r;
-      });
-
-      // マスタ外用語の検出（警告のみ、値は変更しない）
-      let unknownTermWarnings: string[] = [];
-      for (const r of updatedRecords) {
-        if (r.analysis) {
-          const warnings = detectUnknownTerms(
-            r.analysis.workType || '',
-            r.analysis.variety || '',
-            r.analysis.detail || '',
-            r.analysis.remarks || ''
-          );
-          if (warnings.length > 0) {
-            unknownTermWarnings.push(`${r.fileName}: ${warnings.join(', ')}`);
-          }
+      // マスタ外用語の検出（警告のみ）
+      for (const c of corrections) {
+        const warnings = detectUnknownTerms(
+          c.workType || '',
+          c.variety || '',
+          c.detail || '',
+          c.remarks || ''
+        );
+        if (warnings.length > 0) {
+          onLog?.(`🚨 提案に問題: ${c.fileName}: ${warnings.join(', ')}`, "error");
         }
       }
-      if (unknownTermWarnings.length > 0) {
-        onLog?.(`🚨 AI創作の可能性がある用語を検出:`, "error");
-        unknownTermWarnings.forEach(w => onLog?.(w, "error"));
-      }
 
-      onLog?.(`Applied consistency corrections to ${corrections.length} records.`, "success");
-      return updatedRecords;
+      return { corrections, originalData: dataSnapshot };
 
     } catch (e: any) {
       attempt++;
@@ -7869,19 +8224,53 @@ export const normalizeDataConsistency = async (
       onLog?.(`Normalization Error (${modelToUse}) - ${attempt}/${MAX_RETRIES}`, "error", e.message);
 
       if (attempt < MAX_RETRIES) {
-        // Fallback to lighter model on quota errors
         if (isQuotaError && modelToUse !== FALLBACK_MODEL) {
           modelToUse = FALLBACK_MODEL;
           onLog?.(`Rate limit hit, switching to ${FALLBACK_MODEL}`, "info");
         }
         await sleep(RETRY_DELAY_MS);
-      } else {
-        onLog?.("Normalization failed (Non-fatal)", "error");
-        return records;
       }
     }
   }
-  return records;
+
+  onLog?.("Normalization failed (Non-fatal)", "error");
+  return { corrections: [], originalData: dataSnapshot };
+};
+
+// 承認された修正を適用
+export const applyNormalizationCorrections = (
+  records: PhotoRecord[],
+  corrections: NormalizationCorrection[]
+): PhotoRecord[] => {
+  return records.map(r => {
+    const fix = corrections.find(c => c.fileName === r.fileName);
+    if (fix && r.analysis) {
+      return {
+        ...r,
+        analysis: {
+          ...r.analysis,
+          workType: fix.workType !== undefined ? fix.workType : r.analysis.workType,
+          variety: fix.variety !== undefined ? fix.variety : r.analysis.variety,
+          detail: fix.detail !== undefined ? fix.detail : r.analysis.detail,
+          station: fix.station !== undefined ? fix.station : r.analysis.station,
+          remarks: fix.remarks !== undefined ? fix.remarks : r.analysis.remarks
+        }
+      };
+    }
+    return r;
+  });
+};
+
+// 後方互換性のため残す（内部で新しい関数を使用）
+export const normalizeDataConsistency = async (
+  records: PhotoRecord[],
+  apiKey: string,
+  onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
+  shouldAbort?: AbortChecker
+): Promise<PhotoRecord[]> => {
+  const { corrections } = await getNormalizationProposals(records, apiKey, undefined, onLog, shouldAbort);
+  if (corrections.length === 0) return records;
+  return applyNormalizationCorrections(records, corrections);
 };
 
 /**

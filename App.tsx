@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
@@ -20,6 +20,7 @@ import UsagePanel from './components/UsagePanel';
 import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
 import StationReplaceModal from './components/StationReplaceModal';
+import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -75,6 +76,12 @@ export default function App() {
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
+
+  // Normalization approval flow
+  const [showNormalizationModal, setShowNormalizationModal] = useState(false);
+  const [normalizationProposals, setNormalizationProposals] = useState<NormalizationCorrection[]>([]);
+  const [normalizationOriginals, setNormalizationOriginals] = useState<OriginalData[]>([]);
+  const [photosForNormalization, setPhotosForNormalization] = useState<PhotoRecord[]>([]);
   // Store initial instruction if files are pending selection
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
@@ -314,6 +321,87 @@ export default function App() {
     }));
     setSuccessMsg(`${replacements.length}枚の測点を更新しました`);
     addLog(`測点を一括置換: ${replacements.length}枚`, 'success');
+  };
+
+  // --- Normalization Approval Handlers ---
+
+  const handleNormalizationApprove = (approvedCorrections: NormalizationCorrection[]) => {
+    if (approvedCorrections.length > 0) {
+      // Apply corrections using the service function
+      const corrected = applyNormalizationCorrections(photosForNormalization, approvedCorrections);
+
+      // Update photos state and cache
+      setPhotos(prev => prev.map(p => {
+        const correctedPhoto = corrected.find(c => c.fileName === p.fileName);
+        if (correctedPhoto && correctedPhoto.analysis) {
+          cacheAnalysis(correctedPhoto, correctedPhoto.analysis).catch(console.error);
+          return correctedPhoto;
+        }
+        return p;
+      }));
+
+      addLog(`${approvedCorrections.length}件の修正を適用しました`, 'success');
+      setSuccessMsg(`${approvedCorrections.length}件の修正を適用しました`);
+    } else {
+      addLog('修正をスキップしました', 'info');
+    }
+
+    // Final sort and cleanup
+    setPhotos(prev => sortPhotosLogical(prev));
+    setShowNormalizationModal(false);
+    setNormalizationProposals([]);
+    setNormalizationOriginals([]);
+    setPhotosForNormalization([]);
+  };
+
+  const handleNormalizationReject = () => {
+    addLog('全ての修正提案を却下しました', 'info');
+    setSuccessMsg('整合性チェックの修正を却下しました');
+
+    // Final sort without applying corrections
+    setPhotos(prev => sortPhotosLogical(prev));
+    setShowNormalizationModal(false);
+    setNormalizationProposals([]);
+    setNormalizationOriginals([]);
+    setPhotosForNormalization([]);
+  };
+
+  const handleNormalizationRetry = async (customPrompt: string) => {
+    if (!apiKey) return;
+
+    setShowNormalizationModal(false);
+    setIsProcessing(true);
+    setCurrentStep("カスタム指示で再解析中...");
+    addLog(`カスタム指示で再解析: "${customPrompt.substring(0, 50)}..."`, 'info');
+
+    try {
+      const result = await getNormalizationProposals(
+        photosForNormalization,
+        apiKey,
+        customPrompt,
+        addLog,
+        () => shouldAbortRef.current
+      );
+
+      if (result.corrections.length > 0) {
+        setNormalizationProposals(result.corrections);
+        addLog(`${result.corrections.length}件の新しい修正提案があります`, 'info');
+        setShowNormalizationModal(true);
+      } else {
+        addLog('修正提案なし - データは整合しています', 'success');
+        setPhotos(prev => sortPhotosLogical(prev));
+        setSuccessMsg('データは整合しています');
+        setPhotosForNormalization([]);
+        setNormalizationOriginals([]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "再解析に失敗しました");
+      addLog("再解析エラー", 'error', err);
+    } finally {
+      setIsProcessing(false);
+      setCurrentStep("");
+    }
   };
 
   // 並べ替え後の順序を学習して保存
@@ -1145,22 +1233,48 @@ export default function App() {
         }
       }
 
-      // 3. Normalize Consistency (Only for NEW records)
+      // 3. Normalize Consistency (Only for NEW records) - With user approval flow
       addLog(`=== STEP 4/4: データ整合性チェック ===`, 'info');
-      const newlyAnalyzed = photos.filter(p => !p.fromCache && p.status === 'done');
+
+      // Get current photos state using a callback to setPhotos
+      let currentPhotos: PhotoRecord[] = [];
+      setPhotos(prev => {
+        currentPhotos = prev;
+        return prev;
+      });
+      // Wait for state to be readable
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const newlyAnalyzed = currentPhotos.filter(p => !p.fromCache && p.status === 'done');
       if (newlyAnalyzed.length > 0) {
         addLog(`${newlyAnalyzed.length}枚の解析結果を正規化中...`, 'info');
         setCurrentStep("Finalizing data consistency...");
-        const normalizedNew = await normalizeDataConsistency(newlyAnalyzed, apiKey, addLog, () => shouldAbortRef.current);
 
-        setPhotos(prev => prev.map(p => {
-          const norm = normalizedNew.find(n => n.fileName === p.fileName);
-          if (norm && norm.analysis) {
-            cacheAnalysis(norm, norm.analysis).catch(console.error);
-            return norm;
-          }
-          return p;
-        }));
+        const result = await getNormalizationProposals(newlyAnalyzed, apiKey, undefined, addLog, () => shouldAbortRef.current);
+
+        if (result.corrections.length > 0) {
+          // Store for modal
+          setNormalizationProposals(result.corrections);
+          setNormalizationOriginals(newlyAnalyzed.map(p => ({
+            fileName: p.fileName,
+            workType: p.analysis?.workType || '',
+            variety: p.analysis?.variety || '',
+            detail: p.analysis?.detail || '',
+            station: p.analysis?.station || '',
+            remarks: p.analysis?.remarks || ''
+          })));
+          setPhotosForNormalization(newlyAnalyzed);
+
+          addLog(`${result.corrections.length}件の修正提案があります。ユーザー承認を待機中...`, 'info');
+          setShowNormalizationModal(true);
+
+          // Don't proceed with final sort - wait for user approval
+          setIsProcessing(false);
+          setCurrentStep("");
+          return; // Exit pipeline here, continue in approval handler
+        } else {
+          addLog('修正提案なし - データは整合しています', 'success');
+        }
       }
 
       // 4. Final Sort (Logical)
@@ -1530,6 +1644,17 @@ export default function App() {
           lang={lang}
           onClose={() => setShowStationReplace(false)}
           onReplace={handleStationReplace}
+        />
+      )}
+
+      {showNormalizationModal && (
+        <NormalizationPreviewModal
+          corrections={normalizationProposals}
+          originalData={normalizationOriginals}
+          onApprove={handleNormalizationApprove}
+          onReject={handleNormalizationReject}
+          onRetry={handleNormalizationRetry}
+          lang={lang}
         />
       )}
     </>
