@@ -1,26 +1,33 @@
-# Photo Archive AI
+# 工事写真帳メーカー
 
-A minimalist, high-context photo archiving tool.
-Uses Google Gemini 2.5 Flash to automatically classify photos, extract blackboard text (Construction Mode), and generate organized photo albums (Excel/PDF).
+AIで工事写真を自動分類・整理するツール。
 
-## Features
+## デモ
 
-*   **Dual Modes**:
-    *   **Construction Mode**: Specialized for Japanese construction site photography. Extracts Work Type, Station, and Remarks from electronic or physical blackboards.
-    *   **General Archive Mode**: Organizes general photos by inferred category, location, and descriptive captions.
-*   **AI Analysis**: Uses Gemini 2.5 Flash for high-speed, multimodal understanding.
-*   **Privacy First**: Images are processed in memory and local storage.
-*   **Exports**: Generates formatted Excel sheets (Construction Photo Ledger style) and PDF albums.
+**https://yuujikamura.github.io/GASPhotoAIManager/**
 
-## Version History
+## 機能
 
-*   **v1.0.0**: Initial Commit.
-*   **v1.2.0**: Enhanced UI for uploading.
-*   **v1.3.0**: Added Art Modes (Experimental).
-*   **v1.5.0**: **Standard UI Revert**. Removed experimental "Hokusai/Hiroshige" art modes and "Bukkomu" aesthetics in favor of a clean, professional interface.
+- **AI解析**: Google Gemini 2.5 Flashで写真を自動分類
+- **黒板認識**: 工事黒板のテキストを自動抽出（工種・種別・細別・測点・備考）
+- **景観ペアリング**: 着手前/完了の写真を自動マッチング
+- **スマートPDF**: セッションデータを埋め込んだPDFを出力・復元可能
+- **Excel出力**: 工事写真台帳形式のExcelを生成
+- **履歴機能**: 解析履歴を自動保存、いつでも復元可能
 
-## Technical Stack
-*   React + TypeScript
-*   Gemini 2.5 Flash (The Brain)
-*   Lucide React (The Icons)
-*   ExcelJS / HTML2PDF (The Output)
+## 使い方
+
+1. APIキーを設定（Google AI Studioで無料取得）
+2. 写真をドラッグ＆ドロップ
+3. AIが自動解析
+4. Excel/PDFで出力
+
+**PDFを持っている場合**: APIキー設定画面から「PDFからセッションを復元」で読み込み可能
+
+## 技術スタック
+
+- React + TypeScript + Vite
+- Google Gemini 2.5 Flash
+- ExcelJS / html2pdf / pdf-lib
+- IndexedDB（履歴保存）
+- Tailwind CSS
