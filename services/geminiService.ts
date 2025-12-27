@@ -182,17 +182,19 @@ Traverse the hierarchy directly:
     *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
     *   Normalize text: "転圧中" -> "転圧状況".
 
-**STEP 4: Description (記事) と Measurements (測定値) の分離**
+**STEP 4: Description (記事) - 重要な情報を記録**
 
-A. **description (記事)**: 一般的な説明・コメント
-*   If the description would just repeat the remarks or work type, return an empty string "".
-*   Only add text if it provides *unique* visual information (e.g., specific machinery names, weather conditions if relevant to quality).
-*   着手前・完成写真の場合は空欄でよい。
+**description (記事)**: 写真から読み取れる重要な情報を記録
+*   黒板に書かれたテキスト、測定値、寸法などを記載
+*   出来形管理写真の場合: 設計値、実測値、差を必ず記載（例: "設計値: 50mm / 実測値: 52mm / 差: +2mm"）
+*   使用機材、材料名、作業内容など視覚的に確認できる情報
+*   着手前・完成写真でも、黒板に工事名や日付があれば記載
+*   **空欄にしない**: 黒板や現場から何か読み取れる情報があれば必ず記載する
 
-B. **measurements (測定値)**: 出来形管理の数値データ（出来形管理写真のみ）
-*   出来形管理写真の場合のみ、黒板やリボンテープから読み取った測定値を記録。
+**measurements (測定値)**: 出来形管理の数値データ（出来形管理写真のみ）
+*   出来形管理写真の場合、descriptionに加えてここにも測定値を記録
 *   フォーマット例: "設計値: 50mm / 実測値: 52mm / 差: +2mm" または "幅員 W=3.0m"
-*   測定値が見えない場合や出来形管理写真でない場合は空文字列 "" を返す。
+*   測定値が見えない場合や出来形管理写真でない場合は空文字列 "" を返す
 
 **STEP 5: Station (測点) - FORMAT STANDARDIZATION**
 *   **Standard Format**: 「地名 No.整数」 (e.g., "小峯2丁目 No.4", "南区桜町 No.12")
