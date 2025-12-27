@@ -4,6 +4,8 @@ import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
 import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
+import AnalysisRulesPanel from './AnalysisRulesPanel';
+import { getDefaultRuleSettings, RuleSettings } from '../utils/analysisRules';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -51,6 +53,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
+  const [ruleSettings, setRuleSettings] = useState<RuleSettings>(getDefaultRuleSettings());
 
   // コスト見積もり
   const costEstimate = useMemo(() => {
@@ -352,6 +355,13 @@ const UploadView: React.FC<UploadViewProps> = ({
                       解析済みの写真はスキップしてAPI消費を抑えます
                     </p>
                   )}
+
+                  {/* Analysis Rules Panel */}
+                  <AnalysisRulesPanel
+                    settings={ruleSettings}
+                    onChange={setRuleSettings}
+                    collapsed={true}
+                  />
                 </div>
               </div>
 
