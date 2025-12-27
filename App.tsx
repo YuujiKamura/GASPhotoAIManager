@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection, getSelectedModel } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
-import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
+import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
@@ -21,6 +21,8 @@ import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
 import StationReplaceModal from './components/StationReplaceModal';
 import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
+import SessionHistoryPanel from './components/SessionHistoryPanel';
+import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -76,6 +78,7 @@ export default function App() {
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Normalization approval flow
   const [showNormalizationModal, setShowNormalizationModal] = useState(false);
@@ -970,6 +973,17 @@ export default function App() {
     addLog(`手動ペアリング完了: ${pairs.length}組`, 'success');
   };
 
+  // 履歴から読み込み
+  const handleLoadHistory = (entry: AnalysisHistoryEntry) => {
+    setPhotos(entry.photos);
+    setInitialInstruction(entry.instruction);
+    setActiveInstruction(entry.instruction);
+    setShowPreview(true);
+    setShowHistory(false);
+    addLog(`履歴読み込み: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success');
+    setSuccessMsg(`${entry.photoCount}枚の写真を履歴から読み込みました`);
+  };
+
   // --- Pipeline Steps ---
 
   const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean, sortPolicy: SortPolicy = 'by_detail_safety_first') => {
@@ -1279,7 +1293,14 @@ export default function App() {
 
       // 4. Final Sort (Logical)
       // This will use cached sceneIds from previous sessions if they exist!
-      setPhotos(prev => sortPhotosLogical(prev));
+      setPhotos(prev => {
+        const sorted = sortPhotosLogical(prev);
+        // 解析履歴を自動保存
+        saveAnalysisHistory(sorted, instruction, getSelectedModel())
+          .then(entry => addLog(`履歴保存: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success'))
+          .catch(e => console.error('履歴保存失敗:', e));
+        return sorted;
+      });
 
       setSuccessMsg(txt.done);
 
@@ -1554,6 +1575,7 @@ export default function App() {
           onShowPreview={() => setShowPreview(true)}
           onOpenSettings={() => setShowApiKeySetup(true)}
           onManualPairing={handleStartManualPairing}
+          onShowHistory={() => setShowHistory(true)}
         />
       ) : (
         <PreviewView
@@ -1655,6 +1677,13 @@ export default function App() {
           onReject={handleNormalizationReject}
           onRetry={handleNormalizationRetry}
           lang={lang}
+        />
+      )}
+
+      {showHistory && (
+        <SessionHistoryPanel
+          onLoad={handleLoadHistory}
+          onClose={() => setShowHistory(false)}
         />
       )}
     </>

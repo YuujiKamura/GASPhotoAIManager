@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -23,6 +23,7 @@ interface UploadViewProps {
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
   onManualPairing?: (files: File[], instruction: string) => void;
+  onShowHistory?: () => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -42,7 +43,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   onClearCache,
   onShowPreview,
   onOpenSettings,
-  onManualPairing
+  onManualPairing,
+  onShowHistory
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -147,15 +149,29 @@ const UploadView: React.FC<UploadViewProps> = ({
           {appMode === 'construction' ? <HardHat className="w-6 h-6 text-amber-500" /> : <FileUp className="w-5 h-5" />}
           {txt.appTitle}
         </h1>
-        {/* Settings Button */}
-        <button
-          onClick={onOpenSettings}
-          className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-600 transition-colors"
-          title="API設定"
-        >
-          <Settings className="w-4 h-4" />
-          <span className="hidden sm:inline text-xs font-medium">{getSelectedModel()}</span>
-        </button>
+        {/* Header Buttons */}
+        <div className="flex items-center gap-2">
+          {/* History Button */}
+          {onShowHistory && (
+            <button
+              onClick={onShowHistory}
+              className="flex items-center gap-2 px-3 py-2 bg-purple-100 hover:bg-purple-200 rounded-lg text-sm text-purple-600 transition-colors"
+              title="解析履歴"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-medium">履歴</span>
+            </button>
+          )}
+          {/* Settings Button */}
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-600 transition-colors"
+            title="API設定"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs font-medium">{getSelectedModel()}</span>
+          </button>
+        </div>
       </div>
 
       {/* --- MAIN INTERACTION AREA --- */}

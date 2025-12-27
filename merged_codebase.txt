@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 19:34:12
+生成日時: 2025-12-27 19:51:30
 ================================================================================
 
 === ファイル一覧 ===
@@ -21,6 +21,7 @@ components/NormalizationPreviewModal.tsx
 components/PhotoAlbumView.tsx
 components/PreviewView.tsx
 components/RefineModal.tsx
+components/SessionHistoryPanel.tsx
 components/SimplePairingMode.tsx
 components/StationReplaceModal.tsx
 components/UploadView.tsx
@@ -56,10 +57,10 @@ vite.config.ts
 import React, { useState, useEffect, useRef } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection, getSelectedModel } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
-import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
+import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
@@ -76,6 +77,8 @@ import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
 import StationReplaceModal from './components/StationReplaceModal';
 import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
+import SessionHistoryPanel from './components/SessionHistoryPanel';
+import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -131,6 +134,7 @@ export default function App() {
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Normalization approval flow
   const [showNormalizationModal, setShowNormalizationModal] = useState(false);
@@ -1025,6 +1029,17 @@ export default function App() {
     addLog(`手動ペアリング完了: ${pairs.length}組`, 'success');
   };
 
+  // 履歴から読み込み
+  const handleLoadHistory = (entry: AnalysisHistoryEntry) => {
+    setPhotos(entry.photos);
+    setInitialInstruction(entry.instruction);
+    setActiveInstruction(entry.instruction);
+    setShowPreview(true);
+    setShowHistory(false);
+    addLog(`履歴読み込み: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success');
+    setSuccessMsg(`${entry.photoCount}枚の写真を履歴から読み込みました`);
+  };
+
   // --- Pipeline Steps ---
 
   const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean, sortPolicy: SortPolicy = 'by_detail_safety_first') => {
@@ -1334,7 +1349,14 @@ export default function App() {
 
       // 4. Final Sort (Logical)
       // This will use cached sceneIds from previous sessions if they exist!
-      setPhotos(prev => sortPhotosLogical(prev));
+      setPhotos(prev => {
+        const sorted = sortPhotosLogical(prev);
+        // 解析履歴を自動保存
+        saveAnalysisHistory(sorted, instruction, getSelectedModel())
+          .then(entry => addLog(`履歴保存: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success'))
+          .catch(e => console.error('履歴保存失敗:', e));
+        return sorted;
+      });
 
       setSuccessMsg(txt.done);
 
@@ -1609,6 +1631,7 @@ export default function App() {
           onShowPreview={() => setShowPreview(true)}
           onOpenSettings={() => setShowApiKeySetup(true)}
           onManualPairing={handleStartManualPairing}
+          onShowHistory={() => setShowHistory(true)}
         />
       ) : (
         <PreviewView
@@ -1710,6 +1733,13 @@ export default function App() {
           onReject={handleNormalizationReject}
           onRetry={handleNormalizationRetry}
           lang={lang}
+        />
+      )}
+
+      {showHistory && (
+        <SessionHistoryPanel
+          onLoad={handleLoadHistory}
+          onClose={() => setShowHistory(false)}
         />
       )}
     </>
@@ -5571,6 +5601,216 @@ const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunA
 export default RefineModal;
 === END: components/RefineModal.tsx ===
 
+=== FILE: components/SessionHistoryPanel.tsx ===
+
+import React, { useState, useEffect } from 'react';
+import { History, Trash2, Download, X, Calendar, Image, FileText } from 'lucide-react';
+import { AnalysisHistoryEntry } from '../types';
+import { getAnalysisHistory, deleteAnalysisHistory, clearAnalysisHistory } from '../utils/storage';
+
+interface Props {
+  onLoad: (entry: AnalysisHistoryEntry) => void;
+  onClose: () => void;
+}
+
+const SessionHistoryPanel: React.FC<Props> = ({ onLoad, onClose }) => {
+  const [entries, setEntries] = useState<AnalysisHistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    try {
+      const history = await getAnalysisHistory();
+      setEntries(history);
+    } catch (e) {
+      console.error('Failed to load history:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('この履歴を削除しますか？')) return;
+    try {
+      await deleteAnalysisHistory(id);
+      setEntries(prev => prev.filter(entry => entry.id !== id));
+    } catch (e) {
+      console.error('Failed to delete:', e);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    try {
+      await clearAnalysisHistory();
+      setEntries([]);
+      setConfirmClear(false);
+    } catch (e) {
+      console.error('Failed to clear:', e);
+    }
+  };
+
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('ja-JP', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatFullDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 flex items-center justify-between rounded-t-2xl">
+          <div className="flex items-center gap-2">
+            <History className="w-5 h-5" />
+            <h3 className="font-bold text-lg">解析履歴</h3>
+            <span className="text-purple-200 text-sm">({entries.length}件)</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-white/20 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-600 rounded-full animate-spin"></div>
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <History className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>解析履歴がありません</p>
+              <p className="text-sm mt-1">写真を解析すると自動的に保存されます</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {entries.map(entry => (
+                <div
+                  key={entry.id}
+                  onClick={() => onLoad(entry)}
+                  className="group border border-gray-200 rounded-lg p-3 hover:border-purple-300 hover:bg-purple-50 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      {/* Date & Time */}
+                      <div className="flex items-center gap-2 text-gray-700 font-medium">
+                        <Calendar className="w-4 h-4 text-purple-500" />
+                        <span>{formatFullDate(entry.createdAt)}</span>
+                      </div>
+
+                      {/* Stats */}
+                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                        <div className="flex items-center gap-1">
+                          <Image className="w-3.5 h-3.5" />
+                          <span>{entry.photoCount}枚</span>
+                        </div>
+                        {entry.modelUsed && (
+                          <div className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                            {entry.modelUsed.replace('models/', '')}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Work Types */}
+                      {entry.workTypes.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {entry.workTypes.slice(0, 3).map((wt, i) => (
+                            <span key={i} className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                              {wt}
+                            </span>
+                          ))}
+                          {entry.workTypes.length > 3 && (
+                            <span className="text-xs text-gray-400">
+                              +{entry.workTypes.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Instruction (truncated) */}
+                      {entry.instruction && (
+                        <div className="flex items-start gap-1 mt-2 text-xs text-gray-400">
+                          <FileText className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span className="truncate">{entry.instruction.substring(0, 50)}{entry.instruction.length > 50 ? '...' : ''}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Delete Button */}
+                    <button
+                      onClick={(e) => handleDelete(entry.id, e)}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                      title="削除"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {entries.length > 0 && (
+          <div className="border-t border-gray-200 p-4 flex justify-between items-center">
+            <button
+              onClick={handleClearAll}
+              className={`text-sm px-3 py-1.5 rounded transition-colors ${
+                confirmClear
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : 'text-gray-500 hover:text-red-500 hover:bg-red-50'
+              }`}
+            >
+              {confirmClear ? '本当に全削除する' : '全履歴を削除'}
+            </button>
+            {confirmClear && (
+              <button
+                onClick={() => setConfirmClear(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                キャンセル
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default SessionHistoryPanel;
+
+=== END: components/SessionHistoryPanel.tsx ===
+
 === FILE: components/SimplePairingMode.tsx ===
 
 import React, { useState } from 'react';
@@ -6239,7 +6479,7 @@ export default StationReplaceModal;
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -6261,6 +6501,7 @@ interface UploadViewProps {
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
   onManualPairing?: (files: File[], instruction: string) => void;
+  onShowHistory?: () => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -6280,7 +6521,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   onClearCache,
   onShowPreview,
   onOpenSettings,
-  onManualPairing
+  onManualPairing,
+  onShowHistory
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -6385,15 +6627,29 @@ const UploadView: React.FC<UploadViewProps> = ({
           {appMode === 'construction' ? <HardHat className="w-6 h-6 text-amber-500" /> : <FileUp className="w-5 h-5" />}
           {txt.appTitle}
         </h1>
-        {/* Settings Button */}
-        <button
-          onClick={onOpenSettings}
-          className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-600 transition-colors"
-          title="API設定"
-        >
-          <Settings className="w-4 h-4" />
-          <span className="hidden sm:inline text-xs font-medium">{getSelectedModel()}</span>
-        </button>
+        {/* Header Buttons */}
+        <div className="flex items-center gap-2">
+          {/* History Button */}
+          {onShowHistory && (
+            <button
+              onClick={onShowHistory}
+              className="flex items-center gap-2 px-3 py-2 bg-purple-100 hover:bg-purple-200 rounded-lg text-sm text-purple-600 transition-colors"
+              title="解析履歴"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-medium">履歴</span>
+            </button>
+          )}
+          {/* Settings Button */}
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-600 transition-colors"
+            title="API設定"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs font-medium">{getSelectedModel()}</span>
+          </button>
+        </div>
       </div>
 
       {/* --- MAIN INTERACTION AREA --- */}
@@ -10807,6 +11063,17 @@ export interface AnalysisSession {
   createdAt: number;               // 作成日時
   updatedAt: number;               // 更新日時
 }
+
+// 解析履歴（セッション単位で保存）
+export interface AnalysisHistoryEntry {
+  id: string;                      // ユニークID (UUID)
+  createdAt: number;               // 解析日時
+  photoCount: number;              // 写真数
+  instruction: string;             // 使用した指示文
+  workTypes: string[];             // 含まれる工種（サマリー用）
+  photos: PhotoRecord[];           // 写真データ（base64含む）
+  modelUsed?: string;              // 使用モデル
+}
 === END: types.ts ===
 
 === FILE: utils/analysisRules.ts ===
@@ -12894,16 +13161,17 @@ export function getLearnedOrderList(): string[] {
 
 === FILE: utils/storage.ts ===
 
-import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, PhotoCategory } from "../types";
+import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, AnalysisHistoryEntry, PhotoCategory } from "../types";
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 5; // Version 5: Added analysisSessions store
+const DB_VERSION = 6; // Version 6: Added analysisHistory store
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
 const STORE_EXAMPLES = 'analysisExamples'; // Store for few-shot examples
-const STORE_SESSIONS = 'analysisSessions'; // NEW: Store for saved sessions (お手本セッション)
+const STORE_SESSIONS = 'analysisSessions'; // Store for saved sessions (お手本セッション)
+const STORE_HISTORY = 'analysisHistory'; // Store for analysis history (履歴)
 const KEY_SESSION = 'currentSession';
 const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
 
@@ -12947,6 +13215,12 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
         const sessionsStore = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
         sessionsStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+
+      // Store for analysis history (解析履歴)
+      if (!db.objectStoreNames.contains(STORE_HISTORY)) {
+        const historyStore = db.createObjectStore(STORE_HISTORY, { keyPath: 'id' });
+        historyStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
@@ -13543,6 +13817,107 @@ export const importRulesFromJson = (jsonStr: string): AnalysisRule[] => {
     console.error("Import rules failed", e);
     throw e;
   }
+};
+
+// ============================================
+// 解析履歴 (Analysis History)
+// ============================================
+
+/**
+ * 解析結果を履歴として保存
+ */
+export const saveAnalysisHistory = async (
+  photos: PhotoRecord[],
+  instruction: string,
+  modelUsed?: string
+): Promise<AnalysisHistoryEntry> => {
+  const db = await openDB();
+
+  // 工種をサマリーとして抽出
+  const workTypes = [...new Set(
+    photos
+      .map(p => p.analysis?.workType)
+      .filter((w): w is string => !!w)
+  )];
+
+  const entry: AnalysisHistoryEntry = {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    photoCount: photos.length,
+    instruction,
+    workTypes,
+    photos,
+    modelUsed
+  };
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.add(entry);
+    request.onsuccess = () => resolve(entry);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 履歴一覧を取得（新しい順）
+ */
+export const getAnalysisHistory = async (): Promise<AnalysisHistoryEntry[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readonly');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const entries = request.result as AnalysisHistoryEntry[];
+      // 新しい順にソート
+      entries.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(entries);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 特定の履歴を取得
+ */
+export const getAnalysisHistoryEntry = async (id: string): Promise<AnalysisHistoryEntry | null> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readonly');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.get(id);
+    request.onsuccess = () => resolve(request.result as AnalysisHistoryEntry || null);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 履歴を削除
+ */
+export const deleteAnalysisHistory = async (id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 全履歴を削除
+ */
+export const clearAnalysisHistory = async (): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
 };
 === END: utils/storage.ts ===
 

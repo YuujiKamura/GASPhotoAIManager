@@ -1,13 +1,14 @@
-import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, PhotoCategory } from "../types";
+import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, AnalysisHistoryEntry, PhotoCategory } from "../types";
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 5; // Version 5: Added analysisSessions store
+const DB_VERSION = 6; // Version 6: Added analysisHistory store
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
 const STORE_EXAMPLES = 'analysisExamples'; // Store for few-shot examples
-const STORE_SESSIONS = 'analysisSessions'; // NEW: Store for saved sessions (お手本セッション)
+const STORE_SESSIONS = 'analysisSessions'; // Store for saved sessions (お手本セッション)
+const STORE_HISTORY = 'analysisHistory'; // Store for analysis history (履歴)
 const KEY_SESSION = 'currentSession';
 const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
 
@@ -51,6 +52,12 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
         const sessionsStore = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
         sessionsStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+
+      // Store for analysis history (解析履歴)
+      if (!db.objectStoreNames.contains(STORE_HISTORY)) {
+        const historyStore = db.createObjectStore(STORE_HISTORY, { keyPath: 'id' });
+        historyStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
@@ -647,4 +654,105 @@ export const importRulesFromJson = (jsonStr: string): AnalysisRule[] => {
     console.error("Import rules failed", e);
     throw e;
   }
+};
+
+// ============================================
+// 解析履歴 (Analysis History)
+// ============================================
+
+/**
+ * 解析結果を履歴として保存
+ */
+export const saveAnalysisHistory = async (
+  photos: PhotoRecord[],
+  instruction: string,
+  modelUsed?: string
+): Promise<AnalysisHistoryEntry> => {
+  const db = await openDB();
+
+  // 工種をサマリーとして抽出
+  const workTypes = [...new Set(
+    photos
+      .map(p => p.analysis?.workType)
+      .filter((w): w is string => !!w)
+  )];
+
+  const entry: AnalysisHistoryEntry = {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    photoCount: photos.length,
+    instruction,
+    workTypes,
+    photos,
+    modelUsed
+  };
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.add(entry);
+    request.onsuccess = () => resolve(entry);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 履歴一覧を取得（新しい順）
+ */
+export const getAnalysisHistory = async (): Promise<AnalysisHistoryEntry[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readonly');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const entries = request.result as AnalysisHistoryEntry[];
+      // 新しい順にソート
+      entries.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(entries);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 特定の履歴を取得
+ */
+export const getAnalysisHistoryEntry = async (id: string): Promise<AnalysisHistoryEntry | null> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readonly');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.get(id);
+    request.onsuccess = () => resolve(request.result as AnalysisHistoryEntry || null);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 履歴を削除
+ */
+export const deleteAnalysisHistory = async (id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 全履歴を削除
+ */
+export const clearAnalysisHistory = async (): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
 };
