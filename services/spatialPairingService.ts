@@ -46,7 +46,8 @@ export const extractSpatialFeatures = async (
 ): Promise<SpatialAnalysis[]> => {
 
   const genAI = new GoogleGenAI({ apiKey });
-  onLog?.('座標ベースの景観要素を抽出中...', 'info');
+  onLog?.(`[空間特徴抽出] ${records.length}枚の写真を解析中...`, 'info');
+  records.forEach((r, i) => onLog?.(`  [${i + 1}/${records.length}] ${r.fileName}`, 'info'));
 
   const inputs = records.map(r => ({
     fileName: r.fileName,
@@ -219,9 +220,11 @@ export const createSpatialPairs = async (
 }>> => {
 
   // 1. 空間特徴を抽出
+  onLog?.(`[ペアリング] STEP 1/3: 空間特徴を抽出中...`, 'info');
   const analyses = await extractSpatialFeatures(records, apiKey, onLog);
 
   // 2. 分析結果をレコードにマッピング
+  onLog?.(`[ペアリング] STEP 2/3: 類似度マトリクス作成中...`, 'info');
   const analyzedRecords = records.map(record => {
     const analysis = analyses.find(a => a.fileName === record.fileName);
     return { record, analysis };
@@ -244,6 +247,8 @@ export const createSpatialPairs = async (
   }
 
   // 4. 類似度の高いペアをグループ化
+  onLog?.(`[ペアリング] STEP 3/3: 類似写真をグループ化中...`, 'info');
+  onLog?.(`  ${analyzedRecords.length}枚の写真から類似ペアを検索...`, 'info');
   const groups: number[][] = [];
   const used = new Set<number>();
 

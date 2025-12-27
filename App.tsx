@@ -660,12 +660,16 @@ export default function App() {
 
     try {
       // 1. Prepare Records & Check Cache
+      addLog(`=== STEP 1/4: 画像準備 ===`, 'info');
       setCurrentStep(lang === 'ja' ? "画像を準備中..." : "Preparing images...");
 
       const newRecords: PhotoRecord[] = [];
       let cachedCount = 0;
+      const totalFiles = files.length;
 
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        addLog(`[${i + 1}/${totalFiles}] ${file.name} を読み込み中...`, 'info');
         const date = await getPhotoDate(file);
         const tempRecord: PhotoRecord = {
           fileName: file.name,
@@ -700,6 +704,7 @@ export default function App() {
             fromCache: true
           });
           cachedCount++;
+          addLog(`  ✓ キャッシュから復元`, 'success');
         } else {
           const { base64, mimeType } = await processImageForAI(file);
           newRecords.push({
@@ -709,12 +714,11 @@ export default function App() {
             status: 'pending',
             fromCache: false
           });
+          addLog(`  → 新規解析が必要`, 'info');
         }
       }
 
-      if (cachedCount > 0) {
-        addLog(txt.cacheHit(cachedCount), 'success');
-      }
+      addLog(`画像準備完了: ${totalFiles}枚 (キャッシュ: ${cachedCount}枚, 新規: ${totalFiles - cachedCount}枚)`, 'success');
 
       // Initial Sort (Logical - using cached sceneIds if available)
       const initialSorted = sortPhotosLogical(newRecords);
@@ -726,7 +730,8 @@ export default function App() {
       const pendingPhotos = initialSorted.filter(p => p.status === 'pending');
 
       if (pendingPhotos.length > 0) {
-        addLog(`${pendingPhotos.length}枚の新しい写真を処理します`, 'info');
+        addLog(`=== STEP 2/4: 写真タイプ判定 ===`, 'info');
+        addLog(`${pendingPhotos.length}枚の新規写真をAI解析します`, 'info');
 
         // スマートフローで処理
         const result = await processPhotosWithSmartFlow(
@@ -738,7 +743,8 @@ export default function App() {
 
         if (result.type === 'paired') {
           // 景観写真モード：ペアリング完了
-          addLog('景観写真モードで処理しました', 'success');
+          addLog(`=== STEP 3/4: 景観ペアリング ===`, 'info');
+          addLog(`${result.pairs?.length || 0}組のペアを作成`, 'success');
 
           // プロンプトから測点名を抽出（共通関数を使用）
           const locationName = extractLocationName(instruction);
@@ -805,6 +811,7 @@ export default function App() {
           setInitialLayout(2); // 2-upレイアウトに自動切り替え
         } else {
           // 黒板ありモード：従来の詳細解析（並列バッチ処理）
+          addLog(`=== STEP 3/4: 黒板写真解析 ===`, 'info');
           const batchSize = DEFAULT_BATCH_SIZE;
 
           // バッチに分割
@@ -812,11 +819,15 @@ export default function App() {
           for (let i = 0; i < pendingPhotos.length; i += batchSize) {
             batches.push(pendingPhotos.slice(i, i + batchSize));
           }
+          addLog(`${pendingPhotos.length}枚を${batches.length}バッチに分割（${PARALLEL_BATCHES}並列）`, 'info');
 
           // PARALLEL_BATCHES個ずつ並列実行
           for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
             const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
             const processedCount = i * batchSize;
+            const currentBatchNum = Math.floor(i / PARALLEL_BATCHES) + 1;
+            const totalBatchGroups = Math.ceil(batches.length / PARALLEL_BATCHES);
+            addLog(`バッチ ${currentBatchNum}/${totalBatchGroups} 処理中...`, 'info');
             setCurrentStep(`${txt.analyzing} (${processedCount + 1}/${pendingPhotos.length}) - ${parallelBatches.length}並列`);
 
             const batchPromises = parallelBatches.map(async (batch, idx) => {
@@ -859,8 +870,10 @@ export default function App() {
       }
 
       // 3. Normalize Consistency (Only for NEW records)
+      addLog(`=== STEP 4/4: データ整合性チェック ===`, 'info');
       const newlyAnalyzed = photos.filter(p => !p.fromCache && p.status === 'done');
       if (newlyAnalyzed.length > 0) {
+        addLog(`${newlyAnalyzed.length}枚の解析結果を正規化中...`, 'info');
         setCurrentStep("Finalizing data consistency...");
         const normalizedNew = await normalizeDataConsistency(newlyAnalyzed, apiKey, addLog);
 

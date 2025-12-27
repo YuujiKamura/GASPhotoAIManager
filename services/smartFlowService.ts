@@ -23,10 +23,11 @@ export const detectPhotoType = async (
 ): Promise<'construction_with_board' | 'landscape_pairing'> => {
 
   const genAI = new GoogleGenAI({ apiKey });
-  onLog?.('写真タイプを判定中...', 'info');
 
   // サンプル写真を3枚程度選択（全部見る必要はない）
   const samples = records.slice(0, Math.min(3, records.length));
+  onLog?.(`サンプル${samples.length}枚で写真タイプを判定中...`, 'info');
+  samples.forEach((s, i) => onLog?.(`  [${i + 1}] ${s.fileName}`, 'info'));
 
   const inputs = samples.map(r => ({
     inlineData: {
@@ -110,7 +111,9 @@ export const processLandscapePhotos = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error') => void
 ): Promise<{ pairs: Array<{ before: PhotoRecord, after: PhotoRecord, sceneId: string }> }> => {
 
-  onLog?.('座標ベースの景観写真ペアリング処理を開始', 'info');
+  onLog?.(`=== 景観写真ペアリング開始 ===`, 'info');
+  onLog?.(`対象: ${records.length}枚`, 'info');
+  records.forEach((r, i) => onLog?.(`  [${i + 1}/${records.length}] ${r.fileName}`, 'info'));
 
   try {
     // 座標ベースの厳密なペアリングを使用
@@ -211,20 +214,29 @@ export const processPhotosWithSmartFlow = async (
   photos?: PhotoRecord[]
 }> => {
 
+  onLog?.(`=== スマートフロー処理開始 ===`, 'info');
+  onLog?.(`入力: ${records.length}枚の写真`, 'info');
+
   // Step 1: 写真タイプを判定
+  onLog?.(`[STEP 1] 写真タイプを自動判定中...`, 'info');
   const photoType = await detectPhotoType(records, apiKey, onLog);
+  onLog?.(`→ 判定結果: ${photoType === 'construction_with_board' ? '黒板あり → 詳細解析' : '景観写真 → ペアリング'}`, 'success');
 
   // Step 2: タイプに応じた処理
   if (photoType === 'landscape_pairing') {
     // 景観写真：ペアリングのみ
+    onLog?.(`[STEP 2] 景観写真モードでペアリング処理...`, 'info');
     const result = await processLandscapePhotos(records, apiKey, onLog);
+    onLog?.(`=== スマートフロー完了: ${result.pairs.length}組のペア ===`, 'success');
     return {
       type: 'paired',
       pairs: result.pairs
     };
   } else {
     // 黒板あり：従来の詳細解析
+    onLog?.(`[STEP 2] 黒板解析モードで詳細処理...`, 'info');
     const analyzedPhotos = await processConstructionPhotos(records, apiKey, instruction, onLog);
+    onLog?.(`=== スマートフロー完了: ${analyzedPhotos.length}枚解析済み ===`, 'success');
     return {
       type: 'analyzed',
       photos: analyzedPhotos

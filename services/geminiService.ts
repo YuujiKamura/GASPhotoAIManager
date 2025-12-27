@@ -569,6 +569,7 @@ export const analyzePhotoBatch = async (
   const genAI = new GoogleGenAI({ apiKey });
 
   onLog?.(`[PROFILER] Batch start: ${records.length} photos, model=${PRIMARY_MODEL}`, "info");
+  records.forEach((r, i) => onLog?.(`  [${i + 1}/${records.length}] ${r.fileName}`, 'info'));
 
   // Use selector to determine work types (only for construction mode)
   let filteredHierarchy: object | undefined;
