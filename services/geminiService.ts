@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
-import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms } from "../utils/constructionMaster";
+import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
 import { getRelevantExamples, getActiveSession } from "../utils/storage";
 
@@ -320,25 +320,23 @@ Traverse the hierarchy directly:
 *   **detail**: The key at Level 3 (e.g., "表層工").
 *   **remarks**: The key at Level 4 (e.g., "舗設状況", "着手前", "転圧状況").
 
-**STEP 3: Remarks (備考) Logic**
-*   **If Category is "着手前及び完成写真"**:
-    *   **remarks** MUST be either "着手前" (Before) or "竣工" (Completion/Finished).
-    *   Do NOT put "着手前" in the 'detail' or 'variety' columns.
-*   **If Category is "施工状況写真"**:
-    *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
-    *   Normalize text: "転圧中" -> "転圧状況".
-*   **If Category is "品質管理写真"**:
-    *   **remarks** MUST include temperature TYPE + VALUE.
-    *   Format: "温度種別 実測値℃" (e.g., "到着温度 161.1℃", "敷均し温度 155.3℃")
-    *   Valid temperature types: 到着温度, 敷均し温度, 初期締固め前温度, 開放温度
-    *   If temperature value is visible, ALWAYS include it in remarks.
-    *   **NEVER use** "アスファルト混合物温度測定" or "温度測定" alone without the actual value.
-*   **If Category is "出来形管理写真"**:
-    *   **remarks** MUST end with "出来形" AND include measurement values if visible.
-    *   Format: "〜出来形　測定値" (e.g., "不陸整正出来形　実測値+3mm", "路盤厚出来形　t=150")
-    *   NEVER use "〜状況" for measurement photos - that implies ongoing work.
-    *   If blackboard shows measurement values (設計/実測/差), it's definitely 出来形管理.
-    *   **ALWAYS include visible measurements in remarks** - don't make user ask for it.
+**STEP 3: Remarks (備考) - USE remarksCategory + remarksValue**
+Output remarks as TWO separate fields:
+*   **remarksCategory**: Select from the enum (e.g., "到着温度", "転圧状況", "着手前")
+*   **remarksValue**: The measurement value if applicable (e.g., "161.1℃", "t=50mm", or "" if none)
+
+**Category-specific rules:**
+*   **着手前及び完成写真**: remarksCategory = "着手前" or "竣工", remarksValue = ""
+*   **施工状況写真**: remarksCategory = "転圧状況" etc., remarksValue = ""
+*   **品質管理写真 (温度管理)**:
+    - remarksCategory = "到着温度" / "敷均し温度" / "初期締固め前温度" / "開放温度"
+    - remarksValue = the temperature value (e.g., "161.1℃")
+    - **CRITICAL**: Each photo has a SPECIFIC temperature. Do NOT use generic "温度管理" or "温度測定".
+    - **NEVER use** "アスファルト混合物温度測定" alone without the actual value in remarksValue.
+*   **出来形管理写真**:
+    - remarksCategory = "不陸整正出来形" etc. (MUST end with "出来形")
+    - remarksValue = measurement (e.g., "実測値+3mm", "t=150")
+    - NEVER use "〜状況" for measurement photos - that implies ongoing work.
 
 **STEP 4: Description (記事) - 重要な情報を記録**
 
@@ -374,7 +372,8 @@ Traverse the hierarchy directly:
 
 **OUTPUT FORMAT**:
 JSON only.
-keys: workType, variety, detail, station, remarks, description, measurements, hasBoard, detectedText.
+keys: workType, variety, detail, station, remarksCategory, remarksValue, description, hasBoard, detectedText.
+Note: remarksCategory is from the enum, remarksValue contains the measurement/value.
 
 ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
   `.trim();
@@ -976,6 +975,27 @@ export const analyzePhotoBatch = async (
     ${records.map(r => r.fileName).join(", ")}
   `;
 
+  // 温度管理・品質管理写真の備考カテゴリ（enumで強制）
+  const REMARKS_CATEGORIES = [
+    // 温度管理（品質管理写真）
+    "到着温度", "敷均し温度", "初期締固め前温度", "開放温度",
+    "アスファルト混合物温度測定",
+    // 密度測定（品質管理写真）
+    "現場密度測定",
+    // 施工状況
+    "転圧状況", "敷均し状況", "舗設状況", "初期転圧状況", "2次転圧状況",
+    "乳剤散布状況", "養生砂散布状況", "清掃状況",
+    "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
+    // 着手前・完成
+    "着手前", "完了", "竣工", "施工完了",
+    // 出来形
+    "不陸整正出来形", "路盤厚出来形", "表層厚出来形", "幅員出来形",
+    // 安全管理
+    "朝礼状況", "KY活動状況", "新規入場者教育状況", "保安施設設置状況", "点灯確認状況", "安全巡視状況",
+    // その他
+    "その他"
+  ];
+
   const schema: Schema = {
     type: Type.ARRAY,
     items: {
@@ -986,13 +1006,21 @@ export const analyzePhotoBatch = async (
         variety: { type: Type.STRING },
         detail: { type: Type.STRING },
         station: { type: Type.STRING },
-        remarks: { type: Type.STRING },
+        remarksCategory: {
+          type: Type.STRING,
+          enum: REMARKS_CATEGORIES,
+          description: "備考の種類。温度管理なら「到着温度」「敷均し温度」等を選択"
+        },
+        remarksValue: {
+          type: Type.STRING,
+          description: "備考の値。温度なら「161.1℃」、厚さなら「t=50mm」等。値がない場合は空文字"
+        },
         description: { type: Type.STRING },
         hasBoard: { type: Type.BOOLEAN },
         detectedText: { type: Type.STRING },
         reasoning: { type: Type.STRING }
       },
-      required: ["fileName", "workType", "station", "description"]
+      required: ["fileName", "workType", "station", "description", "remarksCategory"]
     }
   };
 
@@ -1081,19 +1109,31 @@ export const analyzePhotoBatch = async (
       }
 
       // Validate against schema-ish
-      const validResults: AIAnalysisResult[] = parsed.map((item: any) => ({
-        fileName: item.fileName || "unknown",
-        workType: item.workType || "",
-        variety: item.variety || "",
-        detail: item.detail || "",
-        station: item.station || "",
-        remarks: item.remarks || "",
-        description: item.description || "",
-        measurements: item.measurements || "", // 出来形管理の測定値
-        hasBoard: !!item.hasBoard,
-        detectedText: item.detectedText || "",
-        reasoning: item.reasoning || "" // Capture reasoning
-      }));
+      // remarksCategory + remarksValue から remarks を生成
+      const validResults: AIAnalysisResult[] = parsed.map((item: any) => {
+        const remarksCategory = item.remarksCategory || "";
+        const remarksValue = item.remarksValue || "";
+        // 値がある場合は「カテゴリ 値」形式、ない場合はカテゴリのみ
+        const remarks = remarksValue
+          ? `${remarksCategory} ${remarksValue}`.trim()
+          : remarksCategory;
+
+        return {
+          fileName: item.fileName || "unknown",
+          workType: item.workType || "",
+          variety: item.variety || "",
+          detail: item.detail || "",
+          station: item.station || "",
+          remarks: remarks,
+          remarksCategory: remarksCategory, // 分離したカテゴリも保持
+          remarksValue: remarksValue,       // 分離した値も保持
+          description: item.description || "",
+          measurements: item.measurements || "", // 出来形管理の測定値
+          hasBoard: !!item.hasBoard,
+          detectedText: item.detectedText || "",
+          reasoning: item.reasoning || "" // Capture reasoning
+        };
+      });
 
       // Log individual results
       validResults.forEach(res => {
@@ -1118,6 +1158,8 @@ export const analyzePhotoBatch = async (
             detail: '',
             station: '',
             remarks: '',
+            remarksCategory: '',
+            remarksValue: '',
             description: '',
             measurements: '',
             hasBoard: false,
@@ -1183,11 +1225,45 @@ export const analyzePhotoBatch = async (
           onLog?.(`🚨 [AI創作検出] ${res.fileName}: 備考「${res.remarks}」に「〜工」が含まれています`, "error");
         }
 
+        // 温度管理写真のバリデーション（remarksCategory/remarksValueがある場合）
+        let finalRemarks = res.remarks;
+        let finalRemarksCategory = res.remarksCategory;
+        let finalRemarksValue = res.remarksValue;
+
+        if (res.remarksCategory && isQualityManagementPhoto(res.remarksCategory)) {
+          const tempValidation = validateTemperatureRemarks(
+            res.remarksCategory || '',
+            res.remarksValue || ''
+          );
+
+          if (!tempValidation.isValid) {
+            tempValidation.warnings.forEach(w => {
+              onLog?.(`[温度バリデーション] ${res.fileName}: ${w}`, "error");
+            });
+
+            // 修正を適用
+            if (tempValidation.correctedCategory) {
+              finalRemarksCategory = tempValidation.correctedCategory;
+            }
+            if (tempValidation.correctedValue) {
+              finalRemarksValue = tempValidation.correctedValue;
+            }
+
+            // remarks を再生成
+            finalRemarks = finalRemarksValue
+              ? `${finalRemarksCategory} ${finalRemarksValue}`.trim()
+              : finalRemarksCategory || '';
+          }
+        }
+
         return {
           ...res,
           workType: validatedWorkType,
           variety: validatedVariety,
-          detail: validatedDetail
+          detail: validatedDetail,
+          remarks: finalRemarks,
+          remarksCategory: finalRemarksCategory,
+          remarksValue: finalRemarksValue
         };
       });
 
