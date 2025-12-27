@@ -364,7 +364,11 @@ export default function App() {
   const sortPhotosLogical = (records: PhotoRecord[], policy: SortPolicy = currentSortPolicy): PhotoRecord[] => {
     const isSafetyPhoto = (r: PhotoRecord) => {
       const workType = r.analysis?.workType || '';
-      return workType.includes('安全管理') || workType.includes('安全');
+      const remarks = r.analysis?.remarks || '';
+      const safetyKeywords = ['朝礼', 'KY', '安全', '新規入場', '点灯', '巡視', '保安'];
+      // workTypeに安全が含まれる、または備考に安全関連キーワードが含まれる
+      return workType.includes('安全管理') || workType.includes('安全') ||
+             safetyKeywords.some(kw => remarks.includes(kw));
     };
 
     // 時系列ソート（基本）
