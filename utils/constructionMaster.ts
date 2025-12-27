@@ -625,3 +625,54 @@ export function inferPhotoCategory(remarkText: string): PhotoCategoryType {
   }
   return "施工状況写真";
 }
+
+// マスタから細別（detail）の順序を取得
+// 同一種別内の細別は定義順に並ぶ
+export function getDetailOrderMap(): Map<string, number> {
+  const orderMap = new Map<string, number>();
+  let order = 0;
+
+  const merged = getMergedHierarchy();
+  const root = merged["直接工事費"] as any;
+
+  // 階層をトラバース（定義順で）
+  for (const catKey in root) {
+    const category = root[catKey];
+    for (const workTypeKey in category) {
+      const workType = category[workTypeKey];
+      for (const varietyKey in workType) {
+        const variety = workType[varietyKey];
+        for (const detailKey in variety) {
+          if (detailKey && detailKey !== 'aliases' && !orderMap.has(detailKey)) {
+            orderMap.set(detailKey, order++);
+          }
+        }
+      }
+    }
+  }
+
+  return orderMap;
+}
+
+// マスタから種別（variety）の順序を取得
+export function getVarietyOrderMap(): Map<string, number> {
+  const orderMap = new Map<string, number>();
+  let order = 0;
+
+  const merged = getMergedHierarchy();
+  const root = merged["直接工事費"] as any;
+
+  for (const catKey in root) {
+    const category = root[catKey];
+    for (const workTypeKey in category) {
+      const workType = category[workTypeKey];
+      for (const varietyKey in workType) {
+        if (varietyKey && !orderMap.has(varietyKey)) {
+          orderMap.set(varietyKey, order++);
+        }
+      }
+    }
+  }
+
+  return orderMap;
+}
