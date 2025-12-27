@@ -168,8 +168,8 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
   const isSelectedAvailable = modelAvailabilities.find(m => m.id === selectedModel)?.status === 'available';
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[130] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-6 space-y-5">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[130] flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl sm:rounded-3xl w-full max-w-md p-4 sm:p-6 space-y-4 sm:space-y-5 my-2 sm:my-0 max-h-[calc(100vh-16px)] sm:max-h-none overflow-y-auto">
         {/* ヘッダー */}
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500/20 rounded-full mb-4">

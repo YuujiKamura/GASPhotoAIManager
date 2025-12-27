@@ -350,7 +350,70 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               </div>
             )}
 
-            {/* Tools Dropdown Menu */}
+            {/* Home Button */}
+            <button onClick={onGoHome} className="p-2 bg-slate-700 hover:bg-blue-600 rounded text-slate-300 hover:text-white transition-colors" title={txt.backHome}>
+              <Home className="w-4 h-4" />
+            </button>
+
+            {/* Layout & View Controls */}
+            <div className="flex items-center gap-1 bg-slate-700 rounded-lg px-1">
+              {/* Layout Switcher - show when photos have boards */}
+              {hasPhotosWithBoard && (
+                <>
+                  <button
+                    onClick={() => setPhotosPerPage(2)}
+                    className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                      photosPerPage === 2 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                    }`}
+                    title="2枚/ページ"
+                  >
+                    2枚
+                  </button>
+                  <button
+                    onClick={() => setPhotosPerPage(3)}
+                    className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                      photosPerPage === 3 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                    }`}
+                    title="3枚/ページ"
+                  >
+                    3枚
+                  </button>
+                </>
+              )}
+
+              {/* Description Toggle - only show in 3-up mode */}
+              {photosPerPage === 3 && (
+                <button
+                  onClick={() => setShowDescription(!showDescription)}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                    showDescription ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                  }`}
+                  title="記事欄の表示/非表示"
+                >
+                  <FileTextIcon className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">記事</span>
+                </button>
+              )}
+            </div>
+
+            {/* Export Buttons */}
+            <div className="flex gap-1">
+              <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-1" title={txt.exportExcel}>
+                  <Download className="w-4 h-4" /> <span className="hidden lg:inline">{txt.exportExcel}</span>
+              </button>
+
+              {appMode === 'construction' && (
+                <button onClick={handleDownloadZip} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title="XML/ZIP">
+                  {isGeneratingZip ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />} <span className="hidden lg:inline">ZIP</span>
+                </button>
+              )}
+
+              <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-3 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title={txt.exportPDF}>
+                {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} <span className="hidden lg:inline">PDF</span>
+              </button>
+            </div>
+
+            {/* Tools Dropdown Menu - 右端に配置 */}
             {!isReorderMode && (
               <div className="relative" ref={toolsMenuRef}>
                 <button
@@ -362,8 +425,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                   title={lang === 'ja' ? 'ツール' : 'Tools'}
                 >
                   <MoreVertical className="w-4 h-4" />
-                  <span className="hidden md:inline">{lang === 'ja' ? 'ツール' : 'Tools'}</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showToolsMenu && (
@@ -439,69 +500,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                 )}
               </div>
             )}
-
-            {/* Home Button */}
-            <button onClick={onGoHome} className="p-2 bg-slate-700 hover:bg-blue-600 rounded text-slate-300 hover:text-white transition-colors" title={txt.backHome}>
-              <Home className="w-4 h-4" />
-            </button>
-
-            {/* Layout & View Controls */}
-            <div className="flex items-center gap-1 bg-slate-700 rounded-lg px-1">
-              {/* Layout Switcher - show when photos have boards */}
-              {hasPhotosWithBoard && (
-                <>
-                  <button
-                    onClick={() => setPhotosPerPage(2)}
-                    className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                      photosPerPage === 2 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
-                    }`}
-                    title="2枚/ページ"
-                  >
-                    2枚
-                  </button>
-                  <button
-                    onClick={() => setPhotosPerPage(3)}
-                    className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                      photosPerPage === 3 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
-                    }`}
-                    title="3枚/ページ"
-                  >
-                    3枚
-                  </button>
-                </>
-              )}
-
-              {/* Description Toggle - only show in 3-up mode */}
-              {photosPerPage === 3 && (
-                <button
-                  onClick={() => setShowDescription(!showDescription)}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
-                    showDescription ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-slate-600"
-                  }`}
-                  title="記事欄の表示/非表示"
-                >
-                  <FileTextIcon className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">記事</span>
-                </button>
-              )}
-            </div>
-
-            {/* Export Buttons */}
-            <div className="flex gap-1">
-              <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-1" title={txt.exportExcel}>
-                  <Download className="w-4 h-4" /> <span className="hidden lg:inline">{txt.exportExcel}</span>
-              </button>
-
-              {appMode === 'construction' && (
-                <button onClick={handleDownloadZip} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title="XML/ZIP">
-                  {isGeneratingZip ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />} <span className="hidden lg:inline">ZIP</span>
-                </button>
-              )}
-
-              <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-3 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title={txt.exportPDF}>
-                {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} <span className="hidden lg:inline">PDF</span>
-              </button>
-            </div>
          </div>
       </div>
       
