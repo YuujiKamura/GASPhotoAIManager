@@ -10,6 +10,7 @@ interface Props {
   appMode: AppMode;
   lang: 'en' | 'ja';
   photosPerPage: 2 | 3;
+  showDescription?: boolean; // 記事欄の表示/非表示 (default: true in 3-up)
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto?: (fileName: string) => void;
   onReanalyzePhoto?: (fileName: string) => void;
@@ -114,7 +115,7 @@ type ContextMenuState = {
   targetFileName: string;
 } | null;
 
-const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
+const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, showDescription = true, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
@@ -148,14 +149,16 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const isTwoUp = photosPerPage === 2;
 
   // Fields Config
-  // 3-up: All Fields
+  // 3-up: All Fields (optionally excluding description)
   // 2-up: Only Remarks, Station (in that order)
   const visibleFields = isTwoUp
     ? [
       LAYOUT_FIELDS.find(f => f.key === 'remarks')!,
       LAYOUT_FIELDS.find(f => f.key === 'station')!
     ].filter(Boolean)
-    : LAYOUT_FIELDS;
+    : showDescription
+      ? LAYOUT_FIELDS
+      : LAYOUT_FIELDS.filter(f => f.key !== 'description');
 
   return (
     <div id="album-content" className="w-full">

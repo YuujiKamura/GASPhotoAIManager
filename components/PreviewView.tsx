@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -74,6 +74,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
   const [showConsole, setShowConsole] = useState(true); // Default to True
   const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
+  const [showDescription, setShowDescription] = useState(false); // Default to OFF
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // Sync photosPerPage if initialLayout changes (e.g. after auto-pair finishes)
@@ -218,6 +219,27 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               </div>
             )}
 
+            {/* Description Toggle - only show in 3-up mode */}
+            {photosPerPage === 3 && (
+              <button
+                onClick={() => setShowDescription(!showDescription)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition-colors ml-2 ${
+                  showDescription
+                    ? "bg-blue-500 text-white"
+                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                }`}
+                title="記事欄の表示/非表示"
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                  showDescription ? 'bg-white border-white' : 'border-slate-400'
+                }`}>
+                  {showDescription && <Check className="w-3 h-3 text-blue-500" />}
+                </div>
+                <FileTextIcon className="w-3.5 h-3.5" />
+                記事欄
+              </button>
+            )}
+
             <div className="flex gap-1 ml-1">
               <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-4 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-2" title={txt.exportExcel}>
                   <Download className="w-4 h-4" /> <span className="hidden md:inline">{txt.exportExcel}</span>
@@ -250,11 +272,12 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 
       <div id="print-area" ref={previewContainerRef} className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-auto bg-gray-200 w-full relative">
          <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: scale < 1 ? `-${(1 - scale) * 50}%` : '0', minWidth: '210mm' }}>
-            <PhotoAlbumView 
-              records={photos} 
-              appMode={appMode} 
-              lang={lang} 
+            <PhotoAlbumView
+              records={photos}
+              appMode={appMode}
+              lang={lang}
               photosPerPage={photosPerPage}
+              showDescription={showDescription}
               onUpdatePhoto={onUpdatePhoto}
               onDeletePhoto={onDeletePhoto}
               onReanalyzePhoto={onReanalyzePhoto}
