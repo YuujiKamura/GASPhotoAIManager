@@ -246,9 +246,9 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
 
               // Info Container
               // 3-up: 35% width
-              // 2-up: 100% width, Auto Height (fits content), minimal padding
+              // 2-up: 100% width, takes about 20% of slot height for remarks + station
               const infoContainerClass = isTwoUp
-                ? "w-full h-auto bg-white flex flex-col justify-start py-1 px-4 gap-1"
+                ? "w-full h-[20%] bg-white flex flex-col justify-start py-1 px-4"
                 : "w-[35%] flex flex-col h-full bg-white";
 
               if (!record) {
@@ -297,9 +297,16 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                       let dynamicHeightClass = field.heightClass;
                       let dynamicTextClass = undefined;
                       if (isTwoUp) {
-                        // In 2-up vertical mode - unified text styling for station and remarks
-                        dynamicHeightClass = 'h-[30px] flex-shrink-0 border-none';
-                        dynamicTextClass = 'text-sm text-gray-900 font-medium';
+                        // In 2-up vertical mode
+                        if (field.key === 'remarks') {
+                          // Remarks takes most of the info container space
+                          dynamicHeightClass = 'flex-1 min-h-[60px] border-none';
+                          dynamicTextClass = 'text-sm text-gray-900 font-medium';
+                        } else {
+                          // Station stays compact
+                          dynamicHeightClass = 'h-[28px] flex-shrink-0 border-none';
+                          dynamicTextClass = 'text-sm text-gray-900 font-medium';
+                        }
                       } else {
                         // 3-up Logic
                         if (field.key === 'description') {
