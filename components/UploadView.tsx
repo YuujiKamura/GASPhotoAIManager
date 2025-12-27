@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings, MousePointer } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel } from '../services/geminiService';
 
@@ -20,6 +20,7 @@ interface UploadViewProps {
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
+  onManualPairing?: (files: File[], instruction: string) => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -38,7 +39,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   onImportJson,
   onClearCache,
   onShowPreview,
-  onOpenSettings
+  onOpenSettings,
+  onManualPairing
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -305,20 +307,36 @@ const UploadView: React.FC<UploadViewProps> = ({
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 p-4 bg-gray-50 border-t border-gray-100">
-                <button
-                  onClick={handleCancelPending}
-                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={handleConfirmStart}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Play className="w-4 h-4" />
-                  解析開始
-                </button>
+              <div className="flex flex-col gap-2 p-4 bg-gray-50 border-t border-gray-100">
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCancelPending}
+                    className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleConfirmStart}
+                    className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Play className="w-4 h-4" />
+                    AI解析
+                  </button>
+                </div>
+                {onManualPairing && (
+                  <button
+                    onClick={() => {
+                      if (pendingFiles) {
+                        onManualPairing(pendingFiles, instruction);
+                        setPendingFiles(null);
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <MousePointer className="w-4 h-4" />
+                    手動ペアリング（AI解析スキップ）
+                  </button>
+                )}
               </div>
             </div>
           </div>

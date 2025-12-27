@@ -624,6 +624,54 @@ export default function App() {
     setShowManualPairing(true);
   };
 
+  // ファイルから直接手動ペアリングを開始（AI解析スキップ）
+  const handleStartManualPairing = async (files: File[], instruction: string) => {
+    setIsProcessing(true);
+    setErrorMsg(null);
+    clearLogs();
+    addLog('手動ペアリングモードで開始...', 'info');
+    setInitialInstruction(instruction);
+    setActiveInstruction(instruction);
+
+    try {
+      // 画像を読み込んでPhotoRecordを作成（解析なし）
+      addLog(`${files.length}枚の画像を読み込み中...`, 'info');
+      const records: PhotoRecord[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        addLog(`  [${i + 1}/${files.length}] ${file.name}`, 'info');
+        const date = await getPhotoDate(file);
+        const { base64, mimeType } = await processImageForAI(file);
+
+        records.push({
+          fileName: file.name,
+          base64,
+          mimeType,
+          fileSize: file.size,
+          lastModified: file.lastModified,
+          originalFile: file,
+          status: 'pending',
+          date,
+          fromCache: false
+        });
+      }
+
+      addLog(`読み込み完了: ${records.length}枚`, 'success');
+
+      // 手動ペアリングモーダルを開く
+      setManualPairingPhotos(records);
+      setShowManualPairing(true);
+
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "画像読み込みエラー");
+      addLog("画像読み込みエラー", 'error', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleManualPairingComplete = (pairs: Array<{ before: PhotoRecord, after: PhotoRecord, id: string }>) => {
     // プロンプトから測点名を抽出
     const locationName = extractLocationName(activeInstruction || initialInstruction);
@@ -1259,6 +1307,7 @@ export default function App() {
         onClearCache={handleClearCache}
         onShowPreview={() => setShowPreview(true)}
         onOpenSettings={() => setShowApiKeySetup(true)}
+        onManualPairing={handleStartManualPairing}
       />
     );
   }
