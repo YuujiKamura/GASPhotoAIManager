@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, RotateCcw, Check, Search } from 'lucide-react';
+import { ArrowLeft, Save, Check, Search } from 'lucide-react';
 import { CONSTRUCTION_HIERARCHY } from '../utils/constructionMaster';
 
 interface Props {
@@ -7,9 +7,9 @@ interface Props {
   lang: 'en' | 'ja';
 }
 
-interface WorkTypeInfo {
+interface WorkTypeData {
   name: string;
-  categories: string[]; // このworkTypeが存在する写真区分のリスト
+  categories: Map<string, any>; // 写真区分 → その下の階層データ
 }
 
 const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
@@ -22,9 +22,9 @@ const loadEnabledWorkTypes = (): string[] => {
       return JSON.parse(saved);
     }
     // 初回はすべて有効
-    return getAllWorkTypes().map(w => w.name);
+    return Array.from(collectAllWorkTypes().keys());
   } catch {
-    return getAllWorkTypes().map(w => w.name);
+    return Array.from(collectAllWorkTypes().keys());
   }
 };
 
@@ -33,9 +33,9 @@ const saveEnabledWorkTypes = (types: string[]) => {
   localStorage.setItem(ENABLED_WORK_TYPES_KEY, JSON.stringify(types));
 };
 
-// マスタから全工種を抽出（写真区分をまたいで）
-function getAllWorkTypes(): WorkTypeInfo[] {
-  const workTypeMap = new Map<string, Set<string>>();
+// マスタから全工種とその階層データを収集
+function collectAllWorkTypes(): Map<string, WorkTypeData> {
+  const workTypeMap = new Map<string, WorkTypeData>();
   const root = CONSTRUCTION_HIERARCHY["直接工事費"] as any;
 
   for (const categoryKey in root) {
@@ -43,19 +43,17 @@ function getAllWorkTypes(): WorkTypeInfo[] {
     for (const workTypeKey in category) {
       if (workTypeKey && workTypeKey.trim() !== '') {
         if (!workTypeMap.has(workTypeKey)) {
-          workTypeMap.set(workTypeKey, new Set());
+          workTypeMap.set(workTypeKey, {
+            name: workTypeKey,
+            categories: new Map()
+          });
         }
-        workTypeMap.get(workTypeKey)!.add(categoryKey);
+        workTypeMap.get(workTypeKey)!.categories.set(categoryKey, category[workTypeKey]);
       }
     }
   }
 
-  return Array.from(workTypeMap.entries())
-    .map(([name, categories]) => ({
-      name,
-      categories: Array.from(categories)
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  return workTypeMap;
 }
 
 // 有効な工種のみ含むマスタを取得（外部から使用）
@@ -70,7 +68,6 @@ export const getFilteredMaster = (): any => {
         delete category[workTypeKey];
       }
     }
-    // 空になったカテゴリは削除しない（着手前写真などは残す）
   }
 
   return { "直接工事費": root };
@@ -79,8 +76,36 @@ export const getFilteredMaster = (): any => {
 // 互換性のためにgetMergedMasterをエクスポート
 export const getMergedMaster = getFilteredMaster;
 
+// 階層をツリー表示するコンポーネント
+const TreeView: React.FC<{ data: any; depth?: number; dimmed?: boolean }> = ({ data, depth = 0, dimmed = false }) => {
+  if (!data || typeof data !== 'object') return null;
+
+  const keys = Object.keys(data).filter(k => k !== 'aliases');
+  if (keys.length === 0) return null;
+
+  return (
+    <div className={`text-xs ${dimmed ? 'text-gray-400' : 'text-gray-600'}`}>
+      {keys.map((key, idx) => (
+        <div key={key} className="flex">
+          <div className="flex-shrink-0 w-4 text-gray-300">
+            {idx === keys.length - 1 ? '└' : '├'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="truncate">{key}</div>
+            {data[key] && typeof data[key] === 'object' && (
+              <div className="ml-2 border-l border-gray-200 pl-1">
+                <TreeView data={data[key]} depth={depth + 1} dimmed={dimmed} />
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
-  const [allWorkTypes] = useState<WorkTypeInfo[]>(() => getAllWorkTypes());
+  const [allWorkTypes] = useState<Map<string, WorkTypeData>>(() => collectAllWorkTypes());
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -89,14 +114,13 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     title: lang === 'ja' ? '工種セット管理' : 'Work Type Sets',
     search: lang === 'ja' ? '工種を検索...' : 'Search work types...',
     save: lang === 'ja' ? '保存' : 'Save',
-    reset: lang === 'ja' ? '全選択' : 'Select All',
+    selectAll: lang === 'ja' ? '全選択' : 'Select All',
     clear: lang === 'ja' ? '全解除' : 'Clear All',
     unsaved: lang === 'ja' ? '未保存' : 'Unsaved',
     enabled: lang === 'ja' ? '有効' : 'Enabled',
-    categories: lang === 'ja' ? '関連区分' : 'Categories',
     hint: lang === 'ja'
-      ? 'タップで工種を有効/無効に切り替え。有効な工種のみがAI分類で使用されます。'
-      : 'Tap to enable/disable work types. Only enabled types are used in AI classification.',
+      ? 'チェックで工種を有効/無効に。有効な工種のみAI分類で使用。'
+      : 'Check to enable/disable. Only enabled types used in AI.',
   };
 
   useEffect(() => {
@@ -104,7 +128,8 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     setEnabledTypes(new Set(enabled));
   }, []);
 
-  const toggleWorkType = (name: string) => {
+  const toggleWorkType = (name: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     setEnabledTypes(prev => {
       const next = new Set(prev);
       if (next.has(name)) {
@@ -123,7 +148,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   };
 
   const handleSelectAll = () => {
-    setEnabledTypes(new Set(allWorkTypes.map(w => w.name)));
+    setEnabledTypes(new Set(allWorkTypes.keys()));
     setHasChanges(true);
   };
 
@@ -132,9 +157,9 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     setHasChanges(true);
   };
 
-  const filteredWorkTypes = allWorkTypes.filter(w =>
-    w.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const workTypeList = Array.from(allWorkTypes.values())
+    .filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
   const categoryShortNames: Record<string, string> = {
     '着手前及び完成写真': '着工/完成',
@@ -178,20 +203,20 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
       </div>
 
       {/* Stats & Actions */}
-      <div className="px-4 py-3 bg-white border-b flex items-center justify-between">
+      <div className="px-4 py-2 bg-white border-b flex items-center justify-between">
         <div className="text-sm text-gray-600">
-          {txt.enabled}: <span className="font-bold text-blue-600">{enabledTypes.size}</span> / {allWorkTypes.length}
+          {txt.enabled}: <span className="font-bold text-blue-600">{enabledTypes.size}</span> / {allWorkTypes.size}
         </div>
         <div className="flex gap-2">
           <button
             onClick={handleSelectAll}
-            className="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+            className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
           >
-            {txt.reset}
+            {txt.selectAll}
           </button>
           <button
             onClick={handleClearAll}
-            className="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
           >
             {txt.clear}
           </button>
@@ -199,7 +224,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
       </div>
 
       {/* Search */}
-      <div className="px-4 py-3 bg-gray-50 border-b">
+      <div className="px-4 py-2 bg-gray-50 border-b">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -207,54 +232,69 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={txt.search}
-            className="w-full pl-9 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <p className="text-xs text-gray-400 mt-2">{txt.hint}</p>
+        <p className="text-xs text-gray-400 mt-1">{txt.hint}</p>
       </div>
 
-      {/* Work Types List */}
+      {/* Work Types List with Tree */}
       <div className="flex-1 overflow-auto">
-        {filteredWorkTypes.map(workType => {
+        {workTypeList.map(workType => {
           const isEnabled = enabledTypes.has(workType.name);
           return (
             <div
               key={workType.name}
-              onClick={() => toggleWorkType(workType.name)}
-              className={`flex items-center gap-3 px-4 py-3 border-b cursor-pointer transition-colors active:bg-gray-100 ${
-                isEnabled ? 'bg-blue-50' : 'bg-white'
-              }`}
+              className={`border-b ${isEnabled ? 'bg-white' : 'bg-gray-50'}`}
             >
-              {/* Checkbox */}
+              {/* Work Type Header */}
               <div
-                className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
-                  isEnabled
-                    ? 'bg-blue-500 border-blue-500'
-                    : 'border-gray-300'
-                }`}
+                onClick={(e) => toggleWorkType(workType.name, e)}
+                className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors active:bg-gray-100`}
               >
-                {isEnabled && <Check className="w-4 h-4 text-white" />}
+                {/* Checkbox */}
+                <div
+                  className={`w-6 h-6 mt-0.5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                    isEnabled
+                      ? 'bg-blue-500 border-blue-500'
+                      : 'border-gray-300 bg-white'
+                  }`}
+                >
+                  {isEnabled && <Check className="w-4 h-4 text-white" />}
+                </div>
+
+                {/* Work Type Name & Categories */}
+                <div className="flex-1 min-w-0">
+                  <div className={`font-bold text-base ${isEnabled ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {workType.name}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {Array.from(workType.categories.keys()).map(cat => (
+                      <span
+                        key={cat}
+                        className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          isEnabled
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-200 text-gray-500'
+                        }`}
+                      >
+                        {categoryShortNames[cat] || cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {/* Work Type Info */}
-              <div className="flex-1 min-w-0">
-                <div className={`font-medium ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>
-                  {workType.name}
-                </div>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {workType.categories.map(cat => (
-                    <span
-                      key={cat}
-                      className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        isEnabled
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {categoryShortNames[cat] || cat}
-                    </span>
-                  ))}
-                </div>
+              {/* Tree Content - Always Expanded */}
+              <div className={`px-4 pb-3 pl-14 ${isEnabled ? '' : 'opacity-50'}`}>
+                {Array.from(workType.categories.entries()).map(([catName, catData]) => (
+                  <div key={catName} className="mb-2">
+                    <div className={`text-xs font-medium mb-1 ${isEnabled ? 'text-gray-500' : 'text-gray-400'}`}>
+                      [{categoryShortNames[catName] || catName}]
+                    </div>
+                    <TreeView data={catData} dimmed={!isEnabled} />
+                  </div>
+                ))}
               </div>
             </div>
           );
