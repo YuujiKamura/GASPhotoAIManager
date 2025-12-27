@@ -7,6 +7,7 @@ import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
+import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
 
 // Components
 import UploadView from './components/UploadView';
@@ -402,17 +403,24 @@ export default function App() {
       }
 
       case 'by_detail': {
+        const detailOrder = getDetailOrderMap();
         const groups: { [key: string]: PhotoRecord[] } = {};
         records.forEach(r => {
           const key = r.analysis?.detail || r.analysis?.variety || '未分類';
           if (!groups[key]) groups[key] = [];
           groups[key].push(r);
         });
-        const sortedKeys = Object.keys(groups).sort();
+        // マスタ順でソート（マスタにないものは末尾）
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+          const orderA = detailOrder.get(a) ?? 9999;
+          const orderB = detailOrder.get(b) ?? 9999;
+          return orderA - orderB;
+        });
         return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
       }
 
       case 'by_detail_safety_first': {
+        const detailOrderSF = getDetailOrderMap();
         const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
         const others = records.filter(r => !isSafetyPhoto(r));
         const groups: { [key: string]: PhotoRecord[] } = {};
@@ -421,12 +429,18 @@ export default function App() {
           if (!groups[key]) groups[key] = [];
           groups[key].push(r);
         });
-        const sortedKeys = Object.keys(groups).sort();
+        // マスタ順でソート
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+          const orderA = detailOrderSF.get(a) ?? 9999;
+          const orderB = detailOrderSF.get(b) ?? 9999;
+          return orderA - orderB;
+        });
         const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
         return [...safety, ...sortedOthers];
       }
 
       case 'by_detail_safety_last': {
+        const detailOrderSL = getDetailOrderMap();
         const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
         const others = records.filter(r => !isSafetyPhoto(r));
         const groups: { [key: string]: PhotoRecord[] } = {};
@@ -435,9 +449,31 @@ export default function App() {
           if (!groups[key]) groups[key] = [];
           groups[key].push(r);
         });
-        const sortedKeys = Object.keys(groups).sort();
+        // マスタ順でソート
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+          const orderA = detailOrderSL.get(a) ?? 9999;
+          const orderB = detailOrderSL.get(b) ?? 9999;
+          return orderA - orderB;
+        });
         const sortedOthers = sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
         return [...sortedOthers, ...safety];
+      }
+
+      case 'by_worktype': {
+        const varietyOrder = getVarietyOrderMap();
+        const groups: { [key: string]: PhotoRecord[] } = {};
+        records.forEach(r => {
+          const key = r.analysis?.workType || '未分類';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+        // マスタ順でソート（マスタにないものは末尾）
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+          const orderA = varietyOrder.get(a) ?? 9999;
+          const orderB = varietyOrder.get(b) ?? 9999;
+          return orderA - orderB;
+        });
+        return sortedKeys.flatMap(key => groups[key].sort(chronologicalSort));
       }
 
       default:
