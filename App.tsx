@@ -1341,6 +1341,7 @@ export default function App() {
         onSelectCacheFolder={handleSelectCacheFolder}
         onClearFileSystemCache={handleClearFileSystemCache}
         onReanalyzePhoto={handleSingleReanalysis}
+        onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
       />
 
       {/* Usage Panel */}
