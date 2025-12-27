@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -41,6 +41,7 @@ interface PreviewViewProps {
   onReanalyzePhoto?: (fileName: string) => void;
   onAbort?: () => void;
   onOpenMasterEditor?: () => void;
+  onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -71,7 +72,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onClearFileSystemCache,
   onReanalyzePhoto,
   onAbort,
-  onOpenMasterEditor
+  onOpenMasterEditor,
+  onReorderPhotos
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -81,7 +83,50 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [showConsole, setShowConsole] = useState(true); // Default to True
   const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
   const [showDescription, setShowDescription] = useState(false); // Default to OFF
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [reorderedPhotos, setReorderedPhotos] = useState<PhotoRecord[]>([]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize reordered photos when entering reorder mode
+  useEffect(() => {
+    if (isReorderMode) {
+      setReorderedPhotos([...photos]);
+    }
+  }, [isReorderMode, photos]);
+
+  // Drag and drop handlers for reorder mode
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newPhotos = [...reorderedPhotos];
+    const draggedPhoto = newPhotos[draggedIndex];
+    newPhotos.splice(draggedIndex, 1);
+    newPhotos.splice(index, 0, draggedPhoto);
+    setReorderedPhotos(newPhotos);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const handleSaveReorder = () => {
+    if (onReorderPhotos) {
+      onReorderPhotos(reorderedPhotos);
+    }
+    setIsReorderMode(false);
+  };
+
+  const handleCancelReorder = () => {
+    setReorderedPhotos([]);
+    setIsReorderMode(false);
+  };
 
   // Sync photosPerPage if initialLayout changes (e.g. after auto-pair finishes)
   useEffect(() => {
@@ -221,11 +266,41 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               </button>
             </div>
 
+            {/* Reorder Mode Toggle */}
+            {!isReorderMode ? (
+              <button
+                onClick={() => setIsReorderMode(true)}
+                className="p-2 bg-orange-600 hover:bg-orange-500 rounded text-white shadow-lg shadow-orange-900/20 mr-2"
+                disabled={isProcessing}
+                title={lang === 'ja' ? '並べ替えモード' : 'Reorder Mode'}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </button>
+            ) : (
+              <div className="flex gap-1 mr-2">
+                <button
+                  onClick={handleSaveReorder}
+                  className="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white text-xs font-bold flex items-center gap-1"
+                  title={lang === 'ja' ? '順序を保存' : 'Save Order'}
+                >
+                  <Save className="w-4 h-4" />
+                  {lang === 'ja' ? '保存' : 'Save'}
+                </button>
+                <button
+                  onClick={handleCancelReorder}
+                  className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white text-xs font-bold flex items-center gap-1"
+                  title={lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* Refine Button */}
             <button
               onClick={onRefine}
               className="p-2 bg-purple-600 hover:bg-purple-500 rounded text-white shadow-lg shadow-purple-900/20 mr-2"
-              disabled={isProcessing}
+              disabled={isProcessing || isReorderMode}
               title={txt.refineTitle}
             >
               <Wand2 className="w-4 h-4" />
@@ -324,18 +399,57 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       )}
 
       <div id="print-area" ref={previewContainerRef} className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-auto bg-gray-200 w-full relative">
-         <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: scale < 1 ? `-${(1 - scale) * 50}%` : '0', minWidth: '210mm' }}>
-            <PhotoAlbumView
-              records={photos}
-              appMode={appMode}
-              lang={lang}
-              photosPerPage={photosPerPage}
-              showDescription={showDescription}
-              onUpdatePhoto={onUpdatePhoto}
-              onDeletePhoto={onDeletePhoto}
-              onReanalyzePhoto={onReanalyzePhoto}
-            />
-         </div>
+         {isReorderMode ? (
+           /* Reorder Mode - Draggable Grid */
+           <div className="w-full max-w-6xl">
+             <div className="bg-orange-100 border border-orange-300 rounded-lg p-3 mb-4 text-orange-800 text-sm">
+               <ArrowUpDown className="w-4 h-4 inline mr-2" />
+               {lang === 'ja'
+                 ? 'ドラッグして写真を並べ替えてください。完了したら「保存」を押すと順序が学習されます。'
+                 : 'Drag photos to reorder. Click "Save" to learn this order for future use.'}
+             </div>
+             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+               {reorderedPhotos.map((photo, index) => (
+                 <div
+                   key={photo.fileName}
+                   draggable
+                   onDragStart={() => handleDragStart(index)}
+                   onDragOver={(e) => handleDragOver(e, index)}
+                   onDragEnd={handleDragEnd}
+                   className={`bg-white rounded-lg shadow-md overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
+                     draggedIndex === index ? 'ring-2 ring-orange-500 scale-105 opacity-75' : 'hover:shadow-lg'
+                   }`}
+                 >
+                   <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+                     <img
+                       src={photo.base64}
+                       alt={photo.fileName}
+                       className="w-full h-full object-cover pointer-events-none"
+                     />
+                   </div>
+                   <div className="p-2 text-xs">
+                     <div className="font-bold text-gray-700 truncate">{index + 1}. {photo.analysis?.detail || photo.analysis?.variety || '未分類'}</div>
+                     <div className="text-gray-500 truncate">{photo.analysis?.remarks || ''}</div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </div>
+         ) : (
+           /* Normal Preview Mode */
+           <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: scale < 1 ? `-${(1 - scale) * 50}%` : '0', minWidth: '210mm' }}>
+              <PhotoAlbumView
+                records={photos}
+                appMode={appMode}
+                lang={lang}
+                photosPerPage={photosPerPage}
+                showDescription={showDescription}
+                onUpdatePhoto={onUpdatePhoto}
+                onDeletePhoto={onDeletePhoto}
+                onReanalyzePhoto={onReanalyzePhoto}
+              />
+           </div>
+         )}
          
          {/* Console Panel Component */}
          <ConsolePanel 
