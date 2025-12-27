@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
-import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext } from './services/geminiService';
+import { analyzePhotoBatch, identifyTargetPhotos, normalizeDataConsistency, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache } from './utils/storage';
@@ -13,6 +13,7 @@ import UploadView from './components/UploadView';
 import PreviewView from './components/PreviewView';
 import LimitModal from './components/LimitModal';
 import RefineModal from './components/RefineModal';
+import ApiKeySetup from './components/ApiKeySetup';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -23,8 +24,25 @@ const MAX_PHOTOS = 30;
 type PendingFile = { file: File, date: number };
 
 export default function App() {
-  // API Key must be obtained exclusively from process.env.API_KEY
-  const apiKey = process.env.API_KEY as string;
+  // API Key from localStorage (user input)
+  const [apiKey, setApiKeyState] = useState<string | null>(null);
+  const [showApiKeySetup, setShowApiKeySetup] = useState(false);
+
+  // Initialize API key from localStorage on mount
+  useEffect(() => {
+    const storedKey = getApiKey();
+    if (storedKey) {
+      setApiKeyState(storedKey);
+    } else {
+      setShowApiKeySetup(true);
+    }
+  }, []);
+
+  const handleApiKeyComplete = (key: string) => {
+    saveApiKey(key);
+    setApiKeyState(key);
+    setShowApiKeySetup(false);
+  };
 
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1123,6 +1141,15 @@ export default function App() {
 
   // --- Render ---
 
+  // Show API Key Setup if not configured
+  if (showApiKeySetup) {
+    return (
+      <ApiKeySetup
+        onComplete={handleApiKeyComplete}
+      />
+    );
+  }
+
   if (!showPreview) {
     return (
       <UploadView
@@ -1130,7 +1157,7 @@ export default function App() {
         isProcessing={isProcessing}
         photos={photos}
         appMode={appMode}
-        apiKey={apiKey}
+        apiKey={apiKey || ''}
         setAppMode={setAppMode}
         onStartProcessing={handleStartProcessing}
         onResume={handleResume}

@@ -3,6 +3,26 @@ import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes } from "../utils/constructionMaster";
 
+// API Key Management (localStorage)
+const API_KEY_STORAGE_KEY = 'construction_album_api_key';
+
+export const getApiKey = (): string | null => {
+  return localStorage.getItem(API_KEY_STORAGE_KEY);
+};
+
+export const setApiKey = (key: string): void => {
+  localStorage.setItem(API_KEY_STORAGE_KEY, key);
+};
+
+export const clearApiKey = (): void => {
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+};
+
+export const hasApiKey = (): boolean => {
+  const key = getApiKey();
+  return !!key && key.startsWith('AIza');
+};
+
 // Configuration
 // QUALITY FIRST: Using high-performance models for accuracy
 const PRIMARY_MODEL = "gemini-3-pro-preview";
