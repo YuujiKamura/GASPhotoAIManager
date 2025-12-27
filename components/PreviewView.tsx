@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -39,6 +39,7 @@ interface PreviewViewProps {
   onSelectCacheFolder?: () => void;
   onClearFileSystemCache?: () => void;
   onReanalyzePhoto?: (fileName: string) => void;
+  onAbort?: () => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -67,7 +68,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onSendInstruction,
   onSelectCacheFolder,
   onClearFileSystemCache,
-  onReanalyzePhoto
+  onReanalyzePhoto,
+  onAbort
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -174,7 +176,21 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                     <Database className="w-3 h-3" /> Cached: {stats.cached}
                  </span>
               )}
-              {isProcessing && <span className="text-amber-300 animate-pulse flex items-center gap-1 border-l border-slate-600 pl-2"><Loader2 className="w-3 h-3 animate-spin"/> {currentStep.split('(')[0]}</span>}
+              {isProcessing && (
+                <>
+                  <span className="text-amber-300 animate-pulse flex items-center gap-1 border-l border-slate-600 pl-2">
+                    <Loader2 className="w-3 h-3 animate-spin"/> {currentStep.split('(')[0]}
+                  </span>
+                  <button
+                    onClick={onAbort}
+                    className="ml-2 px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded flex items-center gap-1 transition-colors"
+                    title="解析を中断 (ESC)"
+                  >
+                    <StopCircle className="w-3 h-3" />
+                    中断
+                  </button>
+                </>
+              )}
            </div>
          </div>
 
