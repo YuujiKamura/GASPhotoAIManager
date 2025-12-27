@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText } from 'lucide-react';
+import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -25,6 +25,7 @@ interface UploadViewProps {
   onOpenSettings?: () => void;
   onManualPairing?: (files: File[], instruction: string) => void;
   onShowHistory?: () => void;
+  onOpenMasterEditor?: () => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -46,7 +47,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   onShowPreview,
   onOpenSettings,
   onManualPairing,
-  onShowHistory
+  onShowHistory,
+  onOpenMasterEditor
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -451,21 +453,16 @@ const UploadView: React.FC<UploadViewProps> = ({
       {/* --- FOOTER (Data Management) --- */}
       <div className="absolute bottom-0 w-full p-6 flex justify-between items-end z-10 text-xs font-medium text-gray-400">
 
-        {/* Mode Switcher */}
-        <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+        {/* Master Editor Button */}
+        {onOpenMasterEditor && (
           <button
-            onClick={(e) => { e.stopPropagation(); setAppMode('construction'); }}
-            className={`px-3 py-1.5 rounded flex items-center gap-2 transition-all ${appMode === 'construction' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+            onClick={(e) => { e.stopPropagation(); onOpenMasterEditor(); }}
+            className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all"
           >
-            <HardHat className="w-3 h-3" /> {txt.modeConstruction}
+            <FolderTree className="w-3 h-3" />
+            <span>階層マスタ管理</span>
           </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setAppMode('general'); }}
-            className={`px-3 py-1.5 rounded flex items-center gap-2 transition-all ${appMode === 'general' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <Camera className="w-3 h-3" /> {txt.modeGeneral}
-          </button>
-        </div>
+        )}
 
         <div className="flex gap-4 items-center">
           {photos.length > 0 && (
