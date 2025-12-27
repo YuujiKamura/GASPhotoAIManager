@@ -152,7 +152,17 @@ Only classify as "Construction Status" if there is clear evidence of **ACTIVE WO
         *   **Curing Sand Spraying (養生砂散布)**: Worker using a **SHOVEL** or **BROAD SPREADER**. Sand cannot be sprayed from a thin nozzle.
         *   *Note*: Do NOT rely solely on surface color (black vs gray) as both can look similar. Look at the **EQUIPMENT**.
 
-3.  **"安全管理写真"**: Signs, cones, morning assembly.
+3.  **"安全管理写真"** (Safety Management) [PRIORITY - VISUAL DETECTION]:
+    *   **CRITICAL**: For safety management photos, set workType="", variety="", detail="".
+    *   **朝礼状況**: Group of workers standing together (morning assembly). Even WITHOUT blackboard.
+        - Visual cues: Workers in circle/line, safety vests/helmets, morning gathering
+    *   **KY活動状況**: Workers looking at documents/boards together (hazard prediction activity)
+    *   **保安施設設置状況**: Traffic cones, barriers, warning signs being set up
+    *   **点灯確認状況**: Checking lights on safety equipment at dusk/night
+    *   **新規入場者教育状況**: Training session, workers watching presentation
+    *   **安全巡視状況**: Inspection walk, supervisor checking site
+    *   **NOTE**: If you see a GROUP of workers NOT actively doing construction work, it's likely 安全管理写真.
+
 4.  **"使用材料写真"**: Material checks.
 5.  **"品質管理写真"**: Thermometers, density meters.
 6.  **"出来形管理写真"**: Ribbons/Rulers measuring finished dimensions.
