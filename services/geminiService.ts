@@ -50,9 +50,10 @@ export const setSelectedModel = (model: ModelType): void => {
 export const validateApiKey = async (apiKey: string): Promise<{ valid: boolean; error?: string }> => {
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const model = ai.models.get('gemini-2.0-flash'); // 最軽量モデルでテスト
-    const response = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+    // 最軽量モデルでシンプルなリクエストを送信してキーを検証
+    await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
     });
     return { valid: true };
   } catch (e: any) {
