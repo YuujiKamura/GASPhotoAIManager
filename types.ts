@@ -80,3 +80,15 @@ export const SORT_POLICIES: { id: SortPolicy; name: string; description: string 
   { id: 'by_detail_safety_first', name: '細別順＋安全先頭', description: '安全管理を先頭に、残りは細別順' },
   { id: 'by_detail_safety_last', name: '細別順＋安全末尾', description: '細別順、安全管理を末尾に' },
 ];
+
+// お手本（Few-shot Example）として保存する解析例
+export interface AnalysisExample {
+  id: string;                      // ユニークID
+  name: string;                    // お手本の名前（例: "舗装工事の着手前写真"）
+  thumbnail: string;               // サムネイル画像（base64、縮小版）
+  analysis: AIAnalysisResult;      // 解析結果
+  category?: PhotoCategory;        // 写真区分（フィルタ用）
+  tags?: string[];                 // 検索用タグ
+  createdAt: number;               // 作成日時
+  updatedAt: number;               // 更新日時
+}

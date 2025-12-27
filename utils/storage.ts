@@ -1,11 +1,12 @@
-import { PhotoRecord, AIAnalysisResult } from "../types";
+import { PhotoRecord, AIAnalysisResult, AnalysisExample, PhotoCategory } from "../types";
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 3; // Version 3 handles File storage in Session Store implicitly
+const DB_VERSION = 4; // Version 4: Added analysisExamples store
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
-const STORE_RULES = 'analysisRules'; // New: Store for custom prompt rules
+const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
+const STORE_EXAMPLES = 'analysisExamples'; // NEW: Store for few-shot examples
 const KEY_SESSION = 'currentSession';
 
 export interface AnalysisRule {
@@ -32,9 +33,16 @@ const openDB = (): Promise<IDBDatabase> => {
         db.createObjectStore(STORE_CACHE);
       }
 
-      // New Store for Rules
+      // Store for Rules
       if (!db.objectStoreNames.contains(STORE_RULES)) {
         db.createObjectStore(STORE_RULES, { keyPath: 'id' });
+      }
+
+      // NEW: Store for Few-shot Examples (お手本)
+      if (!db.objectStoreNames.contains(STORE_EXAMPLES)) {
+        const examplesStore = db.createObjectStore(STORE_EXAMPLES, { keyPath: 'id' });
+        examplesStore.createIndex('category', 'category', { unique: false });
+        examplesStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
@@ -213,6 +221,184 @@ export const deleteRule = async (id: string): Promise<void> => {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+};
+
+// --- Examples Management (お手本 - Few-shot Examples) ---
+
+/**
+ * 解析例（お手本）を保存
+ * PhotoRecordから必要な情報を抽出してExampleを作成
+ */
+export const saveExample = async (
+  record: PhotoRecord,
+  name: string,
+  tags?: string[]
+): Promise<AnalysisExample> => {
+  if (!record.analysis) {
+    throw new Error('解析結果がありません');
+  }
+
+  const example: AnalysisExample = {
+    id: `ex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    thumbnail: record.base64, // 既にリサイズ済みのbase64を使用
+    analysis: { ...record.analysis },
+    category: detectPhotoCategory(record.analysis),
+    tags: tags || [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.put(example);
+    request.onsuccess = () => resolve(example);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 解析結果から写真区分を推定
+ */
+const detectPhotoCategory = (analysis: AIAnalysisResult): PhotoCategory => {
+  const remarks = analysis.remarks?.toLowerCase() || '';
+
+  if (remarks.includes('着手前') || remarks.includes('竣工') || remarks.includes('完成')) {
+    return '着手前及び完成写真';
+  }
+  if (remarks.includes('状況') && !remarks.includes('出来形')) {
+    return '施工状況写真';
+  }
+  if (remarks.includes('出来形') || analysis.measurements) {
+    return '出来形管理写真';
+  }
+  if (remarks.includes('安全') || remarks.includes('朝礼') || remarks.includes('KY')) {
+    return '安全管理写真';
+  }
+  if (remarks.includes('材料')) {
+    return '使用材料写真';
+  }
+  if (remarks.includes('品質')) {
+    return '品質管理写真';
+  }
+
+  return 'その他';
+};
+
+/**
+ * すべてのお手本を取得
+ */
+export const getExamples = async (): Promise<AnalysisExample[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const examples = request.result as AnalysisExample[];
+      // 作成日時の降順でソート（新しい順）
+      examples.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(examples);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * カテゴリーでフィルタしてお手本を取得
+ */
+export const getExamplesByCategory = async (category: PhotoCategory): Promise<AnalysisExample[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const index = store.index('category');
+    const request = index.getAll(category);
+    request.onsuccess = () => resolve(request.result as AnalysisExample[]);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * お手本を更新
+ */
+export const updateExample = async (example: AnalysisExample): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.put({ ...example, updatedAt: Date.now() });
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * お手本を削除
+ */
+export const deleteExample = async (id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * すべてのお手本をクリア
+ */
+export const clearExamples = async (): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 解析に使用するお手本を選択（関連性でフィルタ）
+ * 最大3件を返す
+ */
+export const getRelevantExamples = async (
+  workType?: string,
+  category?: PhotoCategory,
+  limit: number = 3
+): Promise<AnalysisExample[]> => {
+  const all = await getExamples();
+
+  // スコアリングで関連性を計算
+  const scored = all.map(ex => {
+    let score = 0;
+
+    // カテゴリー一致: +3点
+    if (category && ex.category === category) {
+      score += 3;
+    }
+
+    // 工種一致: +2点
+    if (workType && ex.analysis.workType === workType) {
+      score += 2;
+    }
+
+    // 基本スコア: お手本として登録されている = 1点
+    score += 1;
+
+    return { example: ex, score };
+  });
+
+  // スコア順にソートして上位を返す
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(s => s.example);
 };
 
 // --- Export / Import Utilities ---
