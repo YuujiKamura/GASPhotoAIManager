@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 15:46:33
+生成日時: 2025-12-27 16:26:10
 ================================================================================
 
 === ファイル一覧 ===
@@ -12,6 +12,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 App.tsx
 components/ApiKeySetup.tsx
 components/ConsolePanel.tsx
+components/ExamplesModal.tsx
 components/LimitModal.tsx
 components/ManualPairingModal.tsx
 components/MasterEditorModal.tsx
@@ -2052,6 +2053,327 @@ const ConsolePanel: React.FC<ConsolePanelProps> = ({
 export default ConsolePanel;
 === END: components/ConsolePanel.tsx ===
 
+=== FILE: components/ExamplesModal.tsx ===
+
+import React, { useState, useEffect } from 'react';
+import { X, Trash2, Star, Loader2, Check, Plus, FolderOpen, Image } from 'lucide-react';
+import { AnalysisSession, PhotoRecord } from '../types';
+import {
+  getSessions,
+  deleteSession,
+  clearSessions,
+  saveCurrentSessionAsExample,
+  setActiveSession,
+  getActiveSessionId,
+  clearActiveSession
+} from '../utils/storage';
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  lang: 'en' | 'ja';
+  currentPhotos?: PhotoRecord[]; // 現在のセッションの写真（保存用）
+}
+
+const ExamplesModal: React.FC<Props> = ({ isOpen, onClose, lang, currentPhotos = [] }) => {
+  const [sessions, setSessions] = useState<AnalysisSession[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [newSessionName, setNewSessionName] = useState('');
+  const [showSaveForm, setShowSaveForm] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadSessions();
+      setActiveSessionIdState(getActiveSessionId());
+    }
+  }, [isOpen]);
+
+  const loadSessions = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getSessions();
+      setSessions(data);
+    } catch (e) {
+      console.error('Failed to load sessions:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveCurrentSession = async () => {
+    if (!newSessionName.trim()) {
+      alert(lang === 'ja' ? 'セッション名を入力してください' : 'Please enter a session name');
+      return;
+    }
+
+    const analyzedCount = currentPhotos.filter(p => p.analysis && p.status === 'done').length;
+    if (analyzedCount === 0) {
+      alert(lang === 'ja' ? '解析済みの写真がありません' : 'No analyzed photos');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const session = await saveCurrentSessionAsExample(currentPhotos, newSessionName.trim());
+      setSessions(prev => [session, ...prev]);
+      setNewSessionName('');
+      setShowSaveForm(false);
+      alert(lang === 'ja' ? `${analyzedCount}枚のお手本を保存しました` : `Saved ${analyzedCount} examples`);
+    } catch (e) {
+      console.error('Failed to save session:', e);
+      alert(lang === 'ja' ? '保存に失敗しました' : 'Failed to save');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    if (activeSessionId === sessionId) {
+      // すでにアクティブなら解除
+      clearActiveSession();
+      setActiveSessionIdState(null);
+    } else {
+      // 新しくアクティブに
+      setActiveSession(sessionId);
+      setActiveSessionIdState(sessionId);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (!confirm(lang === 'ja'
+      ? `「${session?.name}」を削除しますか？`
+      : `Delete "${session?.name}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteSession(id);
+      setSessions(prev => prev.filter(s => s.id !== id));
+      if (activeSessionId === id) {
+        setActiveSessionIdState(null);
+      }
+    } catch (e) {
+      console.error('Failed to delete session:', e);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm(lang === 'ja' ? '全てのお手本セッションを削除しますか？' : 'Delete all example sessions?')) {
+      return;
+    }
+
+    try {
+      await clearSessions();
+      setSessions([]);
+      setActiveSessionIdState(null);
+    } catch (e) {
+      console.error('Failed to clear sessions:', e);
+    }
+  };
+
+  const analyzedPhotoCount = currentPhotos.filter(p => p.analysis && p.status === 'done').length;
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <Star className="w-6 h-6" />
+            <h2 className="text-xl font-bold">
+              {lang === 'ja' ? 'お手本セッション' : 'Example Sessions'}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-white/20 rounded-full transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Active Session Banner */}
+        {activeSessionId && (
+          <div className="px-4 py-2 bg-green-100 border-b border-green-200 flex items-center gap-2">
+            <Check className="w-4 h-4 text-green-600" />
+            <span className="text-sm text-green-800 font-medium">
+              {lang === 'ja' ? 'お手本適用中: ' : 'Active: '}
+              {sessions.find(s => s.id === activeSessionId)?.name || '...'}
+            </span>
+            <button
+              onClick={() => handleSelectSession(activeSessionId)}
+              className="ml-auto text-xs text-green-700 hover:text-green-900 underline"
+            >
+              {lang === 'ja' ? '解除' : 'Deactivate'}
+            </button>
+          </div>
+        )}
+
+        {/* Save Current Session */}
+        <div className="p-4 border-b bg-gray-50">
+          {showSaveForm ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newSessionName}
+                onChange={(e) => setNewSessionName(e.target.value)}
+                placeholder={lang === 'ja' ? 'セッション名（例: A工区 舗装工事）' : 'Session name'}
+                className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-amber-500"
+                autoFocus
+              />
+              <button
+                onClick={handleSaveCurrentSession}
+                disabled={isSaving || !newSessionName.trim()}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium disabled:opacity-50 flex items-center gap-1"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {lang === 'ja' ? '保存' : 'Save'}
+              </button>
+              <button
+                onClick={() => { setShowSaveForm(false); setNewSessionName(''); }}
+                className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowSaveForm(true)}
+              disabled={analyzedPhotoCount === 0}
+              className="w-full px-4 py-3 border-2 border-dashed border-amber-400 hover:border-amber-500 hover:bg-amber-50 rounded-lg text-amber-700 font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-5 h-5" />
+              {lang === 'ja'
+                ? `現在のセッションをお手本として保存（${analyzedPhotoCount}枚）`
+                : `Save current session as example (${analyzedPhotoCount} photos)`}
+            </button>
+          )}
+        </div>
+
+        {/* Sessions List */}
+        <div className="flex-1 overflow-auto p-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <FolderOpen className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <p className="text-lg font-medium">
+                {lang === 'ja' ? '保存されたセッションがありません' : 'No saved sessions'}
+              </p>
+              <p className="text-sm mt-2">
+                {lang === 'ja'
+                  ? '解析完了後、上のボタンで保存できます'
+                  : 'Save after analysis using the button above'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sessions.map(session => (
+                <div
+                  key={session.id}
+                  className={`border rounded-lg overflow-hidden transition-all ${
+                    activeSessionId === session.id
+                      ? 'ring-2 ring-green-500 bg-green-50'
+                      : 'hover:shadow-md bg-white'
+                  }`}
+                >
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-gray-800 truncate flex items-center gap-2">
+                          {session.name}
+                          {activeSessionId === session.id && (
+                            <span className="px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">
+                              {lang === 'ja' ? '適用中' : 'Active'}
+                            </span>
+                          )}
+                        </h3>
+                        <div className="mt-1 flex items-center gap-3 text-sm text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Image className="w-4 h-4" />
+                            {session.photoCount}枚
+                          </span>
+                          <span>
+                            {new Date(session.createdAt).toLocaleDateString('ja-JP')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleSelectSession(session.id)}
+                          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                            activeSessionId === session.id
+                              ? 'bg-green-500 text-white hover:bg-green-600'
+                              : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                          }`}
+                        >
+                          {activeSessionId === session.id
+                            ? (lang === 'ja' ? '解除' : 'Deactivate')
+                            : (lang === 'ja' ? '適用' : 'Apply')}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(session.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                          title={lang === 'ja' ? '削除' : 'Delete'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Thumbnail preview */}
+                    <div className="mt-3 flex gap-1 overflow-hidden">
+                      {session.examples.slice(0, 6).map((ex, i) => (
+                        <div key={i} className="w-12 h-12 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
+                          <img src={ex.thumbnail} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ))}
+                      {session.examples.length > 6 && (
+                        <div className="w-12 h-12 flex-shrink-0 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500 font-medium">
+                          +{session.examples.length - 6}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 rounded-b-xl flex items-center justify-between">
+          <p className="text-xs text-gray-500">
+            {lang === 'ja'
+              ? 'お手本セッションを適用すると、次回解析時にAIの参考例として使用されます'
+              : 'Applied sessions will be used as AI reference examples'}
+          </p>
+          {sessions.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="text-xs text-red-500 hover:text-red-700"
+            >
+              {lang === 'ja' ? '全削除' : 'Clear All'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ExamplesModal;
+
+=== END: components/ExamplesModal.tsx ===
+
 === FILE: components/LimitModal.tsx ===
 
 import React from 'react';
@@ -2820,8 +3142,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { Database, Trash2, Wand2 } from 'lucide-react';
+import { Database, Trash2, Wand2, Star } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
+import { saveExample } from '../utils/storage';
 
 interface Props {
   records: PhotoRecord[];
@@ -2938,6 +3261,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [isSavingExample, setIsSavingExample] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -2961,6 +3285,36 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const executeDelete = () => {
     if (contextMenu && onDeletePhoto) {
       onDeletePhoto(contextMenu.targetFileName);
+      setContextMenu(null);
+    }
+  };
+
+  const executeSaveAsExample = async () => {
+    if (!contextMenu) return;
+
+    const record = records.find(r => r.fileName === contextMenu.targetFileName);
+    if (!record?.analysis) {
+      alert(lang === 'ja' ? '解析結果がありません' : 'No analysis result');
+      setContextMenu(null);
+      return;
+    }
+
+    setIsSavingExample(true);
+    try {
+      const exampleName = prompt(
+        lang === 'ja' ? 'お手本の名前を入力してください:' : 'Enter a name for this example:',
+        `${record.analysis.workType || ''} - ${record.analysis.remarks || record.fileName}`
+      );
+
+      if (exampleName) {
+        await saveExample(record, exampleName);
+        alert(lang === 'ja' ? 'お手本として保存しました' : 'Saved as example');
+      }
+    } catch (e) {
+      console.error('Failed to save example:', e);
+      alert(lang === 'ja' ? '保存に失敗しました' : 'Failed to save');
+    } finally {
+      setIsSavingExample(false);
       setContextMenu(null);
     }
   };
@@ -3145,6 +3499,14 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
             {lang === 'ja' ? 'この画像を再解析' : 'Re-analyze Photo'}
           </button>
           <button
+            onClick={executeSaveAsExample}
+            disabled={isSavingExample}
+            className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2 disabled:opacity-50"
+          >
+            <Star className="w-4 h-4" />
+            {lang === 'ja' ? 'お手本として保存' : 'Save as Example'}
+          </button>
+          <button
             onClick={executeDelete}
             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
           >
@@ -3165,11 +3527,12 @@ export default PhotoAlbumView;
 === FILE: components/PreviewView.tsx ===
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical, Star } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
+import ExamplesModal from './ExamplesModal';
 import { generateZip } from '../utils/zipGenerator';
 
 // Declare html2pdf and saveAs
@@ -3256,6 +3619,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
   const [draggedPhotoIndex, setDraggedPhotoIndex] = useState<number | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [showExamplesModal, setShowExamplesModal] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -3265,7 +3629,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   // 1枚ずつモード用
   const [reorderedSinglePhotos, setReorderedSinglePhotos] = useState<PhotoRecord[]>([]);
 
-  // Initialize groups/photos when entering reorder mode
+  // Initialize groups/photos when ENTERING reorder mode (not when photos changes)
+  // NOTE: photos dependency removed intentionally to prevent reset during reorder
   useEffect(() => {
     if (isReorderMode) {
       // 1枚ずつモード用
@@ -3291,7 +3656,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 
       setReorderedGroups(groups);
     }
-  }, [isReorderMode, photos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReorderMode]);
 
   // Drag and drop handlers for group reorder mode
   const handleGroupDragStart = (index: number) => {
@@ -3346,6 +3712,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         onReorderPhotos(reorderedSinglePhotos);
       }
     }
+    // Clear reorder states to prevent stale data
+    setReorderedGroups([]);
+    setReorderedSinglePhotos([]);
     setIsReorderMode(false);
   };
 
@@ -3569,19 +3938,24 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                     </button>
 
                     {/* Settings Section */}
+                    <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 border-t mt-1">
+                      {lang === 'ja' ? '設定' : 'Settings'}
+                    </div>
+                    <button
+                      onClick={() => { setShowExamplesModal(true); setShowToolsMenu(false); }}
+                      className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-amber-600 flex items-center gap-2 transition-colors"
+                    >
+                      <Star className="w-4 h-4 text-amber-400" />
+                      {lang === 'ja' ? 'お手本管理' : 'Examples'}
+                    </button>
                     {onOpenMasterEditor && (
-                      <>
-                        <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 border-t mt-1">
-                          {lang === 'ja' ? '設定' : 'Settings'}
-                        </div>
-                        <button
-                          onClick={() => { onOpenMasterEditor(); setShowToolsMenu(false); }}
-                          className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-slate-600 flex items-center gap-2 transition-colors"
-                        >
-                          <Settings className="w-4 h-4 text-slate-400" />
-                          {lang === 'ja' ? 'マスタ管理' : 'Master Data'}
-                        </button>
-                      </>
+                      <button
+                        onClick={() => { onOpenMasterEditor(); setShowToolsMenu(false); }}
+                        className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-slate-600 flex items-center gap-2 transition-colors"
+                      >
+                        <Settings className="w-4 h-4 text-slate-400" />
+                        {lang === 'ja' ? 'マスタ管理' : 'Master Data'}
+                      </button>
                     )}
                   </div>
                 )}
@@ -3778,7 +4152,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          )}
          
          {/* Console Panel Component */}
-         <ConsolePanel 
+         <ConsolePanel
            logs={logs}
            isOpen={showConsole}
            onToggle={() => setShowConsole(!showConsole)}
@@ -3787,6 +4161,14 @@ const PreviewView: React.FC<PreviewViewProps> = ({
            onSendInstruction={onSendInstruction}
          />
       </div>
+
+      {/* Examples Modal */}
+      <ExamplesModal
+        isOpen={showExamplesModal}
+        onClose={() => setShowExamplesModal(false)}
+        lang={lang}
+        currentPhotos={photos}
+      />
     </div>
   );
 };
@@ -6281,10 +6663,11 @@ if (results.every(r => r)) {
 === FILE: services/geminiService.ts ===
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
+import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
+import { getRelevantExamples, getActiveSession } from "../utils/storage";
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -6452,6 +6835,37 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
+};
+
+/**
+ * お手本をプロンプト用のテキストに整形
+ * Few-shot examples として AI に渡す
+ */
+const formatExamplesForPrompt = (examples: AnalysisExample[]): string => {
+  if (examples.length === 0) return '';
+
+  const exampleTexts = examples.map((ex, i) => {
+    const a = ex.analysis;
+    return `
+Example ${i + 1}: "${ex.name}"
+- workType: "${a.workType}"
+- variety: "${a.variety || ''}"
+- detail: "${a.detail || ''}"
+- station: "${a.station}"
+- remarks: "${a.remarks}"
+- description: "${a.description}"
+- hasBoard: ${a.hasBoard}
+`.trim();
+  });
+
+  return `
+--- FEW-SHOT EXAMPLES (お手本) ---
+The following are correct examples of analysis output. Use them as reference for similar photos:
+
+${exampleTexts.join('\n\n')}
+
+--- END EXAMPLES ---
+`;
 };
 
 export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
@@ -7070,7 +7484,29 @@ export const analyzePhotoBatch = async (
   const prepTime = performance.now() - prepStartTime;
   onLog?.(`[PROFILER] Image prep: ${formatDuration(prepTime)}`, "info");
 
+  // Fetch relevant examples (お手本) for few-shot learning
+  let examplesPrompt = "";
+  if (appMode === 'construction') {
+    try {
+      // アクティブなセッションを確認してログに表示
+      const activeSession = await getActiveSession();
+      if (activeSession) {
+        onLog?.(`[EXAMPLES] お手本セッション適用中: "${activeSession.name}" (${activeSession.photoCount}枚)`, "info");
+      }
+
+      const examples = await getRelevantExamples(undefined, undefined, 5); // セッションから最大5件
+      if (examples.length > 0) {
+        examplesPrompt = formatExamplesForPrompt(examples);
+        onLog?.(`[EXAMPLES] ${examples.length}件のお手本をプロンプトに適用`, "success");
+      }
+    } catch (e) {
+      // Examples are optional, continue without them
+      console.warn('Failed to load examples:', e);
+    }
+  }
+
   const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy);
+  const fullSystemPrompt = examplesPrompt ? `${systemPrompt}\n\n${examplesPrompt}` : systemPrompt;
 
   // Context relay: Build context hint from previously analyzed photos in this batch
   let contextHint = "";
@@ -7133,7 +7569,7 @@ export const analyzePhotoBatch = async (
           { role: 'user', parts: [...inputs, { text: prompt }] }
         ],
         config: {
-          systemInstruction: systemPrompt,
+          systemInstruction: fullSystemPrompt,
           responseMimeType: "application/json",
           responseSchema: schema,
           temperature: 0.1
@@ -8806,6 +9242,29 @@ export const SORT_POLICIES: { id: SortPolicy; name: string; description: string 
   { id: 'by_detail_safety_first', name: '細別順＋安全先頭', description: '安全管理を先頭に、残りは細別順' },
   { id: 'by_detail_safety_last', name: '細別順＋安全末尾', description: '細別順、安全管理を末尾に' },
 ];
+
+// お手本（Few-shot Example）として保存する解析例
+export interface AnalysisExample {
+  id: string;                      // ユニークID
+  name: string;                    // お手本の名前（例: "舗装工事の着手前写真"）
+  thumbnail: string;               // サムネイル画像（base64、縮小版）
+  analysis: AIAnalysisResult;      // 解析結果
+  category?: PhotoCategory;        // 写真区分（フィルタ用）
+  tags?: string[];                 // 検索用タグ
+  createdAt: number;               // 作成日時
+  updatedAt: number;               // 更新日時
+}
+
+// お手本セッション（複数写真の解析結果セット）
+export interface AnalysisSession {
+  id: string;                      // ユニークID
+  name: string;                    // セッション名（例: "A工区 舗装工事"）
+  description?: string;            // 説明
+  examples: AnalysisExample[];     // このセッションに含まれるお手本
+  photoCount: number;              // 写真数
+  createdAt: number;               // 作成日時
+  updatedAt: number;               // 更新日時
+}
 === END: types.ts ===
 
 === FILE: utils/constructionMaster.ts ===
@@ -10380,15 +10839,18 @@ export function getLearnedOrderList(): string[] {
 
 === FILE: utils/storage.ts ===
 
-import { PhotoRecord, AIAnalysisResult } from "../types";
+import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, PhotoCategory } from "../types";
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 3; // Version 3 handles File storage in Session Store implicitly
+const DB_VERSION = 5; // Version 5: Added analysisSessions store
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
-const STORE_RULES = 'analysisRules'; // New: Store for custom prompt rules
+const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
+const STORE_EXAMPLES = 'analysisExamples'; // Store for few-shot examples
+const STORE_SESSIONS = 'analysisSessions'; // NEW: Store for saved sessions (お手本セッション)
 const KEY_SESSION = 'currentSession';
+const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
 
 export interface AnalysisRule {
   id: string;
@@ -10414,9 +10876,22 @@ const openDB = (): Promise<IDBDatabase> => {
         db.createObjectStore(STORE_CACHE);
       }
 
-      // New Store for Rules
+      // Store for Rules
       if (!db.objectStoreNames.contains(STORE_RULES)) {
         db.createObjectStore(STORE_RULES, { keyPath: 'id' });
+      }
+
+      // Store for Few-shot Examples (お手本)
+      if (!db.objectStoreNames.contains(STORE_EXAMPLES)) {
+        const examplesStore = db.createObjectStore(STORE_EXAMPLES, { keyPath: 'id' });
+        examplesStore.createIndex('category', 'category', { unique: false });
+        examplesStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+
+      // NEW: Store for saved sessions (お手本セッション)
+      if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
+        const sessionsStore = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
+        sessionsStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
@@ -10595,6 +11070,336 @@ export const deleteRule = async (id: string): Promise<void> => {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+};
+
+// --- Examples Management (お手本 - Few-shot Examples) ---
+
+/**
+ * 解析例（お手本）を保存
+ * PhotoRecordから必要な情報を抽出してExampleを作成
+ */
+export const saveExample = async (
+  record: PhotoRecord,
+  name: string,
+  tags?: string[]
+): Promise<AnalysisExample> => {
+  if (!record.analysis) {
+    throw new Error('解析結果がありません');
+  }
+
+  const example: AnalysisExample = {
+    id: `ex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    thumbnail: record.base64, // 既にリサイズ済みのbase64を使用
+    analysis: { ...record.analysis },
+    category: detectPhotoCategory(record.analysis),
+    tags: tags || [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.put(example);
+    request.onsuccess = () => resolve(example);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 解析結果から写真区分を推定
+ */
+const detectPhotoCategory = (analysis: AIAnalysisResult): PhotoCategory => {
+  const remarks = analysis.remarks?.toLowerCase() || '';
+
+  if (remarks.includes('着手前') || remarks.includes('竣工') || remarks.includes('完成')) {
+    return '着手前及び完成写真';
+  }
+  if (remarks.includes('状況') && !remarks.includes('出来形')) {
+    return '施工状況写真';
+  }
+  if (remarks.includes('出来形') || analysis.measurements) {
+    return '出来形管理写真';
+  }
+  if (remarks.includes('安全') || remarks.includes('朝礼') || remarks.includes('KY')) {
+    return '安全管理写真';
+  }
+  if (remarks.includes('材料')) {
+    return '使用材料写真';
+  }
+  if (remarks.includes('品質')) {
+    return '品質管理写真';
+  }
+
+  return 'その他';
+};
+
+/**
+ * すべてのお手本を取得
+ */
+export const getExamples = async (): Promise<AnalysisExample[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const examples = request.result as AnalysisExample[];
+      // 作成日時の降順でソート（新しい順）
+      examples.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(examples);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * カテゴリーでフィルタしてお手本を取得
+ */
+export const getExamplesByCategory = async (category: PhotoCategory): Promise<AnalysisExample[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const index = store.index('category');
+    const request = index.getAll(category);
+    request.onsuccess = () => resolve(request.result as AnalysisExample[]);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * お手本を更新
+ */
+export const updateExample = async (example: AnalysisExample): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.put({ ...example, updatedAt: Date.now() });
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * お手本を削除
+ */
+export const deleteExample = async (id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * すべてのお手本をクリア
+ */
+export const clearExamples = async (): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_EXAMPLES);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 解析に使用するお手本を選択
+ * アクティブなセッションがあればそのセッションの例を返す
+ * なければ全体からスコアリングで選択
+ */
+export const getRelevantExamples = async (
+  workType?: string,
+  category?: PhotoCategory,
+  limit: number = 3
+): Promise<AnalysisExample[]> => {
+  // まずアクティブなセッションをチェック
+  const activeSessionId = getActiveSessionId();
+  if (activeSessionId) {
+    const session = await getSession(activeSessionId);
+    if (session && session.examples.length > 0) {
+      // セッション内からスコアリング
+      const scored = session.examples.map(ex => {
+        let score = 0;
+        if (category && ex.category === category) score += 3;
+        if (workType && ex.analysis.workType === workType) score += 2;
+        score += 1;
+        return { example: ex, score };
+      });
+      return scored
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(s => s.example);
+    }
+  }
+
+  // アクティブセッションがなければ全体から
+  const all = await getExamples();
+  if (all.length === 0) return [];
+
+  const scored = all.map(ex => {
+    let score = 0;
+    if (category && ex.category === category) score += 3;
+    if (workType && ex.analysis.workType === workType) score += 2;
+    score += 1;
+    return { example: ex, score };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(s => s.example);
+};
+
+// --- Session Management (お手本セッション) ---
+
+/**
+ * 現在のセッション（写真一覧）をお手本セッションとして保存
+ */
+export const saveCurrentSessionAsExample = async (
+  records: PhotoRecord[],
+  name: string,
+  description?: string
+): Promise<AnalysisSession> => {
+  const analyzedRecords = records.filter(r => r.analysis && r.status === 'done');
+  if (analyzedRecords.length === 0) {
+    throw new Error('解析済みの写真がありません');
+  }
+
+  const now = Date.now();
+  const examples: AnalysisExample[] = analyzedRecords.map((record, i) => ({
+    id: `ex_${now}_${i}`,
+    name: `${record.analysis!.workType || ''} - ${record.analysis!.remarks || record.fileName}`,
+    thumbnail: record.base64,
+    analysis: { ...record.analysis! },
+    category: detectPhotoCategory(record.analysis!),
+    tags: [],
+    createdAt: now,
+    updatedAt: now
+  }));
+
+  const session: AnalysisSession = {
+    id: `session_${now}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    description,
+    examples,
+    photoCount: examples.length,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.put(session);
+    request.onsuccess = () => resolve(session);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 保存されたセッション一覧を取得
+ */
+export const getSessions = async (): Promise<AnalysisSession[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readonly');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const sessions = request.result as AnalysisSession[];
+      sessions.sort((a, b) => b.createdAt - a.createdAt);
+      resolve(sessions);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 特定のセッションを取得
+ */
+export const getSession = async (id: string): Promise<AnalysisSession | null> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readonly');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.get(id);
+    request.onsuccess = () => resolve(request.result as AnalysisSession || null);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * セッションを削除
+ */
+export const deleteSession = async (id: string): Promise<void> => {
+  const db = await openDB();
+  // アクティブだった場合はクリア
+  if (getActiveSessionId() === id) {
+    clearActiveSession();
+  }
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 全セッションをクリア
+ */
+export const clearSessions = async (): Promise<void> => {
+  clearActiveSession();
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * アクティブなお手本セッションを設定
+ */
+export const setActiveSession = (sessionId: string): void => {
+  localStorage.setItem(KEY_ACTIVE_SESSION, sessionId);
+};
+
+/**
+ * アクティブなお手本セッションIDを取得
+ */
+export const getActiveSessionId = (): string | null => {
+  return localStorage.getItem(KEY_ACTIVE_SESSION);
+};
+
+/**
+ * アクティブなお手本セッションをクリア
+ */
+export const clearActiveSession = (): void => {
+  localStorage.removeItem(KEY_ACTIVE_SESSION);
+};
+
+/**
+ * アクティブなセッションの情報を取得（表示用）
+ */
+export const getActiveSession = async (): Promise<AnalysisSession | null> => {
+  const id = getActiveSessionId();
+  if (!id) return null;
+  return getSession(id);
 };
 
 // --- Export / Import Utilities ---

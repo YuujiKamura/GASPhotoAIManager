@@ -101,7 +101,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   // 1枚ずつモード用
   const [reorderedSinglePhotos, setReorderedSinglePhotos] = useState<PhotoRecord[]>([]);
 
-  // Initialize groups/photos when entering reorder mode
+  // Initialize groups/photos when ENTERING reorder mode (not when photos changes)
+  // NOTE: photos dependency removed intentionally to prevent reset during reorder
   useEffect(() => {
     if (isReorderMode) {
       // 1枚ずつモード用
@@ -127,7 +128,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 
       setReorderedGroups(groups);
     }
-  }, [isReorderMode, photos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReorderMode]);
 
   // Drag and drop handlers for group reorder mode
   const handleGroupDragStart = (index: number) => {
@@ -182,6 +184,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         onReorderPhotos(reorderedSinglePhotos);
       }
     }
+    // Clear reorder states to prevent stale data
+    setReorderedGroups([]);
+    setReorderedSinglePhotos([]);
     setIsReorderMode(false);
   };
 
