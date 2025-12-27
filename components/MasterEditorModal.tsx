@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, ChevronRight, ChevronDown, Plus, Trash2, Save, RotateCcw, Search, AlertTriangle, Download, Upload, Copy, FolderTree, Layers, FileJson, Check, Edit2, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ChevronDown, Plus, Trash2, Save, RotateCcw, Search, AlertTriangle, Download, Upload, Copy, FolderTree, FileJson, Check, Edit2, X } from 'lucide-react';
 import { CONSTRUCTION_HIERARCHY } from '../utils/constructionMaster';
 
 interface Props {
@@ -15,9 +15,10 @@ interface TreeNode {
   isDefault?: boolean; // デフォルトに存在するか
 }
 
-type TabType = 'tree' | 'custom' | 'templates';
+type TabType = 'tree' | 'templates';
 
 const CUSTOM_MASTER_KEY = 'construction_custom_master';
+const DELETED_PATHS_KEY = 'construction_deleted_paths';
 
 // カスタムマスタをlocalStorageから取得
 const loadCustomMaster = (): Record<string, any> => {
@@ -32,6 +33,21 @@ const loadCustomMaster = (): Record<string, any> => {
 // カスタムマスタをlocalStorageに保存
 const saveCustomMaster = (data: Record<string, any>) => {
   localStorage.setItem(CUSTOM_MASTER_KEY, JSON.stringify(data));
+};
+
+// 削除済みパスをlocalStorageから取得
+const loadDeletedPaths = (): string[] => {
+  try {
+    const saved = localStorage.getItem(DELETED_PATHS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+// 削除済みパスをlocalStorageに保存
+const saveDeletedPaths = (paths: string[]) => {
+  localStorage.setItem(DELETED_PATHS_KEY, JSON.stringify(paths));
 };
 
 // デフォルトのパスセットを収集
@@ -62,10 +78,30 @@ const buildTree = (obj: any, path: string[] = [], customPaths: Set<string>, defa
   });
 };
 
-// マージしたマスタを取得
+// パスを指定してオブジェクトから削除
+const deleteAtPath = (obj: any, pathArr: string[]): void => {
+  if (!obj || pathArr.length === 0) return;
+  let current = obj;
+  for (let i = 0; i < pathArr.length - 1; i++) {
+    if (!current[pathArr[i]]) return;
+    current = current[pathArr[i]];
+  }
+  delete current[pathArr[pathArr.length - 1]];
+};
+
+// マージしたマスタを取得（削除済みパスを除外）
 export const getMergedMaster = (): any => {
   const custom = loadCustomMaster();
-  return deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), custom);
+  const deletedPaths = loadDeletedPaths();
+  const merged = deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), custom);
+
+  // 削除済みパスを除外
+  for (const pathStr of deletedPaths) {
+    const pathArr = pathStr.split('/');
+    deleteAtPath(merged, pathArr);
+  }
+
+  return merged;
 };
 
 // 深いマージ
@@ -92,22 +128,6 @@ const collectCustomPaths = (obj: any, path: string[] = [], paths: Set<string> = 
   return paths;
 };
 
-// カスタムエントリーをフラットリストに変換
-const flattenCustomEntries = (obj: any, path: string[] = []): { path: string[]; key: string; fullPath: string }[] => {
-  const entries: { path: string[]; key: string; fullPath: string }[] = [];
-  if (!obj || typeof obj !== 'object') return entries;
-
-  for (const key in obj) {
-    const currentPath = [...path, key];
-    entries.push({
-      path: path,
-      key,
-      fullPath: currentPath.join(' > ')
-    });
-    entries.push(...flattenCustomEntries(obj[key], currentPath));
-  }
-  return entries;
-};
 
 // プリセットテンプレート
 const TEMPLATES = {
@@ -154,6 +174,7 @@ const TEMPLATES = {
 
 const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   const [customMaster, setCustomMaster] = useState<Record<string, any>>({});
+  const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [mergedMaster, setMergedMaster] = useState<any>({});
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['直接工事費']));
   const [searchTerm, setSearchTerm] = useState('');
@@ -180,12 +201,9 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     noResults: lang === 'ja' ? '該当なし' : 'No results',
     unsavedWarning: lang === 'ja' ? '未保存' : 'Unsaved',
     tabTree: lang === 'ja' ? '階層' : 'Tree',
-    tabCustom: lang === 'ja' ? 'カスタム' : 'Custom',
     tabTemplates: lang === 'ja' ? '雛形' : 'Templates',
     exportBtn: lang === 'ja' ? '出力' : 'Export',
     importBtn: lang === 'ja' ? '読込' : 'Import',
-    noCustom: lang === 'ja' ? 'カスタムエントリーはありません' : 'No custom entries',
-    customCount: lang === 'ja' ? 'カスタムエントリー数' : 'Custom entries',
     applyTemplate: lang === 'ja' ? '適用' : 'Apply',
     pathHint: lang === 'ja' ? '階層: 写真区分 > 工種 > 種別 > 細別 > 備考' : 'Hierarchy: Category > WorkType > Variety > Detail > Remarks',
     deleteConfirm: lang === 'ja' ? 'このエントリーを削除しますか？' : 'Delete this entry?'
@@ -193,13 +211,14 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
 
   useEffect(() => {
     const custom = loadCustomMaster();
+    const deleted = loadDeletedPaths();
     setCustomMaster(custom);
+    setDeletedPaths(deleted);
     setMergedMaster(getMergedMaster());
   }, []);
 
   const defaultPaths = collectDefaultPaths(CONSTRUCTION_HIERARCHY["直接工事費"], ['直接工事費']);
   const customPaths = collectCustomPaths(customMaster, ['直接工事費']);
-  const customEntriesList = flattenCustomEntries(customMaster);
 
   const toggleExpand = (pathStr: string) => {
     setExpandedPaths(prev => {
@@ -242,27 +261,50 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     setHasChanges(true);
   };
 
-  const handleDeleteCustomEntry = (path: string[]) => {
+  const handleDeleteEntry = (path: string[], isDefault: boolean) => {
     if (!confirm(txt.deleteConfirm)) return;
 
-    const newCustom = JSON.parse(JSON.stringify(customMaster));
-    const relativePath = path.slice(1);
+    const pathStr = path.join('/');
 
-    if (relativePath.length === 0) return;
+    if (isDefault) {
+      // デフォルトエントリーは削除済みリストに追加
+      const newDeletedPaths = [...deletedPaths, pathStr];
+      setDeletedPaths(newDeletedPaths);
 
-    let current = newCustom;
-    for (let i = 0; i < relativePath.length - 1; i++) {
-      if (!current[relativePath[i]]) return;
-      current = current[relativePath[i]];
+      // マージされたマスタを更新
+      const merged = deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), customMaster);
+      for (const dp of newDeletedPaths) {
+        deleteAtPath(merged, dp.split('/'));
+      }
+      setMergedMaster(merged);
+    } else {
+      // カスタムエントリーはcustomMasterから削除
+      const newCustom = JSON.parse(JSON.stringify(customMaster));
+      const relativePath = path.slice(1);
+
+      if (relativePath.length === 0) return;
+
+      let current = newCustom;
+      for (let i = 0; i < relativePath.length - 1; i++) {
+        if (!current[relativePath[i]]) return;
+        current = current[relativePath[i]];
+      }
+
+      delete current[relativePath[relativePath.length - 1]];
+
+      // 空のオブジェクトを親から削除
+      cleanEmptyObjects(newCustom);
+
+      setCustomMaster(newCustom);
+
+      // マージされたマスタを更新
+      const merged = deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), newCustom);
+      for (const dp of deletedPaths) {
+        deleteAtPath(merged, dp.split('/'));
+      }
+      setMergedMaster(merged);
     }
 
-    delete current[relativePath[relativePath.length - 1]];
-
-    // 空のオブジェクトを親から削除
-    cleanEmptyObjects(newCustom);
-
-    setCustomMaster(newCustom);
-    setMergedMaster(deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), newCustom));
     setHasChanges(true);
   };
 
@@ -273,7 +315,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   };
 
   // エントリ名の編集確定
-  const handleConfirmEdit = (path: string[]) => {
+  const handleConfirmEdit = (path: string[], isDefault: boolean) => {
     if (!editingName.trim() || editingName === path[path.length - 1]) {
       setEditingEntry(null);
       setEditingName('');
@@ -282,33 +324,68 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
 
     const newCustom = JSON.parse(JSON.stringify(customMaster));
     const relativePath = path.slice(1);
+    const newKey = editingName.trim();
+    let newDeletedPaths = [...deletedPaths];
 
     if (relativePath.length === 0) {
       setEditingEntry(null);
       return;
     }
 
-    // 親オブジェクトを取得
-    let current = newCustom;
-    for (let i = 0; i < relativePath.length - 1; i++) {
-      if (!current[relativePath[i]]) {
-        setEditingEntry(null);
-        return;
+    if (isDefault) {
+      // デフォルトエントリーの編集：元のパスを削除済みにし、新しい名前でカスタムエントリーを作成
+      const oldPathStr = path.join('/');
+      newDeletedPaths = [...deletedPaths, oldPathStr];
+      setDeletedPaths(newDeletedPaths);
+
+      // 親パスをたどってカスタムエントリーを作成
+      let current = newCustom;
+      const parentPath = relativePath.slice(0, -1);
+      for (const key of parentPath) {
+        if (!current[key]) current[key] = {};
+        current = current[key];
       }
-      current = current[relativePath[i]];
-    }
 
-    const oldKey = relativePath[relativePath.length - 1];
-    const newKey = editingName.trim();
+      // デフォルトから子要素を取得してコピー
+      let defaultCurrent = CONSTRUCTION_HIERARCHY["直接工事費"];
+      for (const key of relativePath) {
+        if (defaultCurrent && defaultCurrent[key]) {
+          defaultCurrent = defaultCurrent[key];
+        } else {
+          defaultCurrent = {};
+          break;
+        }
+      }
+      current[newKey] = JSON.parse(JSON.stringify(defaultCurrent || {}));
+    } else {
+      // カスタムエントリーの編集
+      let current = newCustom;
+      for (let i = 0; i < relativePath.length - 1; i++) {
+        if (!current[relativePath[i]]) {
+          setEditingEntry(null);
+          return;
+        }
+        current = current[relativePath[i]];
+      }
 
-    // 名前変更（古いキーの値を新しいキーにコピーして古いキーを削除）
-    if (current[oldKey] !== undefined) {
-      current[newKey] = current[oldKey];
-      delete current[oldKey];
+      const oldKey = relativePath[relativePath.length - 1];
+
+      // 名前変更（古いキーの値を新しいキーにコピーして古いキーを削除）
+      if (current[oldKey] !== undefined) {
+        current[newKey] = current[oldKey];
+        delete current[oldKey];
+      }
     }
 
     setCustomMaster(newCustom);
-    setMergedMaster(deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), newCustom));
+
+    // マージされたマスタを更新
+    const merged = deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), newCustom);
+    for (const dp of newDeletedPaths) {
+      deleteAtPath(merged, dp.split('/'));
+    }
+    setMergedMaster(merged);
+
     setHasChanges(true);
     setEditingEntry(null);
     setEditingName('');
@@ -329,13 +406,16 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
 
   const handleSave = () => {
     saveCustomMaster(customMaster);
+    saveDeletedPaths(deletedPaths);
     setHasChanges(false);
   };
 
   const handleReset = () => {
     if (confirm(txt.confirmReset)) {
       setCustomMaster({});
+      setDeletedPaths([]);
       saveCustomMaster({});
+      saveDeletedPaths([]);
       setMergedMaster(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)));
       setHasChanges(false);
     }
@@ -455,7 +535,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
                   value={editingName}
                   onChange={(e) => setEditingName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleConfirmEdit(node.path);
+                    if (e.key === 'Enter') handleConfirmEdit(node.path, !!node.isDefault);
                     if (e.key === 'Escape') { setEditingEntry(null); setEditingName(''); }
                   }}
                   className="flex-1 px-2 py-0.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -463,7 +543,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
                   onClick={(e) => e.stopPropagation()}
                 />
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleConfirmEdit(node.path); }}
+                  onClick={(e) => { e.stopPropagation(); handleConfirmEdit(node.path, !!node.isDefault); }}
                   className="p-0.5 text-green-600 hover:bg-green-100 rounded"
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -501,24 +581,20 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
-                {node.isCustom && !node.isDefault && (
-                  <>
-                    <button
-                      onClick={() => handleStartEdit(pathStr, node.key)}
-                      className="p-1 text-amber-500 hover:bg-amber-100 rounded"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCustomEntry(node.path)}
-                      className="p-1 text-red-500 hover:bg-red-100 rounded"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                )}
+                <button
+                  onClick={() => handleStartEdit(pathStr, node.key)}
+                  className="p-1 text-amber-500 hover:bg-amber-100 rounded"
+                  title="Edit"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => handleDeleteEntry(node.path, !!node.isDefault)}
+                  className="p-1 text-red-500 hover:bg-red-100 rounded"
+                  title="Delete"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
@@ -568,45 +644,6 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   };
 
   const tree = buildTree(mergedMaster["直接工事費"], ['直接工事費'], customPaths, defaultPaths);
-
-  const renderCustomList = () => {
-    if (customEntriesList.length === 0) {
-      return (
-        <div className="text-center py-12 text-gray-500">
-          <Layers className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-          <p className="font-medium">{txt.noCustom}</p>
-          <p className="text-sm mt-2">
-            {lang === 'ja' ? '階層ツリーからエントリーを追加してください' : 'Add entries from the tree view'}
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-          <span>{txt.customCount}: {customEntriesList.length}</span>
-        </div>
-        {customEntriesList.map((entry, i) => (
-          <div
-            key={`${entry.fullPath}-${i}`}
-            className="flex items-center justify-between p-3 bg-white border rounded-lg hover:shadow-sm"
-          >
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{entry.key}</p>
-              <p className="text-xs text-gray-500 truncate">{entry.fullPath}</p>
-            </div>
-            <button
-              onClick={() => handleDeleteCustomEntry(['直接工事費', ...entry.path, entry.key])}
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   const renderTemplates = () => {
     return (
@@ -701,22 +738,6 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
             {txt.tabTree}
           </button>
           <button
-            onClick={() => setActiveTab('custom')}
-            className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-              activeTab === 'custom'
-                ? 'bg-white border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            {txt.tabCustom}
-            {customEntriesList.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 bg-green-500 text-white text-xs rounded-full">
-                {customEntriesList.length}
-              </span>
-            )}
-          </button>
-          <button
             onClick={() => setActiveTab('templates')}
             className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
               activeTab === 'templates'
@@ -749,7 +770,6 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
         {/* Content */}
         <div className="flex-1 overflow-auto px-6 py-4">
           {activeTab === 'tree' && renderTree(tree)}
-          {activeTab === 'custom' && renderCustomList()}
           {activeTab === 'templates' && renderTemplates()}
         </div>
 
