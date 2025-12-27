@@ -87,7 +87,8 @@ const quickClassifyImages = async (
 }`;
 
     const parts: any[] = [{ text: prompt }];
-    unclassified.slice(0, 5).forEach(record => { // 最大5枚ずつ処理
+    const batch = unclassified.slice(0, 5); // 最大5枚ずつ処理
+    batch.forEach(record => {
       parts.push({
         inlineData: {
           data: extractBase64Data(record.base64),

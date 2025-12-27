@@ -78,7 +78,7 @@ export const detectPhotoType = async (
     });
 
     const responseText = result.text;
-    trackUsage(DETECTION_MODEL, prompt, responseText, sampleRecords.length, 'detectPhotoType');
+    trackUsage(DETECTION_MODEL, prompt, responseText, samples.length, 'detectPhotoType');
     const detection = JSON.parse(responseText);
     onLog?.(`写真タイプ: ${detection.type === 'WITH_BOARD' ? '黒板あり' : '景観のみ'} (確信度: ${detection.confidence})`, 'success');
 
