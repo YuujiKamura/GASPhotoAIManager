@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, Replace } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -42,6 +42,7 @@ interface PreviewViewProps {
   onAbort?: () => void;
   onOpenMasterEditor?: () => void;
   onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
+  onBulkReplaceStation?: (oldValue: string, newValue: string) => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -73,7 +74,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onReanalyzePhoto,
   onAbort,
   onOpenMasterEditor,
-  onReorderPhotos
+  onReorderPhotos,
+  onBulkReplaceStation
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -84,12 +86,29 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
   const [showDescription, setShowDescription] = useState(false); // Default to OFF
   const [isReorderMode, setIsReorderMode] = useState(false);
+  const [isReplaceMode, setIsReplaceMode] = useState(false);
   const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
+  const [selectedReplaceFrom, setSelectedReplaceFrom] = useState<string>('');
+  const [replaceTo, setReplaceTo] = useState<string>('');
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // 細別ごとにグループ化
   type PhotoGroup = { detail: string; photos: PhotoRecord[] };
   const [reorderedGroups, setReorderedGroups] = useState<PhotoGroup[]>([]);
+
+  // 測点一覧を計算（枚数付き）
+  const stationStats = useMemo(() => {
+    const map = new Map<string, number>();
+    photos.forEach(photo => {
+      const station = photo.analysis?.station || '';
+      if (station) {
+        map.set(station, (map.get(station) || 0) + 1);
+      }
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'ja', { numeric: true }))
+      .map(([station, count]) => ({ station, count }));
+  }, [photos]);
 
   // Initialize groups when entering reorder mode
   useEffect(() => {
@@ -149,6 +168,28 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const handleCancelReorder = () => {
     setReorderedGroups([]);
     setIsReorderMode(false);
+  };
+
+  // 置換モードのハンドラ
+  const handleEnterReplaceMode = () => {
+    setSelectedReplaceFrom('');
+    setReplaceTo('');
+    setIsReplaceMode(true);
+  };
+
+  const handleExecuteReplace = () => {
+    if (selectedReplaceFrom && replaceTo && onBulkReplaceStation) {
+      onBulkReplaceStation(selectedReplaceFrom, replaceTo);
+      setIsReplaceMode(false);
+      setSelectedReplaceFrom('');
+      setReplaceTo('');
+    }
+  };
+
+  const handleCancelReplace = () => {
+    setIsReplaceMode(false);
+    setSelectedReplaceFrom('');
+    setReplaceTo('');
   };
 
   // Sync photosPerPage if initialLayout changes (e.g. after auto-pair finishes)
@@ -290,17 +331,18 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             </div>
 
             {/* Reorder Mode Toggle */}
-            {!isReorderMode ? (
+            {!isReorderMode && !isReplaceMode && (
               <button
                 onClick={() => setIsReorderMode(true)}
-                className="p-2 bg-orange-600 hover:bg-orange-500 rounded text-white shadow-lg shadow-orange-900/20 mr-2"
+                className="p-2 bg-orange-600 hover:bg-orange-500 rounded text-white shadow-lg shadow-orange-900/20"
                 disabled={isProcessing}
                 title={lang === 'ja' ? '並べ替えモード' : 'Reorder Mode'}
               >
                 <ArrowUpDown className="w-4 h-4" />
               </button>
-            ) : (
-              <div className="flex gap-1 mr-2">
+            )}
+            {isReorderMode && (
+              <div className="flex gap-1">
                 <button
                   onClick={handleSaveReorder}
                   className="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white text-xs font-bold flex items-center gap-1"
@@ -319,11 +361,35 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               </div>
             )}
 
+            {/* Replace Mode Toggle */}
+            {!isReorderMode && !isReplaceMode && (
+              <button
+                onClick={handleEnterReplaceMode}
+                className="p-2 bg-cyan-600 hover:bg-cyan-500 rounded text-white shadow-lg shadow-cyan-900/20 mr-2"
+                disabled={isProcessing}
+                title={lang === 'ja' ? '測点一括置換' : 'Bulk Replace Station'}
+              >
+                <Replace className="w-4 h-4" />
+              </button>
+            )}
+            {isReplaceMode && (
+              <div className="flex gap-1 mr-2">
+                <button
+                  onClick={handleCancelReplace}
+                  className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white text-xs font-bold flex items-center gap-1"
+                  title={lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                >
+                  <X className="w-4 h-4" />
+                  {lang === 'ja' ? '閉じる' : 'Close'}
+                </button>
+              </div>
+            )}
+
             {/* Refine Button */}
             <button
               onClick={onRefine}
               className="p-2 bg-purple-600 hover:bg-purple-500 rounded text-white shadow-lg shadow-purple-900/20 mr-2"
-              disabled={isProcessing || isReorderMode}
+              disabled={isProcessing || isReorderMode || isReplaceMode}
               title={txt.refineTitle}
             >
               <Wand2 className="w-4 h-4" />
@@ -473,6 +539,93 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                  </div>
                ))}
              </div>
+           </div>
+         ) : isReplaceMode ? (
+           /* Replace Mode - Bulk Station Replace UI */
+           <div className="w-full max-w-2xl">
+             <div className="bg-cyan-100 border border-cyan-300 rounded-lg p-3 mb-4 text-cyan-800 text-sm">
+               <Replace className="w-4 h-4 inline mr-2" />
+               {lang === 'ja'
+                 ? '置換したい測点をクリックして選択し、新しい値を入力してください。'
+                 : 'Click a station to select it, then enter the new value.'}
+             </div>
+
+             {/* Station List */}
+             <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+               <h3 className="font-bold text-gray-700 mb-3">
+                 {lang === 'ja' ? '測点一覧' : 'Station List'}
+               </h3>
+               <div className="flex flex-wrap gap-2">
+                 {stationStats.length === 0 ? (
+                   <div className="text-gray-500 text-sm">
+                     {lang === 'ja' ? '測点が設定されている写真がありません' : 'No photos with station data'}
+                   </div>
+                 ) : (
+                   stationStats.map(({ station, count }) => (
+                     <button
+                       key={station}
+                       onClick={() => {
+                         setSelectedReplaceFrom(station);
+                         setReplaceTo(station);
+                       }}
+                       className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                         selectedReplaceFrom === station
+                           ? 'bg-cyan-500 text-white border-cyan-600 ring-2 ring-cyan-300'
+                           : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700'
+                       }`}
+                     >
+                       <span className="font-medium">{station}</span>
+                       <span className="ml-2 text-xs opacity-75">({count}枚)</span>
+                     </button>
+                   ))
+                 )}
+               </div>
+             </div>
+
+             {/* Replace Form */}
+             {selectedReplaceFrom && (
+               <div className="bg-white rounded-lg shadow-md p-4">
+                 <h3 className="font-bold text-gray-700 mb-3">
+                   {lang === 'ja' ? '置換設定' : 'Replace Settings'}
+                 </h3>
+                 <div className="flex items-center gap-3">
+                   <div className="flex-1">
+                     <label className="block text-xs text-gray-500 mb-1">
+                       {lang === 'ja' ? '置換元' : 'From'}
+                     </label>
+                     <div className="px-3 py-2 bg-gray-100 rounded border border-gray-200 font-medium text-gray-700">
+                       {selectedReplaceFrom}
+                     </div>
+                   </div>
+                   <div className="text-gray-400 pt-5">→</div>
+                   <div className="flex-1">
+                     <label className="block text-xs text-gray-500 mb-1">
+                       {lang === 'ja' ? '置換先' : 'To'}
+                     </label>
+                     <input
+                       type="text"
+                       value={replaceTo}
+                       onChange={(e) => setReplaceTo(e.target.value)}
+                       className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-cyan-300 focus:border-cyan-500 outline-none"
+                       placeholder={lang === 'ja' ? '新しい測点値' : 'New station value'}
+                     />
+                   </div>
+                   <button
+                     onClick={handleExecuteReplace}
+                     disabled={!replaceTo || replaceTo === selectedReplaceFrom}
+                     className="mt-5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded transition-colors flex items-center gap-2"
+                   >
+                     <Replace className="w-4 h-4" />
+                     {lang === 'ja' ? '置換' : 'Replace'}
+                   </button>
+                 </div>
+                 <div className="mt-2 text-xs text-gray-500">
+                   {lang === 'ja'
+                     ? `「${selectedReplaceFrom}」の写真 ${stationStats.find(s => s.station === selectedReplaceFrom)?.count || 0} 枚が対象になります`
+                     : `${stationStats.find(s => s.station === selectedReplaceFrom)?.count || 0} photos with "${selectedReplaceFrom}" will be updated`}
+                 </div>
+               </div>
+             )}
            </div>
          ) : (
            /* Normal Preview Mode */

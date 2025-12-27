@@ -308,6 +308,32 @@ export default function App() {
     addLog(`順序を学習しました: ${orderedDetails.filter(d => d).join(' → ')}`, 'info');
   };
 
+  // 測点の一括置換
+  const handleBulkReplaceStation = async (oldValue: string, newValue: string) => {
+    let count = 0;
+    const updatedPhotos = photos.map(photo => {
+      if (photo.analysis?.station === oldValue) {
+        count++;
+        const editedFields = photo.analysis.editedFields ? [...photo.analysis.editedFields] : [];
+        if (!editedFields.includes('station')) {
+          editedFields.push('station');
+        }
+        const updatedAnalysis: AIAnalysisResult = {
+          ...photo.analysis,
+          station: newValue,
+          editedFields
+        };
+        // 非同期でキャッシュ更新
+        cacheAnalysis(photo, updatedAnalysis).catch(e => console.error("Cache update failed", e));
+        return { ...photo, analysis: updatedAnalysis };
+      }
+      return photo;
+    });
+
+    setPhotos(updatedPhotos);
+    addLog(`測点を置換しました: 「${oldValue}」→「${newValue}」(${count}枚)`, 'info');
+  };
+
   const handleUpdatePhoto = (fileName: string, field: keyof AIAnalysisResult, value: string) => {
     setPhotos(prev => prev.map(p => {
       if (p.fileName === fileName && p.analysis) {
@@ -1469,6 +1495,7 @@ export default function App() {
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
         onOpenMasterEditor={() => setShowMasterEditor(true)}
         onReorderPhotos={handleReorderPhotos}
+        onBulkReplaceStation={handleBulkReplaceStation}
       />
       )}
 
