@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -42,6 +42,7 @@ interface PreviewViewProps {
   onAbort?: () => void;
   onOpenMasterEditor?: () => void;
   onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
+  onOpenStationReplace?: () => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -73,7 +74,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onReanalyzePhoto,
   onAbort,
   onOpenMasterEditor,
-  onReorderPhotos
+  onReorderPhotos,
+  onOpenStationReplace
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -85,7 +87,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [showDescription, setShowDescription] = useState(false); // Default to OFF
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
 
   // 細別ごとにグループ化
   type PhotoGroup = { detail: string; photos: PhotoRecord[] };
@@ -155,6 +159,19 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   useEffect(() => {
     setPhotosPerPage(initialLayout);
   }, [initialLayout]);
+
+  // Close tools menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) {
+        setShowToolsMenu(false);
+      }
+    };
+    if (showToolsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showToolsMenu]);
 
   // Auto-Calculate Scale for Mobile
   useEffect(() => {
@@ -265,42 +282,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          </div>
 
          <div className="flex gap-2 items-center">
-
-
-            {/* Pairing Buttons */}
-            <div className="flex bg-slate-700 rounded overflow-hidden mr-2">
-              <button
-                onClick={handleAutoPairClick}
-                className="px-3 py-2 text-xs font-medium text-slate-300 hover:bg-blue-600 hover:text-white transition-colors flex items-center gap-1"
-                disabled={isProcessing}
-                title={txt.btnPairing}
-              >
-                <GitCompare className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">AI</span>
-              </button>
-              <button
-                onClick={() => { setPhotosPerPage(2); onManualPair(); }}
-                className="px-3 py-2 text-xs font-medium text-slate-300 hover:bg-amber-500 hover:text-white transition-colors flex items-center gap-1 border-l border-slate-600"
-                disabled={isProcessing}
-                title={lang === 'ja' ? '手動ペアリング' : 'Manual Pairing'}
-              >
-                <MousePointer className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">{lang === 'ja' ? '手動' : 'Manual'}</span>
-              </button>
-            </div>
-
-            {/* Reorder Mode Toggle */}
-            {!isReorderMode ? (
-              <button
-                onClick={() => setIsReorderMode(true)}
-                className="p-2 bg-orange-600 hover:bg-orange-500 rounded text-white shadow-lg shadow-orange-900/20 mr-2"
-                disabled={isProcessing}
-                title={lang === 'ja' ? '並べ替えモード' : 'Reorder Mode'}
-              >
-                <ArrowUpDown className="w-4 h-4" />
-              </button>
-            ) : (
-              <div className="flex gap-1 mr-2">
+            {/* Reorder Mode Controls - Overlay when active */}
+            {isReorderMode && (
+              <div className="flex gap-1 mr-2 animate-in slide-in-from-left">
                 <button
                   onClick={handleSaveReorder}
                   className="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white text-xs font-bold flex items-center gap-1"
@@ -319,91 +303,151 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               </div>
             )}
 
-            {/* Refine Button */}
-            <button
-              onClick={onRefine}
-              className="p-2 bg-purple-600 hover:bg-purple-500 rounded text-white shadow-lg shadow-purple-900/20 mr-2"
-              disabled={isProcessing || isReorderMode}
-              title={txt.refineTitle}
-            >
-              <Wand2 className="w-4 h-4" />
-            </button>
+            {/* Tools Dropdown Menu */}
+            {!isReorderMode && (
+              <div className="relative" ref={toolsMenuRef}>
+                <button
+                  onClick={() => setShowToolsMenu(!showToolsMenu)}
+                  className={`p-2 rounded text-sm font-medium flex items-center gap-1 transition-colors ${
+                    showToolsMenu ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                  disabled={isProcessing}
+                  title={lang === 'ja' ? 'ツール' : 'Tools'}
+                >
+                  <MoreVertical className="w-4 h-4" />
+                  <span className="hidden md:inline">{lang === 'ja' ? 'ツール' : 'Tools'}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
+                </button>
 
+                {showToolsMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-56 bg-slate-800 rounded-lg shadow-xl border border-slate-600 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    {/* Pairing Section */}
+                    <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700">
+                      {lang === 'ja' ? 'ペアリング' : 'Pairing'}
+                    </div>
+                    <button
+                      onClick={() => { handleAutoPairClick(); setShowToolsMenu(false); }}
+                      className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-blue-600 flex items-center gap-2 transition-colors"
+                    >
+                      <GitCompare className="w-4 h-4 text-blue-400" />
+                      {lang === 'ja' ? 'AIペアリング' : 'AI Pairing'}
+                    </button>
+                    <button
+                      onClick={() => { setPhotosPerPage(2); onManualPair(); setShowToolsMenu(false); }}
+                      className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-amber-600 flex items-center gap-2 transition-colors"
+                    >
+                      <MousePointer className="w-4 h-4 text-amber-400" />
+                      {lang === 'ja' ? '手動ペアリング' : 'Manual Pairing'}
+                    </button>
 
+                    {/* Edit Section */}
+                    <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 border-t mt-1">
+                      {lang === 'ja' ? '編集' : 'Edit'}
+                    </div>
+                    <button
+                      onClick={() => { setIsReorderMode(true); setShowToolsMenu(false); }}
+                      className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-orange-600 flex items-center gap-2 transition-colors"
+                    >
+                      <ArrowUpDown className="w-4 h-4 text-orange-400" />
+                      {lang === 'ja' ? '並べ替え' : 'Reorder'}
+                    </button>
+                    {onOpenStationReplace && (
+                      <button
+                        onClick={() => { onOpenStationReplace(); setShowToolsMenu(false); }}
+                        className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-cyan-600 flex items-center gap-2 transition-colors"
+                      >
+                        <Replace className="w-4 h-4 text-cyan-400" />
+                        {lang === 'ja' ? '測点の一括置換' : 'Replace Stations'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { onRefine(); setShowToolsMenu(false); }}
+                      className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-purple-600 flex items-center gap-2 transition-colors"
+                    >
+                      <Wand2 className="w-4 h-4 text-purple-400" />
+                      {lang === 'ja' ? '再解析' : 'Refine'}
+                    </button>
 
+                    {/* Settings Section */}
+                    {onOpenMasterEditor && (
+                      <>
+                        <div className="px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 border-t mt-1">
+                          {lang === 'ja' ? '設定' : 'Settings'}
+                        </div>
+                        <button
+                          onClick={() => { onOpenMasterEditor(); setShowToolsMenu(false); }}
+                          className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-slate-600 flex items-center gap-2 transition-colors"
+                        >
+                          <Settings className="w-4 h-4 text-slate-400" />
+                          {lang === 'ja' ? 'マスタ管理' : 'Master Data'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Home Button */}
             <button onClick={onGoHome} className="p-2 bg-slate-700 hover:bg-blue-600 rounded text-slate-300 hover:text-white transition-colors" title={txt.backHome}>
               <Home className="w-4 h-4" />
             </button>
 
-            {/* Master Editor Button */}
-            {onOpenMasterEditor && (
-              <button
-                onClick={onOpenMasterEditor}
-                className="p-2 bg-slate-700 hover:bg-amber-500 rounded text-slate-300 hover:text-white transition-colors ml-1"
-                title={lang === 'ja' ? 'マスタ管理' : 'Master Data'}
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            )}
+            {/* Layout & View Controls */}
+            <div className="flex items-center gap-1 bg-slate-700 rounded-lg px-1">
+              {/* Layout Switcher - show when photos have boards */}
+              {hasPhotosWithBoard && (
+                <>
+                  <button
+                    onClick={() => setPhotosPerPage(2)}
+                    className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                      photosPerPage === 2 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                    }`}
+                    title="2枚/ページ"
+                  >
+                    2枚
+                  </button>
+                  <button
+                    onClick={() => setPhotosPerPage(3)}
+                    className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                      photosPerPage === 3 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                    }`}
+                    title="3枚/ページ"
+                  >
+                    3枚
+                  </button>
+                </>
+              )}
 
-            {/* Layout Switcher - show when photos have boards */}
-            {hasPhotosWithBoard && (
-              <div className="flex bg-slate-700 rounded overflow-hidden ml-2">
+              {/* Description Toggle - only show in 3-up mode */}
+              {photosPerPage === 3 && (
                 <button
-                  onClick={() => setPhotosPerPage(2)}
-                  className={`px-3 py-2 text-xs font-medium transition-colors ${
-                    photosPerPage === 2 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
+                  onClick={() => setShowDescription(!showDescription)}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                    showDescription ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-slate-600"
                   }`}
-                  title="2枚/ページ"
+                  title="記事欄の表示/非表示"
                 >
-                  2枚
+                  <FileTextIcon className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">記事</span>
                 </button>
-                <button
-                  onClick={() => setPhotosPerPage(3)}
-                  className={`px-3 py-2 text-xs font-medium transition-colors ${
-                    photosPerPage === 3 ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"
-                  }`}
-                  title="3枚/ページ"
-                >
-                  3枚
-                </button>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Description Toggle - only show in 3-up mode */}
-            {photosPerPage === 3 && (
-              <button
-                onClick={() => setShowDescription(!showDescription)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition-colors ml-2 ${
-                  showDescription
-                    ? "bg-blue-500 text-white"
-                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                }`}
-                title="記事欄の表示/非表示"
-              >
-                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                  showDescription ? 'bg-white border-white' : 'border-slate-400'
-                }`}>
-                  {showDescription && <Check className="w-3 h-3 text-blue-500" />}
-                </div>
-                <FileTextIcon className="w-3.5 h-3.5" />
-                記事欄
+            {/* Export Buttons */}
+            <div className="flex gap-1">
+              <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-1" title={txt.exportExcel}>
+                  <Download className="w-4 h-4" /> <span className="hidden lg:inline">{txt.exportExcel}</span>
               </button>
-            )}
 
-            <div className="flex gap-1 ml-1">
-              <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing} className="p-2 md:px-4 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-2" title={txt.exportExcel}>
-                  <Download className="w-4 h-4" /> <span className="hidden md:inline">{txt.exportExcel}</span>
-              </button>
-              
               {appMode === 'construction' && (
-                <button onClick={handleDownloadZip} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-4 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-2" title="Electronic Delivery (XML/ZIP)">
-                  {isGeneratingZip ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />} <span className="hidden md:inline">XML/ZIP</span>
+                <button onClick={handleDownloadZip} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title="XML/ZIP">
+                  {isGeneratingZip ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />} <span className="hidden lg:inline">ZIP</span>
                 </button>
               )}
 
-              <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-4 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-2" title={txt.exportPDF}>
-                {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} <span className="hidden md:inline">{isGeneratingPdf ? "..." : txt.exportPDF}</span>
+              <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-3 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title={txt.exportPDF}>
+                {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} <span className="hidden lg:inline">PDF</span>
               </button>
             </div>
          </div>

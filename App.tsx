@@ -19,6 +19,7 @@ import ApiKeySetup from './components/ApiKeySetup';
 import UsagePanel from './components/UsagePanel';
 import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
+import StationReplaceModal from './components/StationReplaceModal';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -73,6 +74,7 @@ export default function App() {
   const [showManualPairing, setShowManualPairing] = useState(false);
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
+  const [showStationReplace, setShowStationReplace] = useState(false);
   // Store initial instruction if files are pending selection
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
@@ -295,6 +297,22 @@ export default function App() {
       setStats({ total: updatedPhotos.length, processed: success + failed, success, failed, cached });
       addLog(`Deleted photo: ${fileName}`, 'info');
     }
+  };
+
+  // 測点の一括置換
+  const handleStationReplace = (replacements: Array<{ fileName: string; newStation: string }>) => {
+    setPhotos(prev => prev.map(p => {
+      const replacement = replacements.find(r => r.fileName === p.fileName);
+      if (replacement && p.analysis) {
+        const updatedAnalysis = { ...p.analysis, station: replacement.newStation };
+        // キャッシュも更新
+        cacheAnalysis(p, updatedAnalysis).catch(console.error);
+        return { ...p, analysis: updatedAnalysis };
+      }
+      return p;
+    }));
+    setSuccessMsg(`${replacements.length}枚の測点を更新しました`);
+    addLog(`測点を一括置換: ${replacements.length}枚`, 'success');
   };
 
   // 並べ替え後の順序を学習して保存
@@ -1469,6 +1487,7 @@ export default function App() {
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
         onOpenMasterEditor={() => setShowMasterEditor(true)}
         onReorderPhotos={handleReorderPhotos}
+        onOpenStationReplace={() => setShowStationReplace(true)}
       />
       )}
 
@@ -1517,6 +1536,15 @@ export default function App() {
         <MasterEditorModal
           lang={lang}
           onClose={() => setShowMasterEditor(false)}
+        />
+      )}
+
+      {showStationReplace && (
+        <StationReplaceModal
+          photos={photos}
+          lang={lang}
+          onClose={() => setShowStationReplace(false)}
+          onReplace={handleStationReplace}
         />
       )}
     </>
