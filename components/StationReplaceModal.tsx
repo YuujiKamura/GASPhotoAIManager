@@ -46,14 +46,18 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({
     return result;
   }, [photos]);
 
+  // Escape special regex characters
+  const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   // Preview replacements
   const previewReplacements = useMemo(() => {
     if (!searchText) return [];
 
     const replacements: Array<{ original: string; replaced: string; fileNames: string[] }> = [];
+    const escapedSearch = escapeRegex(searchText);
     stationStats.forEach(({ station, fileNames }) => {
       if (station.includes(searchText)) {
-        const replaced = station.replace(new RegExp(searchText, 'g'), replaceText);
+        const replaced = station.replace(new RegExp(escapedSearch, 'g'), replaceText);
         replacements.push({ original: station, replaced, fileNames });
       }
     });
