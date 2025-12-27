@@ -117,9 +117,17 @@ Traverse the hierarchy directly:
     *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
     *   Normalize text: "転圧中" -> "転圧状況".
 
-**STEP 4: Description (記事)**
+**STEP 4: Description (記事) と Measurements (測定値) の分離**
+
+A. **description (記事)**: 一般的な説明・コメント
 *   If the description would just repeat the remarks or work type, return an empty string "".
 *   Only add text if it provides *unique* visual information (e.g., specific machinery names, weather conditions if relevant to quality).
+*   着手前・完成写真の場合は空欄でよい。
+
+B. **measurements (測定値)**: 出来形管理の数値データ（出来形管理写真のみ）
+*   出来形管理写真の場合のみ、黒板やリボンテープから読み取った測定値を記録。
+*   フォーマット例: "設計値: 50mm / 実測値: 52mm / 差: +2mm" または "幅員 W=3.0m"
+*   測定値が見えない場合や出来形管理写真でない場合は空文字列 "" を返す。
 
 **STEP 5: Station (測点)**
 *   There are two types of station formats:
@@ -132,7 +140,7 @@ Traverse the hierarchy directly:
 
 **OUTPUT FORMAT**:
 JSON only.
-keys: workType, variety, detail, station, remarks, description, hasBoard, detectedText.
+keys: workType, variety, detail, station, remarks, description, measurements, hasBoard, detectedText.
 
 ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
   `.trim();

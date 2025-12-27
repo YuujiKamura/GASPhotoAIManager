@@ -28,7 +28,8 @@ export interface AIAnalysisResult {
   detail?: string; // 細別 (Detail)
   station: string; // 測点 OR Location/Time
   remarks: string; // 備考 (黒板の記載内容の正規化) OR Title/Key Point
-  description: string; // 記事/説明
+  description: string; // 記事（一般的な説明・コメント）
+  measurements?: string; // 測定値（出来形管理の数値データ: 設計値、実測値、差など）
   hasBoard: boolean; // 黒板有無
   detectedText: string; // OCR text
   editedFields?: string[]; // Track which fields were manually modified by the user

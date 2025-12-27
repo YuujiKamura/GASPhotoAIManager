@@ -149,16 +149,30 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const isTwoUp = photosPerPage === 2;
 
   // Fields Config
-  // 3-up: All Fields (optionally excluding description)
+  // 3-up: All Fields (measurements always shown if data exists, description based on toggle)
   // 2-up: Only Remarks, Station (in that order)
-  const visibleFields = isTwoUp
-    ? [
-      LAYOUT_FIELDS.find(f => f.key === 'remarks')!,
-      LAYOUT_FIELDS.find(f => f.key === 'station')!
-    ].filter(Boolean)
-    : showDescription
-      ? LAYOUT_FIELDS
-      : LAYOUT_FIELDS.filter(f => f.key !== 'description');
+  const getVisibleFields = (record: PhotoRecord | undefined) => {
+    if (isTwoUp) {
+      return [
+        LAYOUT_FIELDS.find(f => f.key === 'remarks')!,
+        LAYOUT_FIELDS.find(f => f.key === 'station')!
+      ].filter(Boolean);
+    }
+
+    // 3-up mode: filter based on data and toggle
+    return LAYOUT_FIELDS.filter(f => {
+      // measurements: show only if has data
+      if (f.key === 'measurements') {
+        return !!record?.analysis?.measurements;
+      }
+      // description: follow the toggle
+      if (f.key === 'description') {
+        return showDescription;
+      }
+      // other fields: always show
+      return true;
+    });
+  };
 
   return (
     <div id="album-content" className="w-full">
@@ -228,7 +242,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
 
                   {/* Info Section */}
                   <div className={infoContainerClass}>
-                    {visibleFields.map((field) => {
+                    {getVisibleFields(record).map((field) => {
                       // Resolve value
                       let val = "";
                       if (field.key === 'date') {
@@ -251,12 +265,14 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                       let dynamicTextClass = undefined;
                       if (isTwoUp) {
                         // In 2-up vertical mode - unified text styling for station and remarks
-                        dynamicHeightClass = 'h-[30px] flex-shrink-0 border-none'; // 高さを20pxから30pxに増加
-                        dynamicTextClass = 'text-sm text-gray-900 font-medium'; // 統一されたテキストスタイル
+                        dynamicHeightClass = 'h-[30px] flex-shrink-0 border-none';
+                        dynamicTextClass = 'text-sm text-gray-900 font-medium';
                       } else {
-                        // 3-up Logic (Original)
+                        // 3-up Logic
                         if (field.key === 'description') {
                           dynamicHeightClass = 'min-h-0 border-b-0 flex-1'; // Fill remaining vertical space
+                        } else if (field.key === 'measurements') {
+                          dynamicHeightClass = `${field.heightClass} flex-shrink-0`; // Fixed height for measurements
                         } else {
                           dynamicHeightClass = `${field.heightClass} flex-shrink-0`;
                         }

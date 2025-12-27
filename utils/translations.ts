@@ -42,6 +42,7 @@ export const TRANS = {
     labelDate: "Date",
     labelRemarks: "Title",
     labelTitle: "Title / Key Point",
+    labelMeasurements: "Measurements",
     labelDescription: "Description",
     // Refine Modal
     refineTitle: "Refine / Rules",
@@ -121,6 +122,7 @@ export const TRANS = {
     labelDate: "日時",
     labelRemarks: "備考",
     labelTitle: "タイトル・要点",
+    labelMeasurements: "測定値",
     labelDescription: "記事",
     // Refine Modal
     refineTitle: "AI校正・ルール設定",
