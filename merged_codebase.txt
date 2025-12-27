@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 15:42:08
+生成日時: 2025-12-27 15:46:33
 ================================================================================
 
 === ファイル一覧 ===
@@ -5383,7 +5383,7 @@ if (keyArgIndex !== -1 && process.argv[keyArgIndex + 1]) {
   API_KEY = process.argv[keyArgIndex + 1];
 }
 // モデル選択（フォールバック対応）
-const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest'];
 let currentModelIndex = 0;
 const getModel = () => MODELS[currentModelIndex] || MODELS[0];
 
@@ -5512,6 +5512,11 @@ async function main() {
   const results: AnalysisResult[] = [];
   const warnings: string[] = [];
 
+  // Context relay: ボードアップ写真の情報を後続に継承
+  let lastKnown = {
+    station: '', variety: '', workType: '', detail: '', remarks: '', measurements: ''
+  };
+
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const filePath = path.join(folderPath, file);
@@ -5521,6 +5526,22 @@ async function main() {
     try {
       const base64 = await loadImage(filePath);
       const result = await analyzePhoto(genAI, base64, file);
+
+      // Context relay: 空のフィールドは前の写真から継承
+      if (!result.station && lastKnown.station) result.station = lastKnown.station;
+      if (!result.variety && lastKnown.variety) result.variety = lastKnown.variety;
+      if (!result.workType && lastKnown.workType) result.workType = lastKnown.workType;
+      if (!result.detail && lastKnown.detail) result.detail = lastKnown.detail;
+      if (!result.remarks && lastKnown.remarks) result.remarks = lastKnown.remarks;
+      if (!result.measurements && lastKnown.measurements) result.measurements = lastKnown.measurements;
+
+      // Update lastKnown for next iteration
+      if (result.station) lastKnown.station = result.station;
+      if (result.variety) lastKnown.variety = result.variety;
+      if (result.workType) lastKnown.workType = result.workType;
+      if (result.detail) lastKnown.detail = result.detail;
+      if (result.remarks) lastKnown.remarks = result.remarks;
+      if (result.measurements) lastKnown.measurements = result.measurements;
 
       // Validate against master
       const { validatedWorkType, validatedVariety, validatedDetail, warnings: valWarnings } =
@@ -7221,8 +7242,8 @@ export const analyzePhotoBatch = async (
         }
       });
 
-      // Apply context relay: inherit station, variety, and workType from previous photos
-      // This ensures continuity across sequential photos (e.g., 未舗装部舗装工 persists)
+      // Apply context relay: inherit from previous photos (especially board-up photos)
+      // This ensures continuity across sequential photos (e.g., 下がり測定の連続写真)
       // BUT: Do NOT apply to safety management photos (they legitimately have empty workType)
       const isSafetyRemarks = (remarks: string) => {
         const safetyKeywords = ['朝礼', 'KY', '安全', '新規入場', '点灯', '巡視'];
@@ -7232,6 +7253,10 @@ export const analyzePhotoBatch = async (
       let lastKnownStation = "";
       let lastKnownVariety = "";
       let lastKnownWorkType = "";
+      let lastKnownDetail = "";
+      let lastKnownRemarks = "";
+      let lastKnownMeasurements = "";
+
       const finalResults = matchedResults.map((res) => {
         // Safety management photos should keep empty workType/variety
         if (isSafetyRemarks(res.remarks || '')) {
@@ -7240,16 +7265,23 @@ export const analyzePhotoBatch = async (
         }
 
         // Apply context relay for empty fields (non-safety photos only)
+        // ボードアップ写真の情報を後続写真に継承
         const station = res.station || lastKnownStation;
         const variety = res.variety || lastKnownVariety;
         const workType = res.workType || lastKnownWorkType;
+        const detail = res.detail || lastKnownDetail;
+        const remarks = res.remarks || lastKnownRemarks;
+        const measurements = res.measurements || lastKnownMeasurements;
 
-        // Update context for next iteration
+        // Update context for next iteration (only if current has value)
         if (res.station) lastKnownStation = res.station;
         if (res.variety) lastKnownVariety = res.variety;
         if (res.workType) lastKnownWorkType = res.workType;
+        if (res.detail) lastKnownDetail = res.detail;
+        if (res.remarks) lastKnownRemarks = res.remarks;
+        if (res.measurements) lastKnownMeasurements = res.measurements;
 
-        return { ...res, station, variety, workType };
+        return { ...res, station, variety, workType, detail, remarks, measurements };
       });
 
       // Validate against master data and log warnings for AI-invented values

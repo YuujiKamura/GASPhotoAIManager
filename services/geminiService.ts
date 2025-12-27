@@ -960,8 +960,8 @@ export const analyzePhotoBatch = async (
         }
       });
 
-      // Apply context relay: inherit station, variety, and workType from previous photos
-      // This ensures continuity across sequential photos (e.g., 未舗装部舗装工 persists)
+      // Apply context relay: inherit from previous photos (especially board-up photos)
+      // This ensures continuity across sequential photos (e.g., 下がり測定の連続写真)
       // BUT: Do NOT apply to safety management photos (they legitimately have empty workType)
       const isSafetyRemarks = (remarks: string) => {
         const safetyKeywords = ['朝礼', 'KY', '安全', '新規入場', '点灯', '巡視'];
@@ -971,6 +971,10 @@ export const analyzePhotoBatch = async (
       let lastKnownStation = "";
       let lastKnownVariety = "";
       let lastKnownWorkType = "";
+      let lastKnownDetail = "";
+      let lastKnownRemarks = "";
+      let lastKnownMeasurements = "";
+
       const finalResults = matchedResults.map((res) => {
         // Safety management photos should keep empty workType/variety
         if (isSafetyRemarks(res.remarks || '')) {
@@ -979,16 +983,23 @@ export const analyzePhotoBatch = async (
         }
 
         // Apply context relay for empty fields (non-safety photos only)
+        // ボードアップ写真の情報を後続写真に継承
         const station = res.station || lastKnownStation;
         const variety = res.variety || lastKnownVariety;
         const workType = res.workType || lastKnownWorkType;
+        const detail = res.detail || lastKnownDetail;
+        const remarks = res.remarks || lastKnownRemarks;
+        const measurements = res.measurements || lastKnownMeasurements;
 
-        // Update context for next iteration
+        // Update context for next iteration (only if current has value)
         if (res.station) lastKnownStation = res.station;
         if (res.variety) lastKnownVariety = res.variety;
         if (res.workType) lastKnownWorkType = res.workType;
+        if (res.detail) lastKnownDetail = res.detail;
+        if (res.remarks) lastKnownRemarks = res.remarks;
+        if (res.measurements) lastKnownMeasurements = res.measurements;
 
-        return { ...res, station, variety, workType };
+        return { ...res, station, variety, workType, detail, remarks, measurements };
       });
 
       // Validate against master data and log warnings for AI-invented values

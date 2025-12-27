@@ -33,7 +33,7 @@ if (keyArgIndex !== -1 && process.argv[keyArgIndex + 1]) {
   API_KEY = process.argv[keyArgIndex + 1];
 }
 // モデル選択（フォールバック対応）
-const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest'];
 let currentModelIndex = 0;
 const getModel = () => MODELS[currentModelIndex] || MODELS[0];
 
@@ -162,6 +162,11 @@ async function main() {
   const results: AnalysisResult[] = [];
   const warnings: string[] = [];
 
+  // Context relay: ボードアップ写真の情報を後続に継承
+  let lastKnown = {
+    station: '', variety: '', workType: '', detail: '', remarks: '', measurements: ''
+  };
+
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const filePath = path.join(folderPath, file);
@@ -171,6 +176,22 @@ async function main() {
     try {
       const base64 = await loadImage(filePath);
       const result = await analyzePhoto(genAI, base64, file);
+
+      // Context relay: 空のフィールドは前の写真から継承
+      if (!result.station && lastKnown.station) result.station = lastKnown.station;
+      if (!result.variety && lastKnown.variety) result.variety = lastKnown.variety;
+      if (!result.workType && lastKnown.workType) result.workType = lastKnown.workType;
+      if (!result.detail && lastKnown.detail) result.detail = lastKnown.detail;
+      if (!result.remarks && lastKnown.remarks) result.remarks = lastKnown.remarks;
+      if (!result.measurements && lastKnown.measurements) result.measurements = lastKnown.measurements;
+
+      // Update lastKnown for next iteration
+      if (result.station) lastKnown.station = result.station;
+      if (result.variety) lastKnown.variety = result.variety;
+      if (result.workType) lastKnown.workType = result.workType;
+      if (result.detail) lastKnown.detail = result.detail;
+      if (result.remarks) lastKnown.remarks = result.remarks;
+      if (result.measurements) lastKnown.measurements = result.measurements;
 
       // Validate against master
       const { validatedWorkType, validatedVariety, validatedDetail, warnings: valWarnings } =
