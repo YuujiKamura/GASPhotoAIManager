@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 19:12:28
+生成日時: 2025-12-27 19:15:51
 ================================================================================
 
 === ファイル一覧 ===
@@ -11449,7 +11449,7 @@ export function getVarietyOrderMap(): Map<string, number> {
 
 import { PhotoRecord, AppMode, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "./imageUtils";
-import { LAYOUT_FIELDS, ROWS_PER_PHOTO } from "./layoutConfig";
+import { LAYOUT_FIELDS, ROWS_PER_PHOTO, DIMENSION } from "./layoutConfig";
 import { TRANS } from "./translations";
 
 // Declare global variables for loaded scripts
@@ -11494,41 +11494,34 @@ export const generateExcel = async (
     views: [{ showGridLines: false }]
   });
 
-  // --- Layout Constants ---
+  // --- Layout Constants (from shared DIMENSION config) ---
   const isTwoUp = photosPerPage === 2;
-  
-  // Adjusted column widths for 2-up to maximize photo size
-  // 3-up (Standard): A=65, B=8, C=25 (Total approx 98)
-  // 2-up (Large Photo): A=80, B=6, C=14 (Total approx 100)
-  const COL_A_WIDTH_CHARS = isTwoUp ? 80 : 65; 
-  
-  const PIXELS_PER_COL_UNIT = 7.1; // Tuned for ExcelJS default font
-  
-  const ROW_HEIGHT_PTS = 21; 
-  const PIXELS_PER_PT = 96.0 / 72.0; // Standard DPI conversion
-  
-  // Calculate Rows per Photo Block based on layout
-  // 3-up = 12 rows (default)
-  // 2-up = 18 rows (approx 1.5x height to fill page)
+
+  // Column widths from DIMENSION (A4 portrait, 3 columns)
+  // 3-up: A=65 (image 65%), B=8 (label), C=25 (value 35%)
+  // 2-up: A=80 (larger image), B=6, C=14
+  const COL_A_WIDTH = isTwoUp ? 80 : 65;
+  const COL_B_WIDTH = isTwoUp ? 6 : DIMENSION.LABEL_WIDTH_EXCEL;
+  const COL_C_WIDTH = isTwoUp ? 14 : 25;
+
+  // Row height from shared config
+  const ROW_HEIGHT_PTS = DIMENSION.ROW_HEIGHT_PT;
+  const PIXELS_PER_PT = DIMENSION.PT_TO_PX;
+  const PIXELS_PER_COL_UNIT = DIMENSION.PIXELS_PER_COL_UNIT;
+
+  // Rows per photo block (3-up = 12, 2-up = 18)
   const rowsPerBlock = photosPerPage === 2 ? 18 : ROWS_PER_PHOTO;
-  
-  const BOX_WIDTH_PX = COL_A_WIDTH_CHARS * PIXELS_PER_COL_UNIT; 
+
+  // Calculate actual pixel dimensions for image placement
+  const BOX_WIDTH_PX = COL_A_WIDTH * PIXELS_PER_COL_UNIT;
   const BOX_HEIGHT_PX = rowsPerBlock * ROW_HEIGHT_PTS * PIXELS_PER_PT; 
 
-  // Setup Column Widths
-  if (isTwoUp) {
-    sheet.columns = [
-      { width: 80 }, // Column A (Image) - Wider for 2-up
-      { width: 6 },  // Column B (Label) - Narrower
-      { width: 14 }  // Column C (Value) - Narrower
-    ];
-  } else {
-    sheet.columns = [
-      { width: 65 }, // Column A
-      { width: 8 },  // Column B
-      { width: 25 }  // Column C
-    ];
-  }
+  // Setup Column Widths (using computed values)
+  sheet.columns = [
+    { width: COL_A_WIDTH }, // Column A (Image)
+    { width: COL_B_WIDTH }, // Column B (Label)
+    { width: COL_C_WIDTH }  // Column C (Value)
+  ];
 
   // Set default font
   sheet.eachRow((row: any) => {
@@ -12159,11 +12152,52 @@ export const extractBase64Data = (dataUrl: string): string => {
 
 import { AIAnalysisResult } from "../types";
 
+// ============================================
+// 寸法変換定数 (CSS px ⟷ Excel pt/units)
+// ============================================
+
+// 基準値: A4用紙 (210mm × 297mm) に合わせた設計
+export const DIMENSION = {
+  // --- 行高さ ---
+  ROW_HEIGHT_PX: 28,              // CSS pixels (h-[28px])
+  ROW_HEIGHT_PT: 21,              // Excel points (21pt = 28px @ 96dpi)
+
+  // --- 変換係数 ---
+  PX_TO_PT: 72 / 96,              // px → pt: px * 0.75
+  PT_TO_PX: 96 / 72,              // pt → px: pt * 1.333
+
+  // --- Excel列幅 ---
+  // Excel列幅単位は「標準フォントの0の文字幅」基準
+  // 近似式: pixels ≈ (units × 7) + 5
+  PIXELS_PER_COL_UNIT: 7.1,
+  COL_OFFSET_PX: 5,
+
+  // --- ラベル列幅 ---
+  LABEL_WIDTH_PX: 48,             // CSS: w-12 = 3rem = 48px
+  LABEL_WIDTH_EXCEL: 8,           // Excel: (48-5)/7 ≈ 6.1 → 8 (余裕込み)
+
+  // --- レイアウト比率 (3-up) ---
+  IMAGE_RATIO: 0.65,              // 画像部分 65%
+  INFO_RATIO: 0.35,               // 情報部分 35%
+} as const;
+
+// 変換ヘルパー関数
+export const pxToPt = (px: number): number => Math.round(px * DIMENSION.PX_TO_PT);
+export const ptToPx = (pt: number): number => Math.round(pt * DIMENSION.PT_TO_PX);
+export const pxToExcelWidth = (px: number): number =>
+  Math.round((px - DIMENSION.COL_OFFSET_PX) / DIMENSION.PIXELS_PER_COL_UNIT);
+export const excelWidthToPx = (units: number): number =>
+  Math.round(units * DIMENSION.PIXELS_PER_COL_UNIT + DIMENSION.COL_OFFSET_PX);
+
+// ============================================
+// フィールド定義
+// ============================================
+
 export interface FieldDefinition {
   id: string; // Unique ID for key mapping
   key: keyof AIAnalysisResult | 'date'; // Data key
   labelKey: string; // Translation key in TRANS
-  rowSpan: number; // Height weight (1 unit approx 28px)
+  rowSpan: number; // Height weight (1 unit = ROW_HEIGHT_PX)
   heightClass: string; // Tailwind class for Web View
   multiline: boolean; // Textarea vs Input
   readOnly?: boolean;

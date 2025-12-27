@@ -1,6 +1,6 @@
 import { PhotoRecord, AppMode, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "./imageUtils";
-import { LAYOUT_FIELDS, ROWS_PER_PHOTO } from "./layoutConfig";
+import { LAYOUT_FIELDS, ROWS_PER_PHOTO, DIMENSION } from "./layoutConfig";
 import { TRANS } from "./translations";
 
 // Declare global variables for loaded scripts
@@ -45,41 +45,34 @@ export const generateExcel = async (
     views: [{ showGridLines: false }]
   });
 
-  // --- Layout Constants ---
+  // --- Layout Constants (from shared DIMENSION config) ---
   const isTwoUp = photosPerPage === 2;
-  
-  // Adjusted column widths for 2-up to maximize photo size
-  // 3-up (Standard): A=65, B=8, C=25 (Total approx 98)
-  // 2-up (Large Photo): A=80, B=6, C=14 (Total approx 100)
-  const COL_A_WIDTH_CHARS = isTwoUp ? 80 : 65; 
-  
-  const PIXELS_PER_COL_UNIT = 7.1; // Tuned for ExcelJS default font
-  
-  const ROW_HEIGHT_PTS = 21; 
-  const PIXELS_PER_PT = 96.0 / 72.0; // Standard DPI conversion
-  
-  // Calculate Rows per Photo Block based on layout
-  // 3-up = 12 rows (default)
-  // 2-up = 18 rows (approx 1.5x height to fill page)
+
+  // Column widths from DIMENSION (A4 portrait, 3 columns)
+  // 3-up: A=65 (image 65%), B=8 (label), C=25 (value 35%)
+  // 2-up: A=80 (larger image), B=6, C=14
+  const COL_A_WIDTH = isTwoUp ? 80 : 65;
+  const COL_B_WIDTH = isTwoUp ? 6 : DIMENSION.LABEL_WIDTH_EXCEL;
+  const COL_C_WIDTH = isTwoUp ? 14 : 25;
+
+  // Row height from shared config
+  const ROW_HEIGHT_PTS = DIMENSION.ROW_HEIGHT_PT;
+  const PIXELS_PER_PT = DIMENSION.PT_TO_PX;
+  const PIXELS_PER_COL_UNIT = DIMENSION.PIXELS_PER_COL_UNIT;
+
+  // Rows per photo block (3-up = 12, 2-up = 18)
   const rowsPerBlock = photosPerPage === 2 ? 18 : ROWS_PER_PHOTO;
-  
-  const BOX_WIDTH_PX = COL_A_WIDTH_CHARS * PIXELS_PER_COL_UNIT; 
+
+  // Calculate actual pixel dimensions for image placement
+  const BOX_WIDTH_PX = COL_A_WIDTH * PIXELS_PER_COL_UNIT;
   const BOX_HEIGHT_PX = rowsPerBlock * ROW_HEIGHT_PTS * PIXELS_PER_PT; 
 
-  // Setup Column Widths
-  if (isTwoUp) {
-    sheet.columns = [
-      { width: 80 }, // Column A (Image) - Wider for 2-up
-      { width: 6 },  // Column B (Label) - Narrower
-      { width: 14 }  // Column C (Value) - Narrower
-    ];
-  } else {
-    sheet.columns = [
-      { width: 65 }, // Column A
-      { width: 8 },  // Column B
-      { width: 25 }  // Column C
-    ];
-  }
+  // Setup Column Widths (using computed values)
+  sheet.columns = [
+    { width: COL_A_WIDTH }, // Column A (Image)
+    { width: COL_B_WIDTH }, // Column B (Label)
+    { width: COL_C_WIDTH }  // Column C (Value)
+  ];
 
   // Set default font
   sheet.eachRow((row: any) => {
