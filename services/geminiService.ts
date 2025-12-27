@@ -24,12 +24,56 @@ export const hasApiKey = (): boolean => {
   return !!key && key.startsWith('AIza');
 };
 
-// Configuration
-// QUALITY FIRST: Using high-performance models for accuracy
-const PRIMARY_MODEL = "gemini-3-pro-preview";
-const COMPLEX_MODEL = "gemini-3-pro-preview";
-const FALLBACK_MODEL = "gemini-2.5-flash";
-const SELECTOR_MODEL = "gemini-2.5-flash"; // Fast model for work type selection
+// Model Selection
+export type ModelType = 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash';
+const MODEL_STORAGE_KEY = 'construction_album_model';
+
+export const AVAILABLE_MODELS: { id: ModelType; name: string; description: string }[] = [
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: '高速・低コスト（推奨）' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: '高精度・高コスト' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: '最速・最低コスト' },
+];
+
+export const getSelectedModel = (): ModelType => {
+  const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+  if (saved && AVAILABLE_MODELS.some(m => m.id === saved)) {
+    return saved as ModelType;
+  }
+  return 'gemini-2.5-flash'; // デフォルト
+};
+
+export const setSelectedModel = (model: ModelType): void => {
+  localStorage.setItem(MODEL_STORAGE_KEY, model);
+};
+
+// API Key Validation
+export const validateApiKey = async (apiKey: string): Promise<{ valid: boolean; error?: string }> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const model = ai.models.get('gemini-2.0-flash'); // 最軽量モデルでテスト
+    const response = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+    });
+    return { valid: true };
+  } catch (e: any) {
+    console.error('API Key validation failed:', e);
+    if (e.message?.includes('API_KEY_INVALID') || e.message?.includes('401')) {
+      return { valid: false, error: 'APIキーが無効です' };
+    }
+    if (e.message?.includes('quota') || e.message?.includes('429')) {
+      return { valid: false, error: 'APIの利用制限に達しました' };
+    }
+    return { valid: false, error: e.message || '接続エラー' };
+  }
+};
+
+// Configuration - Use selected model dynamically
+const getPrimaryModel = () => getSelectedModel();
+const PRIMARY_MODEL = 'gemini-2.5-flash'; // Fallback, actual value comes from getPrimaryModel()
+const COMPLEX_MODEL = 'gemini-2.5-flash';
+const FALLBACK_MODEL = 'gemini-2.0-flash';
+const SELECTOR_MODEL = 'gemini-2.0-flash';
+
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
@@ -635,7 +679,7 @@ export const analyzePhotoBatch = async (
   };
 
   let attempt = 0;
-  let modelToUse = PRIMARY_MODEL;
+  let modelToUse = getPrimaryModel(); // ユーザー選択モデルを使用
 
   while (attempt < MAX_RETRIES) {
     // Check if analysis should be aborted
