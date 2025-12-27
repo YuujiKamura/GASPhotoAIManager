@@ -17,6 +17,7 @@ import PreviewView from './components/PreviewView';
 import LimitModal from './components/LimitModal';
 import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
+import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
 import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
@@ -38,6 +39,8 @@ export default function App() {
   // API Key from localStorage (user input)
   const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [showApiKeySetup, setShowApiKeySetup] = useState(false);
+  const [showModelValidation, setShowModelValidation] = useState(false);
+  const [pendingApiKey, setPendingApiKey] = useState<string | null>(null);
 
   // Initialize API key from localStorage on mount
   useEffect(() => {
@@ -48,10 +51,25 @@ export default function App() {
     // APIキーがなくてもUploadViewを表示（PDF読み込み等は可能）
   }, []);
 
-  const handleApiKeyComplete = (key: string) => {
+  // ApiKeySetup → ModelValidation への遷移
+  const handleApiKeyInput = (key: string) => {
+    setPendingApiKey(key);
+    setShowApiKeySetup(false);
+    setShowModelValidation(true);
+  };
+
+  // ModelValidation 完了時
+  const handleModelValidationComplete = (key: string) => {
     saveApiKey(key);
     setApiKeyState(key);
-    setShowApiKeySetup(false);
+    setPendingApiKey(null);
+    setShowModelValidation(false);
+  };
+
+  // ModelValidation から戻る
+  const handleModelValidationBack = () => {
+    setShowModelValidation(false);
+    setShowApiKeySetup(true);
   };
 
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
@@ -1674,15 +1692,24 @@ export default function App() {
 
   return (
     <>
-      {/* API Key Setup Modal */}
+      {/* API Key Setup - Step 1: キー入力 */}
       {showApiKeySetup && (
         <ApiKeySetup
-          onComplete={handleApiKeyComplete}
+          onComplete={handleApiKeyInput}
           onCancel={() => setShowApiKeySetup(false)}
           onImportPdf={(e) => {
             setShowApiKeySetup(false);
             handleImportPdf(e);
           }}
+        />
+      )}
+
+      {/* Model Validation - Step 2: モデル検証・選択 */}
+      {showModelValidation && pendingApiKey && (
+        <ModelValidation
+          apiKey={pendingApiKey}
+          onComplete={handleModelValidationComplete}
+          onBack={handleModelValidationBack}
         />
       )}
 
