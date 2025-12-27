@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ExternalLink, Key, Camera, Loader2, CheckCircle, XCircle, Cpu, AlertTriangle, Ban } from 'lucide-react';
+import React, { useState } from 'react';
+import { ExternalLink, Key, Camera, Loader2, CheckCircle, XCircle, Cpu, AlertTriangle, Ban, Search } from 'lucide-react';
 import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvailability, getSelectedModel, setSelectedModel, getBestAvailableModel } from '../services/geminiService';
 
 interface ApiKeySetupProps {
@@ -16,15 +16,8 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
   const [modelAvailabilities, setModelAvailabilities] = useState<ModelAvailability[]>([]);
   const [keyError, setKeyError] = useState<string | null>(null);
 
-  // Auto-validate when API key looks complete
-  useEffect(() => {
-    if (apiKey.trim().startsWith('AIza') && apiKey.trim().length >= 39) {
-      validateModels();
-    } else {
-      setModelAvailabilities([]);
-      setKeyError(null);
-    }
-  }, [apiKey]);
+  // NOTE: 自動バリデーションを削除 - 明示的な「検証」ボタンで実行
+  // セキュリティ上、暗黙的なAPI呼び出しを防止
 
   const validateModels = async () => {
     if (!apiKey.trim() || !apiKey.startsWith('AIza')) return;
@@ -195,12 +188,31 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
               value={apiKey}
               onChange={(e) => {
                 setApiKey(e.target.value);
-                setValidationResult(null);
+                setKeyError(null);
+                setModelAvailabilities([]);
               }}
               placeholder="AIza..."
               className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm font-mono"
             />
           </div>
+          {/* 検証ボタン - 明示的にAPIを呼び出す */}
+          <button
+            onClick={validateModels}
+            disabled={!apiKey.trim().startsWith('AIza') || apiKey.trim().length < 39 || isValidating}
+            className="mt-3 w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-2 rounded-lg transition-all text-sm"
+          >
+            {isValidating ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                検証中...
+              </>
+            ) : (
+              <>
+                <Search size={16} />
+                キーを検証（APIを呼び出します）
+              </>
+            )}
+          </button>
           {keyError && (
             <div className="mt-2 flex items-center gap-2 text-red-400 text-xs">
               <XCircle size={14} />
@@ -223,7 +235,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
           </div>
           {modelAvailabilities.length === 0 ? (
             <div className="text-center text-slate-400 text-sm py-4">
-              APIキーを入力するとモデルの利用可否を確認します
+              「キーを検証」ボタンを押してモデルの利用可否を確認
             </div>
           ) : (
             <div className="space-y-2">

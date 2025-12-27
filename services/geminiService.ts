@@ -56,6 +56,47 @@ const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
   return sanitized;
 };
 
+// ============================================
+// API呼び出し承認設定（暗黙的呼び出しの制御）
+// ============================================
+const AUTO_API_SETTINGS_KEY = 'construction_album_auto_api_settings';
+
+export interface AutoApiSettings {
+  autoValidateModels: boolean;     // モデル自動検証（APIキー入力時）
+  autoSelectWorkTypes: boolean;    // 工種自動選択（バッチ解析時）
+  autoNormalization: boolean;      // 自動正規化（解析後）
+  autoSceneAssignment: boolean;    // 自動シーン割当（ペアリング時）
+}
+
+const DEFAULT_AUTO_API_SETTINGS: AutoApiSettings = {
+  autoValidateModels: false,      // デフォルトOFF: 明示的に検証ボタンを押す
+  autoSelectWorkTypes: false,     // デフォルトOFF: セレクターをスキップ
+  autoNormalization: false,       // デフォルトOFF: 正規化をスキップ
+  autoSceneAssignment: false,     // デフォルトOFF: シーン割当をスキップ
+};
+
+export const getAutoApiSettings = (): AutoApiSettings => {
+  try {
+    const saved = localStorage.getItem(AUTO_API_SETTINGS_KEY);
+    if (saved) {
+      return { ...DEFAULT_AUTO_API_SETTINGS, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.warn('Failed to load auto API settings:', e);
+  }
+  return DEFAULT_AUTO_API_SETTINGS;
+};
+
+export const setAutoApiSettings = (settings: Partial<AutoApiSettings>): void => {
+  const current = getAutoApiSettings();
+  const updated = { ...current, ...settings };
+  localStorage.setItem(AUTO_API_SETTINGS_KEY, JSON.stringify(updated));
+};
+
+export const isAutoApiEnabled = (feature: keyof AutoApiSettings): boolean => {
+  return getAutoApiSettings()[feature];
+};
+
 // Model Selection
 export type ModelType = 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash';
 const MODEL_STORAGE_KEY = 'construction_album_model';
@@ -404,12 +445,22 @@ ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
 /**
  * セレクターエージェント: 画像群から工種を判定
  * 軽量モデルで高速に工種を特定し、本解析で使う階層サブセットを決定
+ *
+ * NOTE: autoSelectWorkTypes が false の場合、API呼び出しをスキップして全工種を返す
  */
 export const selectWorkTypes = async (
   records: PhotoRecord[],
   apiKey: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
 ): Promise<string[]> => {
+  const availableWorkTypes = getWorkTypes();
+
+  // 自動工種選択が無効の場合、API呼び出しをスキップ
+  if (!isAutoApiEnabled('autoSelectWorkTypes')) {
+    onLog?.('[SELECTOR] 自動工種選択がOFF - API呼び出しをスキップ（全工種を使用）', 'info');
+    return availableWorkTypes;
+  }
+
   const startTime = performance.now();
   const genAI = new GoogleGenAI({ apiKey });
 
@@ -433,7 +484,6 @@ export const selectWorkTypes = async (
   }));
 
   const selectorPrompt = getSelectorPrompt();
-  const availableWorkTypes = getWorkTypes();
 
   const prompt = `
 あなたは建設現場の写真を分類する専門家です。
@@ -572,6 +622,7 @@ export interface NormalizationResult {
 }
 
 // 修正提案を取得（適用はしない）
+// NOTE: autoNormalization が false の場合、API呼び出しをスキップ
 export const getNormalizationProposals = async (
   records: PhotoRecord[],
   apiKey: string,
@@ -579,6 +630,12 @@ export const getNormalizationProposals = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
 ): Promise<NormalizationResult> => {
+  // 自動正規化が無効の場合、API呼び出しをスキップ（customPromptがある場合は明示的な呼び出しなので実行）
+  if (!isAutoApiEnabled('autoNormalization') && !customPrompt) {
+    onLog?.('[NORMALIZATION] 自動正規化がOFF - API呼び出しをスキップ', 'info');
+    return { corrections: [], originalData: [] };
+  }
+
   checkAbort(shouldAbort, 'getNormalizationProposals開始前');
 
   const completedRecords = records.filter(r => r.status === 'done' && r.analysis);
@@ -761,6 +818,8 @@ export const normalizeDataConsistency = async (
 /**
  * NEW: Visual Anchoring & Clustering
  * Optimized to use cache for visual feature extraction.
+ *
+ * NOTE: autoSceneAssignment が false の場合、API呼び出しをスキップ
  */
 export const assignSceneIds = async (
   records: PhotoRecord[],
@@ -768,6 +827,13 @@ export const assignSceneIds = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
 ): Promise<{ fileName: string, sceneId: string, phase: 'before' | 'after' | 'status', visualAnchors: string }[]> => {
+  // 自動シーン割当が無効の場合、API呼び出しをスキップ
+  if (!isAutoApiEnabled('autoSceneAssignment')) {
+    onLog?.('[SCENE] 自動シーン割当がOFF - API呼び出しをスキップ', 'info');
+    // 空の配列を返す（ペアリングは測点ベースで行われる）
+    return [];
+  }
+
   checkAbort(shouldAbort, 'assignSceneIds開始前');
 
   const genAI = new GoogleGenAI({ apiKey });
