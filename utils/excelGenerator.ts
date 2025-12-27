@@ -163,20 +163,12 @@ export const generateExcel = async (
     // Helper function for creating fields
     const createField = (r: number, label: string, value: string, rowSpan: number) => {
       // Scale rowSpan if using 2-up layout to fill vertical space
-      // 3-up total row span = 12. 
-      // 2-up total row span = 18. Scale factor = 1.5.
+      // 2-up mode now only shows remarks + station (matching Web View)
+      // Total 18 rows available: Station = 2 rows, Remarks = 16 rows
       let finalRowSpan = rowSpan;
       if (photosPerPage === 2) {
-         // Distribute extra rows to Remarks (often longer) and Description
-         // Base Layout: Date(1), Type(1), Variety(1), Detail(1), Station(1), Remarks(2), Desc(5) = 12
-         // 2-up Layout target: 18.
-         // Mapping:
-         // Date(1), Type(1), Variety(1), Detail(1), Station(1) -> Keep 1 (Total 5)
-         // Remarks(2) -> 4
-         // Description(5) -> 9
-         // Total: 5 + 4 + 9 = 18.
-         if (label === txt.labelRemarks) finalRowSpan = 4;
-         if (label === txt.labelDescription) finalRowSpan = 9;
+         if (label === txt.labelStation) finalRowSpan = 2;
+         if (label === txt.labelRemarks) finalRowSpan = 16;
       }
 
       // Label Cell (Col 2 / B)
@@ -213,14 +205,27 @@ export const generateExcel = async (
     };
 
     // Iterate through Shared Layout Configuration
+    // Filter fields based on layout mode (matching Web View behavior)
+    const visibleFields = LAYOUT_FIELDS.filter((field) => {
+      // 2-up mode: only remarks and station (like PhotoAlbumView.tsx L.188-193)
+      if (isTwoUp) {
+        return field.key === 'remarks' || field.key === 'station';
+      }
+      // 3-up mode: filter measurements by data presence
+      if (field.key === 'measurements') {
+        return !!record.analysis?.measurements;
+      }
+      return true;
+    });
+
     let currentFieldRow = startRow;
-    
-    LAYOUT_FIELDS.forEach((field) => {
+
+    visibleFields.forEach((field) => {
       // Resolve Value
       let val = "";
       if (field.key === 'date') {
-         val = record.date 
-           ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
+         val = record.date
+           ? new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
            : "";
       } else {
          val = record.analysis ? (record.analysis[field.key as keyof AIAnalysisResult] as string || "") : "";
