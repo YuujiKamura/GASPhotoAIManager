@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -40,6 +40,7 @@ interface PreviewViewProps {
   onClearFileSystemCache?: () => void;
   onReanalyzePhoto?: (fileName: string) => void;
   onAbort?: () => void;
+  onOpenMasterEditor?: () => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -69,7 +70,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onSelectCacheFolder,
   onClearFileSystemCache,
   onReanalyzePhoto,
-  onAbort
+  onAbort,
+  onOpenMasterEditor
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -234,6 +236,17 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             <button onClick={onGoHome} className="p-2 bg-slate-700 hover:bg-blue-600 rounded text-slate-300 hover:text-white transition-colors" title={txt.backHome}>
               <Home className="w-4 h-4" />
             </button>
+
+            {/* Master Editor Button */}
+            {onOpenMasterEditor && (
+              <button
+                onClick={onOpenMasterEditor}
+                className="p-2 bg-slate-700 hover:bg-amber-500 rounded text-slate-300 hover:text-white transition-colors ml-1"
+                title={lang === 'ja' ? 'マスタ管理' : 'Master Data'}
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Layout Switcher - show when photos have boards */}
             {hasPhotosWithBoard && (

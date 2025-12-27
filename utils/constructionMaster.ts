@@ -437,8 +437,40 @@ export const CONSTRUCTION_HIERARCHY = {
 };
 
 // Helper functions for Gemini Service
+// カスタムマスタをlocalStorageから取得
+const CUSTOM_MASTER_KEY = 'construction_custom_master';
+
+const loadCustomMaster = (): Record<string, any> => {
+  try {
+    const saved = localStorage.getItem(CUSTOM_MASTER_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+// 深いマージ
+const deepMerge = (target: any, source: any): any => {
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      if (!target[key]) target[key] = {};
+      deepMerge(target[key], source[key]);
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
+};
+
+// デフォルト + カスタムをマージしたマスタを取得
+export const getMergedHierarchy = (): any => {
+  const custom = loadCustomMaster();
+  return deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), custom);
+};
+
 export const getWorkTypes = (): string[] => {
-  const construction = CONSTRUCTION_HIERARCHY["直接工事費"] as any;
+  const merged = getMergedHierarchy();
+  const construction = merged["直接工事費"] as any;
   const types = new Set<string>();
   Object.values(construction).forEach((cat: any) => {
     Object.keys(cat).forEach(key => types.add(key));
@@ -447,7 +479,7 @@ export const getWorkTypes = (): string[] => {
 };
 
 export const formatHierarchyForPrompt = () => {
-  return CONSTRUCTION_HIERARCHY;
+  return getMergedHierarchy();
 };
 
 export const getSelectorPrompt = () => {
@@ -456,9 +488,10 @@ export const getSelectorPrompt = () => {
 };
 
 export const getHierarchySubset = (selectedTypes: string[]) => {
-  const root = CONSTRUCTION_HIERARCHY["直接工事費"] as any;
+  const merged = getMergedHierarchy();
+  const root = merged["直接工事費"] as any;
   const subset: any = { "直接工事費": {} };
-  
+
   for (const catKey in root) {
     const cat = root[catKey];
     const newCat: any = {};
@@ -491,7 +524,7 @@ export const PHOTO_CATEGORIES = [
 
 export type PhotoCategoryType = typeof PHOTO_CATEGORIES[number];
 
-// マスタから全ての有効な工種・種別・細別を抽出
+// マスタから全ての有効な工種・種別・細別を抽出（カスタム含む）
 export function extractAllValidValues(): {
   workTypes: Set<string>;
   varieties: Set<string>;
@@ -503,7 +536,8 @@ export function extractAllValidValues(): {
   const details = new Set<string>();
   const remarks = new Set<string>();
 
-  const root = CONSTRUCTION_HIERARCHY["直接工事費"] as any;
+  const merged = getMergedHierarchy();
+  const root = merged["直接工事費"] as any;
 
   // 階層をトラバース
   for (const catKey in root) {

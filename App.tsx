@@ -16,6 +16,7 @@ import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
 import UsagePanel from './components/UsagePanel';
 import ManualPairingModal from './components/ManualPairingModal';
+import MasterEditorModal from './components/MasterEditorModal';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -68,6 +69,7 @@ export default function App() {
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [showManualPairing, setShowManualPairing] = useState(false);
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
+  const [showMasterEditor, setShowMasterEditor] = useState(false);
   // Store initial instruction if files are pending selection
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
@@ -1342,6 +1344,7 @@ export default function App() {
         onClearFileSystemCache={handleClearFileSystemCache}
         onReanalyzePhoto={handleSingleReanalysis}
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
+        onOpenMasterEditor={() => setShowMasterEditor(true)}
       />
 
       {/* Usage Panel */}
@@ -1379,6 +1382,13 @@ export default function App() {
           lang={lang}
           onComplete={handleManualPairingComplete}
           onCancel={() => setShowManualPairing(false)}
+        />
+      )}
+
+      {showMasterEditor && (
+        <MasterEditorModal
+          lang={lang}
+          onClose={() => setShowMasterEditor(false)}
         />
       )}
     </>
