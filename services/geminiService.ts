@@ -535,24 +535,25 @@ export const normalizeDataConsistency = async (
     You are a data consistency expert for construction photos.
     Review the following list of records.
 
-    **CRITICAL RULE - NO INVENTION:**
-    - DO NOT create new classification terms that don't exist in the input
-    - DO NOT add "〜工" suffix to remarks (e.g., "温度管理工" is WRONG)
-    - Remarks should be descriptive (e.g., "アスファルト混合物温度測定", "現場密度測定")
-    - If unsure, leave the field unchanged
+    **CRITICAL RULES:**
+    1. DO NOT create new terms - only use what exists in the input
+    2. DO NOT add "〜工" suffix to remarks
+    3. DO NOT change remarks that contain measurement values (numbers, ℃, mm, cm, m, %)
+    4. PRESERVE specific data from each photo - do not unify remarks across photos
+    5. If unsure, leave the field UNCHANGED
 
     TASKS:
-    1. **Normalize Station Names (測点)**:
+    1. **Normalize Station Names (測点) ONLY**:
        - Fix OCR errors (e.g., "No.0+00" vs "No.0.00" -> unify to "No.X+XX").
 
-    2. **Fix Hierarchy Errors**:
-       - Ensure "Detail" (細別) is NOT a status verb (e.g. "完了", "状況", "確認", "掘削", "転圧").
-       - If "Detail" looks like a status, move it to "Remarks" and clear "Detail".
-       - Example: Detail="掘削状況" -> Change Detail="", Remarks="掘削状況".
+    2. **Fix Hierarchy Errors (RARE)**:
+       - Only if "Detail" is clearly wrong (e.g., "完了", "状況" as detail).
+       - Move status words to "Remarks", clear "Detail".
 
-    3. **Normalize Remarks**:
-       - Ensure consistent terminology using ONLY terms already present in the data.
-       - DO NOT invent new terms like "温度管理工" or "密度測定工".
+    3. **DO NOT touch Remarks unless clearly wrong**:
+       - Keep measurement values intact (e.g., "出荷時156℃", "t=50mm")
+       - Keep specific descriptions from board photos
+       - DO NOT simplify "アスファルト混合物温度測定 出荷時156℃" to just "温度測定"
 
     INPUT DATA:
     ${JSON.stringify(dataSnapshot, null, 2)}
