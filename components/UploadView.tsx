@@ -5,7 +5,7 @@ import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, Alert
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
-import { getDefaultRuleSettings, RuleSettings } from '../utils/analysisRules';
+import { loadRuleSettings, saveRuleSettings, RuleSettings } from '../utils/analysisRules';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -53,7 +53,13 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
-  const [ruleSettings, setRuleSettings] = useState<RuleSettings>(getDefaultRuleSettings());
+  const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
+
+  // ルール設定が変更されたらlocalStorageに保存
+  const handleRuleSettingsChange = (newSettings: RuleSettings) => {
+    setRuleSettings(newSettings);
+    saveRuleSettings(newSettings);
+  };
 
   // コスト見積もり
   const costEstimate = useMemo(() => {
@@ -359,7 +365,7 @@ const UploadView: React.FC<UploadViewProps> = ({
                   {/* Analysis Rules Panel */}
                   <AnalysisRulesPanel
                     settings={ruleSettings}
-                    onChange={setRuleSettings}
+                    onChange={handleRuleSettingsChange}
                     collapsed={true}
                   />
                 </div>

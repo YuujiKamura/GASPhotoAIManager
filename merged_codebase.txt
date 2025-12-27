@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 19:26:47
+生成日時: 2025-12-27 19:31:23
 ================================================================================
 
 === ファイル一覧 ===
@@ -6243,7 +6243,7 @@ import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Database, Alert
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
-import { getDefaultRuleSettings, RuleSettings } from '../utils/analysisRules';
+import { loadRuleSettings, saveRuleSettings, RuleSettings } from '../utils/analysisRules';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -6291,7 +6291,13 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
-  const [ruleSettings, setRuleSettings] = useState<RuleSettings>(getDefaultRuleSettings());
+  const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
+
+  // ルール設定が変更されたらlocalStorageに保存
+  const handleRuleSettingsChange = (newSettings: RuleSettings) => {
+    setRuleSettings(newSettings);
+    saveRuleSettings(newSettings);
+  };
 
   // コスト見積もり
   const costEstimate = useMemo(() => {
@@ -6597,7 +6603,7 @@ const UploadView: React.FC<UploadViewProps> = ({
                   {/* Analysis Rules Panel */}
                   <AnalysisRulesPanel
                     settings={ruleSettings}
-                    onChange={setRuleSettings}
+                    onChange={handleRuleSettingsChange}
                     collapsed={true}
                   />
                 </div>
@@ -8002,6 +8008,7 @@ import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
 import { getRelevantExamples, getActiveSession } from "../utils/storage";
+import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../utils/analysisRules";
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -8202,7 +8209,7 @@ ${exampleTexts.join('\n\n')}
 `;
 };
 
-export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
+export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object, ruleSettings?: RuleSettings) => {
   if (appMode === 'general') {
     return `
 You are a professional photo archivist. Analyze the image and provide structured metadata.
@@ -8373,6 +8380,10 @@ JSON only.
 keys: workType, variety, detail, station, remarksCategory, remarksValue, description, hasBoard, detectedText.
 Note: remarksCategory is from the enum, remarksValue contains the measurement/value.
 
+${(() => {
+  const rules = ruleSettings || loadRuleSettings();
+  return `\n--- ACTIVE ANALYSIS RULES ---\n${rulesToPromptText(rules)}`;
+})()}
 ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
   `.trim();
 };
@@ -8900,7 +8911,8 @@ export const analyzePhotoBatch = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   onIndividualResult?: (fileName: string, result: AIAnalysisResult) => void,
   shouldAbort?: AbortChecker,
-  onReasoningStream?: (text: string) => void
+  onReasoningStream?: (text: string) => void,
+  ruleSettings?: RuleSettings
 ): Promise<AIAnalysisResult[]> => {
   const batchStartTime = performance.now();
   const genAI = new GoogleGenAI({ apiKey });
@@ -8951,7 +8963,7 @@ export const analyzePhotoBatch = async (
     }
   }
 
-  const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy);
+  const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy, ruleSettings);
   const fullSystemPrompt = examplesPrompt ? `${systemPrompt}\n\n${examplesPrompt}` : systemPrompt;
 
   // Context relay: Build context hint from previously analyzed photos in this batch
@@ -11007,6 +11019,31 @@ export const getDefaultRuleSettings = (): RuleSettings => {
     settings[rule.id] = rule.defaultEnabled;
   });
   return settings;
+};
+
+// ============================================
+// localStorage永続化
+// ============================================
+const STORAGE_KEY = 'analysisRuleSettings';
+
+export const saveRuleSettings = (settings: RuleSettings): void => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.warn('Failed to save rule settings:', e);
+  }
+};
+
+export const loadRuleSettings = (): RuleSettings => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return { ...getDefaultRuleSettings(), ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.warn('Failed to load rule settings:', e);
+  }
+  return getDefaultRuleSettings();
 };
 
 // カテゴリ別にルールをグループ化

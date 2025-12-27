@@ -20,7 +20,9 @@
       "Bash(ls:*)",
       "WebSearch",
       "Bash(GEMINI_API_KEY=\"AIzaSyAAQxrGQ0zX5aX55IuF_iWZWnhUeeW40f0\" npx tsx:*)",
-      "Bash(export GEMINI_API_KEY:*)"
+      "Bash(export GEMINI_API_KEY:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:www.youtube.com)"
     ]
   }
 }

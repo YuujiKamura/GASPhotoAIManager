@@ -4,6 +4,7 @@ import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
 import { getRelevantExamples, getActiveSession } from "../utils/storage";
+import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../utils/analysisRules";
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -204,7 +205,7 @@ ${exampleTexts.join('\n\n')}
 `;
 };
 
-export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object) => {
+export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object, ruleSettings?: RuleSettings) => {
   if (appMode === 'general') {
     return `
 You are a professional photo archivist. Analyze the image and provide structured metadata.
@@ -375,6 +376,10 @@ JSON only.
 keys: workType, variety, detail, station, remarksCategory, remarksValue, description, hasBoard, detectedText.
 Note: remarksCategory is from the enum, remarksValue contains the measurement/value.
 
+${(() => {
+  const rules = ruleSettings || loadRuleSettings();
+  return `\n--- ACTIVE ANALYSIS RULES ---\n${rulesToPromptText(rules)}`;
+})()}
 ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
   `.trim();
 };
@@ -902,7 +907,8 @@ export const analyzePhotoBatch = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   onIndividualResult?: (fileName: string, result: AIAnalysisResult) => void,
   shouldAbort?: AbortChecker,
-  onReasoningStream?: (text: string) => void
+  onReasoningStream?: (text: string) => void,
+  ruleSettings?: RuleSettings
 ): Promise<AIAnalysisResult[]> => {
   const batchStartTime = performance.now();
   const genAI = new GoogleGenAI({ apiKey });
@@ -953,7 +959,7 @@ export const analyzePhotoBatch = async (
     }
   }
 
-  const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy);
+  const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy, ruleSettings);
   const fullSystemPrompt = examplesPrompt ? `${systemPrompt}\n\n${examplesPrompt}` : systemPrompt;
 
   // Context relay: Build context hint from previously analyzed photos in this batch

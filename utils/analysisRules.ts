@@ -208,6 +208,31 @@ export const getDefaultRuleSettings = (): RuleSettings => {
   return settings;
 };
 
+// ============================================
+// localStorage永続化
+// ============================================
+const STORAGE_KEY = 'analysisRuleSettings';
+
+export const saveRuleSettings = (settings: RuleSettings): void => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.warn('Failed to save rule settings:', e);
+  }
+};
+
+export const loadRuleSettings = (): RuleSettings => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return { ...getDefaultRuleSettings(), ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.warn('Failed to load rule settings:', e);
+  }
+  return getDefaultRuleSettings();
+};
+
 // カテゴリ別にルールをグループ化
 export const getRulesByCategory = (category: RuleCategory): AnalysisRule[] => {
   return ANALYSIS_RULES.filter(rule => rule.category === category);
