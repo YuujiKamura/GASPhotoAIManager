@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronRight, ChevronDown, Plus, Trash2, Save, RotateCcw, Search, AlertTriangle, Download, Upload, Copy, FolderTree, Layers, FileJson, Check, Edit2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ChevronDown, Plus, Trash2, Save, RotateCcw, Search, AlertTriangle, Download, Upload, Copy, FolderTree, Layers, FileJson, Check, Edit2, X } from 'lucide-react';
 import { CONSTRUCTION_HIERARCHY } from '../utils/constructionMaster';
 
 interface Props {
@@ -651,24 +651,41 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-t-xl">
-          <div className="flex items-center gap-3">
-            <FolderTree className="w-6 h-6" />
-            <h3 className="text-xl font-bold">{txt.title}</h3>
-            {hasChanges && (
-              <span className="flex items-center gap-1 text-amber-400 text-sm bg-amber-900/30 px-2 py-0.5 rounded">
-                <AlertTriangle className="w-4 h-4" />
-                {txt.unsavedWarning}
-              </span>
-            )}
-          </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white">
-            <X className="w-6 h-6" />
+    <div className="min-h-screen w-full bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-700 to-slate-800 text-white sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+            title="戻る"
+          >
+            <ArrowLeft className="w-5 h-5" />
           </button>
+          <FolderTree className="w-5 h-5" />
+          <h3 className="text-lg font-bold">{txt.title}</h3>
+          {hasChanges && (
+            <span className="flex items-center gap-1 text-amber-400 text-xs bg-amber-900/30 px-2 py-0.5 rounded">
+              <AlertTriangle className="w-3 h-3" />
+              {txt.unsavedWarning}
+            </span>
+          )}
         </div>
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            hasChanges
+              ? 'bg-blue-500 hover:bg-blue-600 text-white'
+              : 'bg-white/20 text-white/50 cursor-not-allowed'
+          }`}
+        >
+          <Save className="w-4 h-4" />
+          {txt.save}
+        </button>
+      </div>
+
+      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
 
         {/* Tabs */}
         <div className="flex border-b bg-gray-50">
@@ -737,70 +754,48 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-          {/* Left side actions */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm"
-              title={txt.exportBtn}
-            >
-              <Download className="w-4 h-4" />
-              {txt.exportBtn}
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm"
-              title={txt.importBtn}
-            >
-              <Upload className="w-4 h-4" />
-              {txt.importBtn}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImport}
-              className="hidden"
-            />
-            <button
-              onClick={handleCopyToClipboard}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                copied ? 'bg-green-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-              }`}
-              title="Copy to clipboard"
-            >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
+        <div className="flex flex-wrap gap-2 px-4 py-3 border-t bg-white">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm"
+            title={txt.exportBtn}
+          >
+            <Download className="w-4 h-4" />
+            {txt.exportBtn}
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm"
+            title={txt.importBtn}
+          >
+            <Upload className="w-4 h-4" />
+            {txt.importBtn}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImport}
+            className="hidden"
+          />
+          <button
+            onClick={handleCopyToClipboard}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+              copied ? 'bg-green-500 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+            title="Copy"
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+          </button>
 
           <div className="flex-1" />
 
-          {/* Right side actions */}
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm"
+            className="flex items-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm"
           >
             <RotateCcw className="w-4 h-4" />
             {txt.reset}
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg"
-          >
-            {txt.close}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-              hasChanges
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            <Save className="w-4 h-4" />
-            {txt.save}
           </button>
         </div>
       </div>

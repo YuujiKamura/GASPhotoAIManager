@@ -1713,7 +1713,12 @@ export default function App() {
         />
       )}
 
-      {!showPreview ? (
+      {showMasterEditor ? (
+        <MasterEditorModal
+          lang={lang}
+          onClose={() => setShowMasterEditor(false)}
+        />
+      ) : !showPreview ? (
         <UploadView
           lang={lang}
           isProcessing={isProcessing}
@@ -1807,13 +1812,6 @@ export default function App() {
           lang={lang}
           onComplete={handleManualPairingComplete}
           onCancel={() => setShowManualPairing(false)}
-        />
-      )}
-
-      {showMasterEditor && (
-        <MasterEditorModal
-          lang={lang}
-          onClose={() => setShowMasterEditor(false)}
         />
       )}
 
