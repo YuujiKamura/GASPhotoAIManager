@@ -457,10 +457,10 @@ const UploadView: React.FC<UploadViewProps> = ({
         {onOpenMasterEditor && (
           <button
             onClick={(e) => { e.stopPropagation(); onOpenMasterEditor(); }}
-            className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all text-xs"
           >
             <FolderTree className="w-3 h-3" />
-            <span>階層マスタ管理</span>
+            <span>マスタ</span>
           </button>
         )}
 

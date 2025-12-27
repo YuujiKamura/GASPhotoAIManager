@@ -171,7 +171,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     search: lang === 'ja' ? '検索...' : 'Search...',
     addEntry: lang === 'ja' ? '追加' : 'Add',
     save: lang === 'ja' ? '保存' : 'Save',
-    reset: lang === 'ja' ? 'カスタム全削除' : 'Clear Custom',
+    reset: lang === 'ja' ? 'リセット' : 'Reset',
     close: lang === 'ja' ? '閉じる' : 'Close',
     customLabel: lang === 'ja' ? 'カスタム' : 'Custom',
     defaultLabel: lang === 'ja' ? 'デフォルト' : 'Default',
@@ -179,11 +179,11 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     placeholder: lang === 'ja' ? '新しいエントリー名' : 'New entry name',
     noResults: lang === 'ja' ? '該当なし' : 'No results',
     unsavedWarning: lang === 'ja' ? '未保存' : 'Unsaved',
-    tabTree: lang === 'ja' ? '階層ツリー' : 'Tree View',
-    tabCustom: lang === 'ja' ? 'カスタム一覧' : 'Custom List',
-    tabTemplates: lang === 'ja' ? 'テンプレート' : 'Templates',
-    exportBtn: lang === 'ja' ? 'エクスポート' : 'Export',
-    importBtn: lang === 'ja' ? 'インポート' : 'Import',
+    tabTree: lang === 'ja' ? '階層' : 'Tree',
+    tabCustom: lang === 'ja' ? 'カスタム' : 'Custom',
+    tabTemplates: lang === 'ja' ? '雛形' : 'Templates',
+    exportBtn: lang === 'ja' ? '出力' : 'Export',
+    importBtn: lang === 'ja' ? '読込' : 'Import',
     noCustom: lang === 'ja' ? 'カスタムエントリーはありません' : 'No custom entries',
     customCount: lang === 'ja' ? 'カスタムエントリー数' : 'Custom entries',
     applyTemplate: lang === 'ja' ? '適用' : 'Apply',
@@ -264,6 +264,54 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     setCustomMaster(newCustom);
     setMergedMaster(deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), newCustom));
     setHasChanges(true);
+  };
+
+  // エントリ名の編集開始
+  const handleStartEdit = (pathStr: string, currentName: string) => {
+    setEditingEntry(pathStr);
+    setEditingName(currentName);
+  };
+
+  // エントリ名の編集確定
+  const handleConfirmEdit = (path: string[]) => {
+    if (!editingName.trim() || editingName === path[path.length - 1]) {
+      setEditingEntry(null);
+      setEditingName('');
+      return;
+    }
+
+    const newCustom = JSON.parse(JSON.stringify(customMaster));
+    const relativePath = path.slice(1);
+
+    if (relativePath.length === 0) {
+      setEditingEntry(null);
+      return;
+    }
+
+    // 親オブジェクトを取得
+    let current = newCustom;
+    for (let i = 0; i < relativePath.length - 1; i++) {
+      if (!current[relativePath[i]]) {
+        setEditingEntry(null);
+        return;
+      }
+      current = current[relativePath[i]];
+    }
+
+    const oldKey = relativePath[relativePath.length - 1];
+    const newKey = editingName.trim();
+
+    // 名前変更（古いキーの値を新しいキーにコピーして古いキーを削除）
+    if (current[oldKey] !== undefined) {
+      current[newKey] = current[oldKey];
+      delete current[oldKey];
+    }
+
+    setCustomMaster(newCustom);
+    setMergedMaster(deepMerge(JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY)), newCustom));
+    setHasChanges(true);
+    setEditingEntry(null);
+    setEditingName('');
   };
 
   // 空のオブジェクトを再帰的に削除
@@ -399,40 +447,80 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
               )}
             </button>
 
-            {/* ノード名 */}
-            <span
-              className={`flex-1 text-sm font-medium ${node.key === '' ? 'text-gray-400 italic' : 'text-gray-700'}`}
-              onClick={() => hasChildren && toggleExpand(pathStr)}
-            >
-              {node.key || '(空白)'}
-            </span>
+            {/* ノード名（編集モード対応） */}
+            {editingEntry === pathStr ? (
+              <div className="flex-1 flex items-center gap-1">
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleConfirmEdit(node.path);
+                    if (e.key === 'Escape') { setEditingEntry(null); setEditingName(''); }
+                  }}
+                  className="flex-1 px-2 py-0.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleConfirmEdit(node.path); }}
+                  className="p-0.5 text-green-600 hover:bg-green-100 rounded"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setEditingEntry(null); setEditingName(''); }}
+                  className="p-0.5 text-gray-500 hover:bg-gray-200 rounded"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <span
+                className={`flex-1 text-sm font-medium ${node.key === '' ? 'text-gray-400 italic' : 'text-gray-700'}`}
+                onClick={() => hasChildren && toggleExpand(pathStr)}
+              >
+                {node.key || '(空白)'}
+              </span>
+            )}
 
             {/* ラベル */}
-            {node.isCustom && !node.isDefault && (
+            {node.isCustom && !node.isDefault && editingEntry !== pathStr && (
               <span className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded font-medium">
                 {txt.customLabel}
               </span>
             )}
 
             {/* アクションボタン */}
-            <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-              <button
-                onClick={() => handleAddEntry(node.path)}
-                className="p-1 text-blue-500 hover:bg-blue-100 rounded"
-                title={txt.addEntry}
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-              {node.isCustom && !node.isDefault && (
+            {editingEntry !== pathStr && (
+              <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
                 <button
-                  onClick={() => handleDeleteCustomEntry(node.path)}
-                  className="p-1 text-red-500 hover:bg-red-100 rounded"
-                  title="Delete"
+                  onClick={() => handleAddEntry(node.path)}
+                  className="p-1 text-blue-500 hover:bg-blue-100 rounded"
+                  title={txt.addEntry}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5" />
                 </button>
-              )}
-            </div>
+                {node.isCustom && !node.isDefault && (
+                  <>
+                    <button
+                      onClick={() => handleStartEdit(pathStr, node.key)}
+                      className="p-1 text-amber-500 hover:bg-amber-100 rounded"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCustomEntry(node.path)}
+                      className="p-1 text-red-500 hover:bg-red-100 rounded"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 新規エントリー入力 */}
