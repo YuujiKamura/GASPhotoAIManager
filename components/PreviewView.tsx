@@ -634,6 +634,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         isOpen={showExamplesModal}
         onClose={() => setShowExamplesModal(false)}
         lang={lang}
+        currentPhotos={photos}
       />
     </div>
   );

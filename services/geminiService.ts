@@ -3,7 +3,7 @@ import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample } fro
 import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
-import { getRelevantExamples } from "../utils/storage";
+import { getRelevantExamples, getActiveSession } from "../utils/storage";
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -824,10 +824,16 @@ export const analyzePhotoBatch = async (
   let examplesPrompt = "";
   if (appMode === 'construction') {
     try {
-      const examples = await getRelevantExamples(undefined, undefined, 3);
+      // アクティブなセッションを確認してログに表示
+      const activeSession = await getActiveSession();
+      if (activeSession) {
+        onLog?.(`[EXAMPLES] お手本セッション適用中: "${activeSession.name}" (${activeSession.photoCount}枚)`, "info");
+      }
+
+      const examples = await getRelevantExamples(undefined, undefined, 5); // セッションから最大5件
       if (examples.length > 0) {
         examplesPrompt = formatExamplesForPrompt(examples);
-        onLog?.(`[EXAMPLES] Using ${examples.length} few-shot examples`, "info");
+        onLog?.(`[EXAMPLES] ${examples.length}件のお手本をプロンプトに適用`, "success");
       }
     } catch (e) {
       // Examples are optional, continue without them

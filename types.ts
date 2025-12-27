@@ -92,3 +92,14 @@ export interface AnalysisExample {
   createdAt: number;               // 作成日時
   updatedAt: number;               // 更新日時
 }
+
+// お手本セッション（複数写真の解析結果セット）
+export interface AnalysisSession {
+  id: string;                      // ユニークID
+  name: string;                    // セッション名（例: "A工区 舗装工事"）
+  description?: string;            // 説明
+  examples: AnalysisExample[];     // このセッションに含まれるお手本
+  photoCount: number;              // 写真数
+  createdAt: number;               // 作成日時
+  updatedAt: number;               // 更新日時
+}
