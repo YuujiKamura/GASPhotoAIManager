@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Key, Camera, Loader2, CheckCircle, XCircle, Cpu, AlertTriangle, Ban } from 'lucide-react';
-import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvailability, getSelectedModel, setSelectedModel, getBestAvailableModel } from '../services/geminiService';
+import { ExternalLink, Key, Camera, Loader2, CheckCircle, XCircle, Cpu, AlertTriangle, Ban, Search, Shield, Fingerprint, Smartphone } from 'lucide-react';
+import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvailability, getSelectedModel, setSelectedModel, getBestAvailableModel, setTrustedSession } from '../services/geminiService';
+import { isBiometricAvailable, hasRegisteredPasskey, registerPasskey, authenticateWithPasskey, removePasskey } from '../services/webAuthnService';
 
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
@@ -15,16 +16,55 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
   const [isValidating, setIsValidating] = useState(false);
   const [modelAvailabilities, setModelAvailabilities] = useState<ModelAvailability[]>([]);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [trustSession, setTrustSession] = useState(true); // デフォルトON（推奨）
 
-  // Auto-validate when API key looks complete
+  // 生体認証関連
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [hasPasskey, setHasPasskey] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [registerBiometric, setRegisterBiometric] = useState(true); // 生体認証を登録するかどうか
+  const [biometricError, setBiometricError] = useState<string | null>(null);
+
+  // 生体認証の可否をチェック
   useEffect(() => {
-    if (apiKey.trim().startsWith('AIza') && apiKey.trim().length >= 39) {
-      validateModels();
+    const checkBiometric = async () => {
+      const available = await isBiometricAvailable();
+      setBiometricSupported(available);
+      if (available) {
+        setHasPasskey(hasRegisteredPasskey());
+      }
+    };
+    checkBiometric();
+  }, []);
+
+  // 生体認証でログイン
+  const handleBiometricLogin = async () => {
+    setIsAuthenticating(true);
+    setBiometricError(null);
+
+    const result = await authenticateWithPasskey();
+
+    if (result.success && result.apiKey) {
+      // 認証成功 - APIキーを取得してセッションを開始
+      setTrustedSession(true); // 生体認証成功=信頼セッション
+      onComplete(result.apiKey);
     } else {
-      setModelAvailabilities([]);
-      setKeyError(null);
+      setBiometricError(result.error || '認証に失敗しました');
     }
-  }, [apiKey]);
+
+    setIsAuthenticating(false);
+  };
+
+  // パスキーを削除
+  const handleRemovePasskey = () => {
+    if (confirm('登録済みの生体認証を削除しますか？')) {
+      removePasskey();
+      setHasPasskey(false);
+    }
+  };
+
+  // NOTE: 自動バリデーションを削除 - 明示的な「検証」ボタンで実行
+  // セキュリティ上、暗黙的なAPI呼び出しを防止
 
   const validateModels = async () => {
     if (!apiKey.trim() || !apiKey.startsWith('AIza')) return;
@@ -55,20 +95,36 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const selectedAvailability = modelAvailabilities.find(m => m.id === selectedModel);
+    const finalApiKey = apiKey.trim();
+
     if (!selectedAvailability || selectedAvailability.status !== 'available') {
       // Try to find any available model
       const bestModel = getBestAvailableModel(modelAvailabilities);
       if (bestModel) {
         setSelectedModel(bestModel);
-        onComplete(apiKey.trim());
+      } else {
+        return;
       }
-      return;
+    } else {
+      setSelectedModel(selectedModel);
     }
 
-    setSelectedModel(selectedModel);
-    onComplete(apiKey.trim());
+    // 生体認証を登録する場合
+    if (biometricSupported && registerBiometric && !hasPasskey) {
+      const result = await registerPasskey(finalApiKey);
+      if (result.success) {
+        setHasPasskey(true);
+      } else {
+        // 登録に失敗しても続行（オプション機能なので）
+        console.warn('Passkey registration failed:', result.error);
+      }
+    }
+
+    // 信頼セッションを設定
+    setTrustedSession(trustSession);
+    onComplete(finalApiKey);
   };
 
   const handleModelChange = (model: ModelType) => {
@@ -124,6 +180,52 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
             AIで工事写真を自動分類・整理します。
           </p>
         </div>
+
+        {/* 生体認証でログイン（パスキー登録済みの場合） */}
+        {biometricSupported && hasPasskey && (
+          <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-2xl p-4">
+            <p className="text-sm text-purple-200 mb-3 text-center">
+              登録済みの指紋/顔認証でログイン
+            </p>
+            <button
+              onClick={handleBiometricLogin}
+              disabled={isAuthenticating}
+              className="w-full bg-purple-500 hover:bg-purple-400 disabled:bg-purple-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              {isAuthenticating ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  認証中...
+                </>
+              ) : (
+                <>
+                  <Fingerprint size={20} />
+                  指紋/顔認証でログイン
+                </>
+              )}
+            </button>
+            {biometricError && (
+              <div className="mt-2 flex items-center gap-2 text-red-400 text-xs justify-center">
+                <XCircle size={14} />
+                <span>{biometricError}</span>
+              </div>
+            )}
+            <button
+              onClick={handleRemovePasskey}
+              className="mt-2 w-full text-xs text-slate-500 hover:text-slate-400"
+            >
+              登録を解除する
+            </button>
+          </div>
+        )}
+
+        {biometricSupported && hasPasskey && (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-700"></div>
+            <span className="text-xs text-slate-500">または手動で入力</span>
+            <div className="flex-1 h-px bg-slate-700"></div>
+          </div>
+        )}
 
         {/* PDF読み込みオプション - 最初の選択肢として */}
         {onImportPdf && (
@@ -191,16 +293,35 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
           <div className="flex items-center gap-2">
             <Key size={18} className="text-slate-500 shrink-0" />
             <input
-              type="text"
+              type="password"
               value={apiKey}
               onChange={(e) => {
                 setApiKey(e.target.value);
-                setValidationResult(null);
+                setKeyError(null);
+                setModelAvailabilities([]);
               }}
               placeholder="AIza..."
               className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm font-mono"
             />
           </div>
+          {/* 検証ボタン - 明示的にAPIを呼び出す */}
+          <button
+            onClick={validateModels}
+            disabled={!apiKey.trim().startsWith('AIza') || apiKey.trim().length < 39 || isValidating}
+            className="mt-3 w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-2 rounded-lg transition-all text-sm"
+          >
+            {isValidating ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                検証中...
+              </>
+            ) : (
+              <>
+                <Search size={16} />
+                キーを検証（APIを呼び出します）
+              </>
+            )}
+          </button>
           {keyError && (
             <div className="mt-2 flex items-center gap-2 text-red-400 text-xs">
               <XCircle size={14} />
@@ -223,7 +344,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
           </div>
           {modelAvailabilities.length === 0 ? (
             <div className="text-center text-slate-400 text-sm py-4">
-              APIキーを入力するとモデルの利用可否を確認します
+              「キーを検証」ボタンを押してモデルの利用可否を確認
             </div>
           ) : (
             <div className="space-y-2">
@@ -273,6 +394,57 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
             </div>
           )}
         </div>
+
+        {/* 信頼セッション設定 */}
+        {hasAnyAvailable && (
+          <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700 space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={trustSession}
+                onChange={(e) => setTrustSession(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Shield size={16} className="text-green-400" />
+                  <span className="text-sm font-medium text-white">このセッションを信頼する</span>
+                  <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">推奨</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  ブラウザを閉じるまで、自動的なAPI呼び出しを許可します。
+                  共有PCでは無効にしてください。
+                </p>
+              </div>
+            </label>
+
+            {/* 生体認証の登録オプション */}
+            {biometricSupported && !hasPasskey && (
+              <>
+                <div className="h-px bg-slate-700"></div>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={registerBiometric}
+                    onChange={(e) => setRegisterBiometric(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Fingerprint size={16} className="text-purple-400" />
+                      <span className="text-sm font-medium text-white">指紋/顔認証を登録</span>
+                      <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">便利</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      次回から指紋や顔認証だけでログインできます。
+                      APIキーはこのデバイスに安全に保存されます。
+                    </p>
+                  </div>
+                </label>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ボタン */}
         <div className="flex gap-3">

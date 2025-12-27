@@ -23,24 +23,106 @@ export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void =
   }
 };
 
-// API Key Management (localStorage)
+// API Key Management (sessionStorage for security - cleared on browser close)
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
 
 export const getApiKey = (): string | null => {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
+  return sessionStorage.getItem(API_KEY_STORAGE_KEY);
 };
 
 export const setApiKey = (key: string): void => {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
 export const clearApiKey = (): void => {
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
 };
 
 export const hasApiKey = (): boolean => {
   const key = getApiKey();
   return !!key && key.startsWith('AIza');
+};
+
+// Sanitize error messages to prevent API key leakage in logs
+const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
+  if (!message) return message;
+  let sanitized = message;
+  // Remove API key if present
+  if (apiKey) {
+    sanitized = sanitized.replace(new RegExp(apiKey, 'g'), '[API_KEY_REDACTED]');
+  }
+  // Also redact any AIza... patterns
+  sanitized = sanitized.replace(/AIza[A-Za-z0-9_-]{30,}/g, '[API_KEY_REDACTED]');
+  return sanitized;
+};
+
+// ============================================
+// 信頼セッション方式（GitHub Passkey風）
+// - 初回のみ明示的な承認が必要
+// - 「信頼する」を選択するとセッション中は自動許可
+// - ブラウザを閉じると信頼状態がリセット
+// ============================================
+const TRUSTED_SESSION_KEY = 'construction_album_trusted_session';
+const AUTO_API_SETTINGS_KEY = 'construction_album_auto_api_settings';
+
+export interface AutoApiSettings {
+  autoValidateModels: boolean;     // モデル自動検証（APIキー入力時）
+  autoSelectWorkTypes: boolean;    // 工種自動選択（バッチ解析時）
+  autoNormalization: boolean;      // 自動正規化（解析後）
+  autoSceneAssignment: boolean;    // 自動シーン割当（ペアリング時）
+}
+
+// 信頼セッション: sessionStorageに保存（ブラウザ閉じるとリセット）
+export const isTrustedSession = (): boolean => {
+  return sessionStorage.getItem(TRUSTED_SESSION_KEY) === 'true';
+};
+
+export const setTrustedSession = (trusted: boolean): void => {
+  if (trusted) {
+    sessionStorage.setItem(TRUSTED_SESSION_KEY, 'true');
+  } else {
+    sessionStorage.removeItem(TRUSTED_SESSION_KEY);
+  }
+};
+
+export const revokeTrust = (): void => {
+  sessionStorage.removeItem(TRUSTED_SESSION_KEY);
+};
+
+// 永続設定（localStorageに保存）: 信頼セッションでない場合のデフォルト動作
+const DEFAULT_AUTO_API_SETTINGS: AutoApiSettings = {
+  autoValidateModels: false,
+  autoSelectWorkTypes: false,
+  autoNormalization: false,
+  autoSceneAssignment: false,
+};
+
+export const getAutoApiSettings = (): AutoApiSettings => {
+  try {
+    const saved = localStorage.getItem(AUTO_API_SETTINGS_KEY);
+    if (saved) {
+      return { ...DEFAULT_AUTO_API_SETTINGS, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.warn('Failed to load auto API settings:', e);
+  }
+  return DEFAULT_AUTO_API_SETTINGS;
+};
+
+export const setAutoApiSettings = (settings: Partial<AutoApiSettings>): void => {
+  const current = getAutoApiSettings();
+  const updated = { ...current, ...settings };
+  localStorage.setItem(AUTO_API_SETTINGS_KEY, JSON.stringify(updated));
+};
+
+// 信頼セッションの場合は全機能を自動許可、そうでなければ個別設定を参照
+export const isAutoApiEnabled = (feature: keyof AutoApiSettings): boolean => {
+  // 信頼セッションなら全て許可
+  if (isTrustedSession()) {
+    return true;
+  }
+  // そうでなければ個別設定を参照
+  return getAutoApiSettings()[feature];
 };
 
 // Model Selection
@@ -76,7 +158,9 @@ export const validateApiKey = async (apiKey: string, model?: ModelType): Promise
     });
     return { valid: true };
   } catch (e: any) {
-    console.error(`API Key validation failed for ${testModel}:`, e);
+    // Sanitize error message to prevent API key leakage
+    const safeMessage = sanitizeErrorMessage(e.message || '', apiKey);
+    console.error(`API Key validation failed for ${testModel}:`, safeMessage);
     if (e.message?.includes('API_KEY_INVALID') || e.message?.includes('401')) {
       return { valid: false, error: 'APIキーが無効です' };
     }
@@ -86,7 +170,7 @@ export const validateApiKey = async (apiKey: string, model?: ModelType): Promise
     if (e.message?.includes('not found') || e.message?.includes('404')) {
       return { valid: false, error: 'モデルが利用不可' };
     }
-    return { valid: false, error: e.message || '接続エラー' };
+    return { valid: false, error: safeMessage || '接続エラー' };
   }
 };
 
@@ -389,12 +473,22 @@ ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
 /**
  * セレクターエージェント: 画像群から工種を判定
  * 軽量モデルで高速に工種を特定し、本解析で使う階層サブセットを決定
+ *
+ * NOTE: autoSelectWorkTypes が false の場合、API呼び出しをスキップして全工種を返す
  */
 export const selectWorkTypes = async (
   records: PhotoRecord[],
   apiKey: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
 ): Promise<string[]> => {
+  const availableWorkTypes = getWorkTypes();
+
+  // 自動工種選択が無効の場合、API呼び出しをスキップ
+  if (!isAutoApiEnabled('autoSelectWorkTypes')) {
+    onLog?.('[SELECTOR] 自動工種選択がOFF - API呼び出しをスキップ（全工種を使用）', 'info');
+    return availableWorkTypes;
+  }
+
   const startTime = performance.now();
   const genAI = new GoogleGenAI({ apiKey });
 
@@ -418,7 +512,6 @@ export const selectWorkTypes = async (
   }));
 
   const selectorPrompt = getSelectorPrompt();
-  const availableWorkTypes = getWorkTypes();
 
   const prompt = `
 あなたは建設現場の写真を分類する専門家です。
@@ -557,6 +650,7 @@ export interface NormalizationResult {
 }
 
 // 修正提案を取得（適用はしない）
+// NOTE: autoNormalization が false の場合、API呼び出しをスキップ
 export const getNormalizationProposals = async (
   records: PhotoRecord[],
   apiKey: string,
@@ -564,6 +658,12 @@ export const getNormalizationProposals = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
 ): Promise<NormalizationResult> => {
+  // 自動正規化が無効の場合、API呼び出しをスキップ（customPromptがある場合は明示的な呼び出しなので実行）
+  if (!isAutoApiEnabled('autoNormalization') && !customPrompt) {
+    onLog?.('[NORMALIZATION] 自動正規化がOFF - API呼び出しをスキップ', 'info');
+    return { corrections: [], originalData: [] };
+  }
+
   checkAbort(shouldAbort, 'getNormalizationProposals開始前');
 
   const completedRecords = records.filter(r => r.status === 'done' && r.analysis);
@@ -746,6 +846,8 @@ export const normalizeDataConsistency = async (
 /**
  * NEW: Visual Anchoring & Clustering
  * Optimized to use cache for visual feature extraction.
+ *
+ * NOTE: autoSceneAssignment が false の場合、API呼び出しをスキップ
  */
 export const assignSceneIds = async (
   records: PhotoRecord[],
@@ -753,6 +855,13 @@ export const assignSceneIds = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
 ): Promise<{ fileName: string, sceneId: string, phase: 'before' | 'after' | 'status', visualAnchors: string }[]> => {
+  // 自動シーン割当が無効の場合、API呼び出しをスキップ
+  if (!isAutoApiEnabled('autoSceneAssignment')) {
+    onLog?.('[SCENE] 自動シーン割当がOFF - API呼び出しをスキップ', 'info');
+    // 空の配列を返す（ペアリングは測点ベースで行われる）
+    return [];
+  }
+
   checkAbort(shouldAbort, 'assignSceneIds開始前');
 
   const genAI = new GoogleGenAI({ apiKey });
