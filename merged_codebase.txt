@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 17:37:48
+生成日時: 2025-12-27 18:01:13
 ================================================================================
 
 === ファイル一覧 ===
@@ -8153,10 +8153,41 @@ export const getNormalizationProposals = async (
 
     **CRITICAL RULES:**
     1. DO NOT create new terms - only use what exists in the input
-    2. DO NOT add "〜工" suffix to remarks
+    2. DO NOT add "〜工" suffix to remarks (〜工 is only for workType/variety/detail)
     3. DO NOT change remarks that contain measurement values (numbers, ℃, mm, cm, m, %)
     4. PRESERVE specific data from each photo - do not unify remarks across photos
     5. If unsure, leave the field UNCHANGED
+    6. NEVER invent terms like "温度管理工", "温度測定工", "密度管理工"
+
+    **TEMPERATURE PHOTO CYCLES (温度管理写真のルール):**
+    Temperature management photos come in specific cycles. DO NOT unify them.
+
+    Per truck (1サイクル = 9枚):
+    - 到着温度 (arrival temp): 全景 + ボードアップ + 温度計アップ = 3枚
+    - 敷均し温度 (spread temp): 全景 + ボードアップ + 温度計アップ = 3枚
+    - 初期締固め前温度 (initial compaction temp): 全景 + ボードアップ + 温度計アップ = 3枚
+
+    Per day/location (1日1回):
+    - 開放温度 (release temp): 全景 + ボードアップ + 温度計アップ = 3枚
+
+    IMPORTANT:
+    - Each truck has DIFFERENT temperature values - do not unify!
+    - "到着温度 161.1℃" and "到着温度 158.5℃" are from different trucks - keep both!
+    - "敷均し温度 155.3℃" is specific to that measurement - do not change!
+    - Photos in the same cycle share the SAME temperature value
+
+    VALID remarks for temperature photos:
+    - "到着温度 161.1℃"
+    - "敷均し温度 155.3℃"
+    - "初期締固め前温度 148.8℃"
+    - "開放温度 50℃"
+    - "アスファルト混合物温度測定 到着温度 161.1℃"
+
+    INVALID remarks (do not create these):
+    - "温度管理工" ❌
+    - "温度測定工" ❌
+    - "温度測定" ❌ (missing actual value)
+    - "温度管理" ❌ (too vague)
 
     TASKS:
     1. **Normalize Station Names (測点) ONLY**:
