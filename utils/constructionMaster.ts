@@ -649,6 +649,102 @@ export function detectUnknownTerms(
   return warnings;
 }
 
+// 温度管理写真のバリデーション
+// remarksCategory と remarksValue を検証し、問題があれば修正提案を返す
+export interface TemperatureValidationResult {
+  isValid: boolean;
+  correctedCategory?: string;
+  correctedValue?: string;
+  warnings: string[];
+}
+
+// 有効な温度管理カテゴリ
+const VALID_TEMPERATURE_CATEGORIES = [
+  "到着温度",
+  "敷均し温度",
+  "初期締固め前温度",
+  "開放温度",
+  "アスファルト混合物温度測定"
+];
+
+// 有効な密度測定カテゴリ
+const VALID_DENSITY_CATEGORIES = [
+  "現場密度測定"
+];
+
+// 品質管理写真の全カテゴリ
+const VALID_QUALITY_CATEGORIES = [
+  ...VALID_TEMPERATURE_CATEGORIES,
+  ...VALID_DENSITY_CATEGORIES
+];
+
+export function validateTemperatureRemarks(
+  remarksCategory: string,
+  remarksValue: string
+): TemperatureValidationResult {
+  const warnings: string[] = [];
+  let correctedCategory = remarksCategory;
+  let correctedValue = remarksValue;
+  let isValid = true;
+
+  // 1. カテゴリに「〜工」が含まれていないかチェック
+  if (remarksCategory.match(/[^着手完]工/) && !remarksCategory.includes('施工')) {
+    warnings.push(`⚠️ カテゴリ「${remarksCategory}」に「〜工」が含まれています（不正）`);
+    isValid = false;
+    // 「温度測定工」→「アスファルト混合物温度測定」に修正
+    if (remarksCategory.includes('温度')) {
+      correctedCategory = "アスファルト混合物温度測定";
+    } else if (remarksCategory.includes('密度')) {
+      correctedCategory = "現場密度測定";
+    }
+  }
+
+  // 2. 温度値のフォーマットチェック
+  if (VALID_TEMPERATURE_CATEGORIES.some(cat => remarksCategory.includes(cat.replace('温度', '')) || cat.includes(remarksCategory))) {
+    // 温度関連のカテゴリの場合、値は数字+℃であるべき
+    if (remarksValue && !remarksValue.match(/[0-9０-９]+\.?[0-9０-９]*\s*℃/)) {
+      warnings.push(`⚠️ 温度値「${remarksValue}」のフォーマットが不正（例: 161.1℃）`);
+      // 数字だけあれば℃を追加
+      const numMatch = remarksValue.match(/([0-9０-９]+\.?[0-9０-９]*)/);
+      if (numMatch) {
+        correctedValue = `${numMatch[1]}℃`;
+      }
+    }
+  }
+
+  // 3. 曖昧なカテゴリの修正
+  if (remarksCategory === "温度測定" || remarksCategory === "温度管理") {
+    warnings.push(`⚠️ カテゴリ「${remarksCategory}」は曖昧です。具体的なカテゴリを使用してください`);
+    // 値から推測
+    if (remarksValue.includes('到着') || remarksValue.includes('出荷')) {
+      correctedCategory = "到着温度";
+    } else if (remarksValue.includes('敷均')) {
+      correctedCategory = "敷均し温度";
+    } else if (remarksValue.includes('初期') || remarksValue.includes('締固')) {
+      correctedCategory = "初期締固め前温度";
+    } else if (remarksValue.includes('開放')) {
+      correctedCategory = "開放温度";
+    } else {
+      correctedCategory = "アスファルト混合物温度測定";
+    }
+    isValid = false;
+  }
+
+  return {
+    isValid,
+    correctedCategory: correctedCategory !== remarksCategory ? correctedCategory : undefined,
+    correctedValue: correctedValue !== remarksValue ? correctedValue : undefined,
+    warnings
+  };
+}
+
+// 品質管理写真かどうかを判定
+export function isQualityManagementPhoto(remarksCategory: string): boolean {
+  return VALID_QUALITY_CATEGORIES.some(cat =>
+    remarksCategory.includes(cat) || cat.includes(remarksCategory)
+  ) || remarksCategory.includes('温度') || remarksCategory.includes('密度');
+}
+
 // 備考テキストから写真区分を推定する
 export function inferPhotoCategory(remarkText: string): PhotoCategoryType {
   if (remarkText.includes("着手前") || remarkText.includes("完成") || remarkText.includes("竣工")) {
