@@ -22,6 +22,7 @@ import UsagePanel from './components/UsagePanel';
 import ManualPairingModal from './components/ManualPairingModal';
 import MasterEditorModal from './components/MasterEditorModal';
 import StationReplaceModal from './components/StationReplaceModal';
+import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
 import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
 import SessionHistoryPanel from './components/SessionHistoryPanel';
 import { AnalysisHistoryEntry } from './types';
@@ -97,6 +98,8 @@ export default function App() {
   const [showMasterEditor, setShowMasterEditor] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showWorkTypeConfirm, setShowWorkTypeConfirm] = useState(false);
+  const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
 
   // Normalization approval flow
   const [showNormalizationModal, setShowNormalizationModal] = useState(false);
@@ -1007,6 +1010,8 @@ export default function App() {
   const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean, sortPolicy: SortPolicy = 'by_detail_safety_first') => {
     if (!files || files.length === 0) return;
     setCurrentSortPolicy(sortPolicy); // ソートポリシーを保存
+    setPendingInstruction(userInstruction);
+    setPendingUseCache(useCache);
 
     // 1. Initial Validation
     if (files.length > MAX_PHOTOS) {
@@ -1017,14 +1022,33 @@ export default function App() {
       pending.sort((a, b) => a.date - b.date);
       setPendingFiles(pending);
       setSelectionCount(Math.min(pending.length, MAX_PHOTOS));
-      setPendingInstruction(userInstruction);
-      setPendingUseCache(useCache);
       return;
     }
 
-    setPendingInstruction(userInstruction);
-    setPendingUseCache(useCache);
-    await startAnalysisPipeline(files, userInstruction, useCache);
+    // 2. 工種確認モーダルを表示
+    setPendingAnalysisFiles(files);
+    setShowWorkTypeConfirm(true);
+  };
+
+  // 工種確認後に解析開始
+  const handleWorkTypeConfirmed = () => {
+    setShowWorkTypeConfirm(false);
+    if (pendingAnalysisFiles) {
+      startAnalysisPipeline(pendingAnalysisFiles, pendingInstruction, pendingUseCache);
+      setPendingAnalysisFiles(null);
+    }
+  };
+
+  // 工種確認キャンセル
+  const handleWorkTypeCancel = () => {
+    setShowWorkTypeConfirm(false);
+    setPendingAnalysisFiles(null);
+  };
+
+  // 工種確認から設定画面へ
+  const handleOpenMasterEditorFromConfirm = () => {
+    setShowWorkTypeConfirm(false);
+    setShowMasterEditor(true);
   };
 
   const confirmLimitSelection = () => {
@@ -1032,7 +1056,9 @@ export default function App() {
     const startIndex = selectionStart - 1;
     const selected = pendingFiles.slice(startIndex, startIndex + selectionCount).map(p => p.file);
     setPendingFiles(null);
-    startAnalysisPipeline(selected, pendingInstruction, pendingUseCache);
+    // 工種確認モーダルを表示
+    setPendingAnalysisFiles(selected);
+    setShowWorkTypeConfirm(true);
   };
 
   const startAnalysisPipeline = async (files: File[], instruction: string, useCache: boolean) => {
@@ -1839,6 +1865,15 @@ export default function App() {
         <SessionHistoryPanel
           onLoad={handleLoadHistory}
           onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {showWorkTypeConfirm && (
+        <WorkTypeConfirmModal
+          lang={lang}
+          onConfirm={handleWorkTypeConfirmed}
+          onCancel={handleWorkTypeCancel}
+          onOpenSettings={handleOpenMasterEditorFromConfirm}
         />
       )}
     </>
