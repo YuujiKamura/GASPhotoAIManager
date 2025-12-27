@@ -112,15 +112,25 @@ Even if you recognize a standard MLIT term, if it is not in the JSON, do not use
 ${JSON.stringify(hierarchy || formatHierarchyForPrompt(), null, 2)}
 
 --- HIERARCHY MAPPING RULES (STRICT) ---
-The hierarchy is defined by depth levels. You must traverse from the Root to the Leaf and map the keys to the specific columns below.
+The master data JSON has this structure. "直接工事費" is the root and should be IGNORED.
 
-**Hierarchy Structure** (Simplified - No Photo Category Branching):
-*   **Level 1 (Root)**: Work Type (工種) -> Output to **'workType'**.
-*   **Level 2**: Variety (種別) -> Output to **'variety'**.
-*   **Level 3**: Detail (細別) -> Output to **'detail'**.
-*   **Level 4 (Leaf)**: Remarks (備考) -> Output to **'remarks'**.
+**Hierarchy Structure**:
+\`\`\`
+直接工事費 (IGNORE - this is the root)
+  └─ [カテゴリ] (着手前及び完成写真, 施工状況写真, etc.) - DO NOT output this, it's auto-detected
+       └─ [工種 workType] (e.g., 舗装工, 道路土工, 構造物撤去工)
+            └─ [種別 variety] (e.g., 舗装打換え工, 未舗装部舗装工)
+                 └─ [細別 detail] (e.g., 表層工, 上層路盤工, 舗装版破砕)
+                      └─ [備考 remarks] (e.g., 舗設状況, 転圧状況, 着手前)
+\`\`\`
 
-Photo categories are determined automatically based on the remarks field.
+**Output Mapping**:
+*   **workType**: The key under the category (e.g., "舗装工", "道路土工"). NOT "直接工事費" or category names.
+*   **variety**: The key under workType (e.g., "舗装打換え工").
+*   **detail**: The key under variety (e.g., "表層工", "舗装版破砕").
+*   **remarks**: The leaf key or alias (e.g., "舗設状況", "着手前").
+
+**CRITICAL**: Do NOT output "直接工事費", "施工状況写真", "出来形管理写真" etc. as workType. These are NOT workTypes.
 
 **STEP 1: Select Level 2 (Photo Category) - PRIORITIZATION RULE**
 You must FIRST check if the photo is a static "Before" or "Completion" scene (Landscape/Scenery).
@@ -174,14 +184,23 @@ B. **measurements (測定値)**: 出来形管理の数値データ（出来形�
 *   フォーマット例: "設計値: 50mm / 実測値: 52mm / 差: +2mm" または "幅員 W=3.0m"
 *   測定値が見えない場合や出来形管理写真でない場合は空文字列 "" を返す。
 
-**STEP 5: Station (測点)**
-*   There are two types of station formats:
-    1. **Location-based (preferred)**: Location names such as "小山町1359付近", "〇〇交差点付近", etc.
-    2. **Route-based**: Pinpoint markers like "No.0+50", "No.1+23.5", etc.
-*   If a location name is visible or can be inferred from the blackboard/surroundings, use that as the station.
-*   If only the "No.X+XX" format is visible, extract it exactly.
-*   If the station cannot be determined, return an empty string "" (NOT "null", "不明", "unknown", etc.).
-*   **Important for road construction**: For lot numbers (地番), use only the main number without sub-lot numbers (枝番). Example: "小山町1359" is correct, "小山町1359-5" is incorrect (too specific for road work spanning multiple lots). Add "付近" or "地先" if appropriate.
+**STEP 5: Station (測点) - FORMAT STANDARDIZATION**
+*   **Standard Format**: 「地名 No.整数」 (e.g., "小峯2丁目 No.4", "南区桜町 No.12")
+*   **Extraction Rules**:
+    1. Extract location name (地名) from blackboard: 丁目, 町名, etc.
+    2. Extract station number (No.X) - use INTEGER only, drop decimals and "+XX" suffixes.
+       - "No.4-" → "No.4"
+       - "No.1+23.5" → "No.1"
+       - "N-50" → "No.50"
+    3. Combine: "地名 No.整数"
+*   **Examples**:
+    - Blackboard shows "小峯2丁目 No.4-" → Output: "小峯2丁目 No.4"
+    - Blackboard shows "南区 N-3+15" → Output: "南区 No.3"
+    - No station visible → Output: "" (empty string, NOT the filename)
+*   **Do NOT**:
+    - Output filename as station (e.g., "RIMG0151.JPG" is WRONG)
+    - Include decimal points or "+XX" suffixes
+    - Use "不明", "unknown", "null" - use empty string "" instead
 
 **OUTPUT FORMAT**:
 JSON only.
