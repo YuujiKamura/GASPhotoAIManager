@@ -250,7 +250,19 @@ Only classify as "Construction Status" if there is clear evidence of **ACTIVE WO
 
 4.  **"使用材料写真"**: Material checks.
 5.  **"品質管理写真"**: Thermometers, density meters.
-6.  **"出来形管理写真"**: Ribbons/Rulers measuring finished dimensions.
+6.  **"出来形管理写真"** (Finished Dimension Management) [PRIORITY - MEASUREMENT PHOTOS]:
+    *   **Definition**: Photos documenting COMPLETED work dimensions with measuring tools.
+    *   **Visual Cues**:
+        - Measuring ribbons/poles placed on FINISHED surfaces
+        - Blackboard showing 設計値 (design value), 実測値 (measured value), 差 (difference)
+        - Static scene - NO active work, just measurement verification
+    *   **CRITICAL DISTINCTION from 施工状況**:
+        - 「〜状況」(status) = DURING work (e.g., 転圧状況 = compacting NOW)
+        - 「〜出来形」(finished form) = AFTER work, measuring result (e.g., 不陸整正出来形 = measuring flatness AFTER grading)
+    *   **Remarks for 出来形管理写真** should end with 「出来形」:
+        - 不陸整正出来形, 表層厚出来形, 路盤厚出来形, 幅員出来形, etc.
+    *   **Example**: Photo shows a measuring pole on flat graded surface with blackboard "設計値 0mm / 実測値 +3mm"
+        → This is 出来形管理写真, remarks = "不陸整正出来形", NOT "不陸整正状況"
 
 **STEP 2: Traverse & Map Columns**
 Traverse the hierarchy directly:
@@ -266,6 +278,10 @@ Traverse the hierarchy directly:
 *   **If Category is "施工状況写真"**:
     *   Use the Leaf Node Key (e.g., "転圧状況") as the remarks.
     *   Normalize text: "転圧中" -> "転圧状況".
+*   **If Category is "出来形管理写真"**:
+    *   **remarks** MUST end with "出来形" (e.g., "不陸整正出来形", "表層厚出来形").
+    *   NEVER use "〜状況" for measurement photos - that implies ongoing work.
+    *   If blackboard shows measurement values (設計/実測/差), it's definitely 出来形管理.
 
 **STEP 4: Description (記事) - 重要な情報を記録**
 
@@ -479,7 +495,7 @@ export const normalizeDataConsistency = async (
     remarks: r.analysis!.remarks
   }));
 
-  onLog?.("Running consistency normalization pass with Gemini 3 Pro...", "info");
+  onLog?.(`Running consistency normalization pass with ${COMPLEX_MODEL}...`, "info");
 
   const prompt = `
     You are a data consistency expert for construction photos.
@@ -557,10 +573,15 @@ export const normalizeDataConsistency = async (
 
     } catch (e: any) {
       attempt++;
+      const isQuotaError = e.message?.includes("429") || e.status === 429;
       onLog?.(`Normalization Error (${modelToUse}) - ${attempt}/${MAX_RETRIES}`, "error", e.message);
 
       if (attempt < MAX_RETRIES) {
-        modelToUse = PRIMARY_MODEL;
+        // Fallback to lighter model on quota errors
+        if (isQuotaError && modelToUse !== FALLBACK_MODEL) {
+          modelToUse = FALLBACK_MODEL;
+          onLog?.(`Rate limit hit, switching to ${FALLBACK_MODEL}`, "info");
+        }
         await sleep(RETRY_DELAY_MS);
       } else {
         onLog?.("Normalization failed (Non-fatal)", "error");
