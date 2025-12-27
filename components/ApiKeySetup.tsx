@@ -183,48 +183,47 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
 
         {/* 生体認証でログイン（パスキー登録済みの場合） */}
         {biometricSupported && hasPasskey && (
-          <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-2xl p-4">
-            <p className="text-sm text-purple-200 mb-3 text-center">
-              登録済みの指紋/顔認証でログイン
-            </p>
-            <button
-              onClick={handleBiometricLogin}
-              disabled={isAuthenticating}
-              className="w-full bg-purple-500 hover:bg-purple-400 disabled:bg-purple-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              {isAuthenticating ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" />
-                  認証中...
-                </>
-              ) : (
-                <>
-                  <Fingerprint size={20} />
-                  指紋/顔認証でログイン
-                </>
+          <>
+            <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-2xl p-4">
+              <p className="text-sm text-purple-200 mb-3 text-center">
+                登録済みの指紋/顔認証でログイン
+              </p>
+              <button
+                onClick={handleBiometricLogin}
+                disabled={isAuthenticating}
+                className="w-full bg-purple-500 hover:bg-purple-400 disabled:bg-purple-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                {isAuthenticating ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    認証中...
+                  </>
+                ) : (
+                  <>
+                    <Fingerprint size={20} />
+                    指紋/顔認証でログイン
+                  </>
+                )}
+              </button>
+              {biometricError && (
+                <div className="mt-2 flex items-center gap-2 text-red-400 text-xs justify-center">
+                  <XCircle size={14} />
+                  <span>{biometricError}</span>
+                </div>
               )}
-            </button>
-            {biometricError && (
-              <div className="mt-2 flex items-center gap-2 text-red-400 text-xs justify-center">
-                <XCircle size={14} />
-                <span>{biometricError}</span>
-              </div>
-            )}
-            <button
-              onClick={handleRemovePasskey}
-              className="mt-2 w-full text-xs text-slate-500 hover:text-slate-400"
-            >
-              登録を解除する
-            </button>
-          </div>
-        )}
-
-        {biometricSupported && hasPasskey && (
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-slate-700"></div>
-            <span className="text-xs text-slate-500">または手動で入力</span>
-            <div className="flex-1 h-px bg-slate-700"></div>
-          </div>
+              <button
+                onClick={handleRemovePasskey}
+                className="mt-2 w-full text-xs text-slate-500 hover:text-slate-400"
+              >
+                登録を解除する
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-slate-700"></div>
+              <span className="text-xs text-slate-500">または手動で入力</span>
+              <div className="flex-1 h-px bg-slate-700"></div>
+            </div>
+          </>
         )}
 
         {/* PDF読み込みオプション - 最初の選択肢として */}

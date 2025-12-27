@@ -9,7 +9,6 @@
 // ストレージキー
 const CREDENTIAL_ID_KEY = 'construction_album_credential_id';
 const PROTECTED_API_KEY = 'construction_album_protected_api_key';
-const CHALLENGE_KEY = 'construction_album_challenge';
 
 // WebAuthnがサポートされているか確認
 export const isWebAuthnSupported = (): boolean => {
