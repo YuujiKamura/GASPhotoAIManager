@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-27 17:05:14
+生成日時: 2025-12-27 17:09:59
 ================================================================================
 
 === ファイル一覧 ===
@@ -7543,25 +7543,32 @@ export const normalizeDataConsistency = async (
   const prompt = `
     You are a data consistency expert for construction photos.
     Review the following list of records.
-    
+
+    **CRITICAL RULE - NO INVENTION:**
+    - DO NOT create new classification terms that don't exist in the input
+    - DO NOT add "〜工" suffix to remarks (e.g., "温度管理工" is WRONG)
+    - Remarks should be descriptive (e.g., "アスファルト混合物温度測定", "現場密度測定")
+    - If unsure, leave the field unchanged
+
     TASKS:
-    1. **Normalize Station Names (測点)**: 
+    1. **Normalize Station Names (測点)**:
        - Fix OCR errors (e.g., "No.0+00" vs "No.0.00" -> unify to "No.X+XX").
-       
+
     2. **Fix Hierarchy Errors**:
        - Ensure "Detail" (細別) is NOT a status verb (e.g. "完了", "状況", "確認", "掘削", "転圧").
        - If "Detail" looks like a status, move it to "Remarks" and clear "Detail".
        - Example: Detail="掘削状況" -> Change Detail="", Remarks="掘削状況".
 
     3. **Normalize Remarks**:
-       - Ensure consistent terminology.
-    
+       - Ensure consistent terminology using ONLY terms already present in the data.
+       - DO NOT invent new terms like "温度管理工" or "密度測定工".
+
     INPUT DATA:
     ${JSON.stringify(dataSnapshot, null, 2)}
-    
+
     OUTPUT:
     Return JSON: { "corrections": [ { "fileName": "...", "workType": "...", "variety": "...", "detail": "...", "station": "...", "remarks": "..." } ] }
-    Only include records that need changing.
+    Only include records that need changing. If no changes needed, return { "corrections": [] }.
   `;
 
   let modelToUse = COMPLEX_MODEL;
