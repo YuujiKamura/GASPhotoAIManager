@@ -63,26 +63,94 @@ export const setSelectedModel = (model: ModelType): void => {
   localStorage.setItem(MODEL_STORAGE_KEY, model);
 };
 
-// API Key Validation
-export const validateApiKey = async (apiKey: string): Promise<{ valid: boolean; error?: string }> => {
+// API Key Validation - Single Model
+export const validateApiKey = async (apiKey: string, model?: ModelType): Promise<{ valid: boolean; error?: string }> => {
+  const testModel = model || 'gemini-2.0-flash';
   try {
     const ai = new GoogleGenAI({ apiKey });
-    // 最軽量モデルでシンプルなリクエストを送信してキーを検証
     await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: testModel,
       contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
     });
     return { valid: true };
   } catch (e: any) {
-    console.error('API Key validation failed:', e);
+    console.error(`API Key validation failed for ${testModel}:`, e);
     if (e.message?.includes('API_KEY_INVALID') || e.message?.includes('401')) {
       return { valid: false, error: 'APIキーが無効です' };
     }
     if (e.message?.includes('quota') || e.message?.includes('429')) {
-      return { valid: false, error: 'APIの利用制限に達しました' };
+      return { valid: false, error: '利用制限に達しました' };
+    }
+    if (e.message?.includes('not found') || e.message?.includes('404')) {
+      return { valid: false, error: 'モデルが利用不可' };
     }
     return { valid: false, error: e.message || '接続エラー' };
   }
+};
+
+// Model Availability Status
+export type ModelStatus = 'available' | 'quota_exceeded' | 'unavailable' | 'checking' | 'unknown';
+
+export interface ModelAvailability {
+  id: ModelType;
+  name: string;
+  description: string;
+  status: ModelStatus;
+  error?: string;
+}
+
+// Validate all models and return their availability
+export const validateAllModels = async (
+  apiKey: string,
+  onProgress?: (modelId: ModelType, status: ModelStatus, error?: string) => void
+): Promise<ModelAvailability[]> => {
+  const results: ModelAvailability[] = AVAILABLE_MODELS.map(m => ({
+    ...m,
+    status: 'checking' as ModelStatus
+  }));
+
+  // Test models in parallel
+  const checks = AVAILABLE_MODELS.map(async (model, index) => {
+    onProgress?.(model.id, 'checking');
+    const result = await validateApiKey(apiKey, model.id);
+
+    let status: ModelStatus;
+    if (result.valid) {
+      status = 'available';
+    } else if (result.error?.includes('制限')) {
+      status = 'quota_exceeded';
+    } else if (result.error?.includes('不可') || result.error?.includes('無効')) {
+      status = 'unavailable';
+    } else {
+      status = 'unknown';
+    }
+
+    results[index] = {
+      ...model,
+      status,
+      error: result.error
+    };
+
+    onProgress?.(model.id, status, result.error);
+    return results[index];
+  });
+
+  await Promise.all(checks);
+  return results;
+};
+
+// Get the best available model (first available in priority order)
+export const getBestAvailableModel = (availabilities: ModelAvailability[]): ModelType | null => {
+  // Priority: Flash > Pro > 2.0 Flash (balance of speed and capability)
+  const priority: ModelType[] = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+
+  for (const modelId of priority) {
+    const model = availabilities.find(m => m.id === modelId);
+    if (model?.status === 'available') {
+      return modelId;
+    }
+  }
+  return null;
 };
 
 // Configuration - Use selected model dynamically
@@ -934,12 +1002,21 @@ export const analyzePhotoBatch = async (
       }
 
       if (isQuotaError) {
-        if (modelToUse === PRIMARY_MODEL) {
-          modelToUse = FALLBACK_MODEL;
-          onLog?.(`Rate Limit hit. Switching to Fallback Model: ${FALLBACK_MODEL}`, "info");
+        // Try fallback chain: user-selected -> 2.5-flash -> 2.0-flash
+        if (modelToUse !== FALLBACK_MODEL) {
+          const previousModel = modelToUse;
+          // If current is 2.5-pro or user-selected, try 2.5-flash first
+          if (modelToUse === 'gemini-2.5-pro') {
+            modelToUse = 'gemini-2.5-flash';
+          } else {
+            modelToUse = FALLBACK_MODEL;
+          }
+          onLog?.(`Rate Limit hit on ${previousModel}. Switching to: ${modelToUse}`, "info");
           await sleep(RETRY_DELAY_MS);
         } else {
-          await sleep(RETRY_DELAY_MS * 2);
+          // Already on fallback model, just wait longer
+          onLog?.(`Rate Limit on fallback model. Waiting...`, "info");
+          await sleep(RETRY_DELAY_MS * 3);
         }
       } else {
         await sleep(RETRY_DELAY_MS);
