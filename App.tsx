@@ -58,7 +58,7 @@ export default function App() {
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>('construction');
   const [initialLayout, setInitialLayout] = useState<2 | 3>(3); // Default to 3-up
-  const [currentSortPolicy, setCurrentSortPolicy] = useState<SortPolicy>('chronological');
+  const [currentSortPolicy, setCurrentSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
 
   // Console Logs
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -806,7 +806,7 @@ export default function App() {
 
   // --- Pipeline Steps ---
 
-  const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean, sortPolicy: SortPolicy = 'chronological') => {
+  const handleStartProcessing = async (files: File[], userInstruction: string, useCache: boolean, sortPolicy: SortPolicy = 'by_detail_safety_first') => {
     if (!files || files.length === 0) return;
     setCurrentSortPolicy(sortPolicy); // ソートポリシーを保存
 

@@ -50,7 +50,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [useCache, setUseCache] = useState(true); // Default to True
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
-  const [sortPolicy, setSortPolicy] = useState<SortPolicy>('chronological');
+  const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
 
   // コスト見積もり
   const costEstimate = useMemo(() => {
