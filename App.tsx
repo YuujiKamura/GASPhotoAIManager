@@ -1705,6 +1705,7 @@ export default function App() {
           onOpenSettings={() => setShowApiKeySetup(true)}
           onManualPairing={handleStartManualPairing}
           onShowHistory={() => setShowHistory(true)}
+          onOpenMasterEditor={() => setShowMasterEditor(true)}
         />
       ) : (
         <PreviewView
