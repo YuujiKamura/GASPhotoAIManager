@@ -347,17 +347,15 @@ export const CONSTRUCTION_HIERARCHY = {
       }
     },
     "安全管理写真": {
-       "安全施設工": {
-         "保安施設": {
-           "看板設置状況": {},
-           "バリケード設置状況": {},
-           "点灯状況": {}
+       "": {
+         "": {
+           "朝礼状況": {},
+           "KY活動状況": {},
+           "新規入場者教育状況": {},
+           "保安施設設置状況": {},
+           "点灯確認状況": {},
+           "安全巡視状況": {}
          }
-       },
-       "安全衛生": {
-         "朝礼状況": {},
-         "KY活動状況": {},
-         "新規入場者教育状況": {}
        }
     },
     "使用材料写真": {
@@ -492,6 +490,86 @@ export const PHOTO_CATEGORIES = [
 ] as const;
 
 export type PhotoCategoryType = typeof PHOTO_CATEGORIES[number];
+
+// マスタから全ての有効な工種・種別・細別を抽出
+export function extractAllValidValues(): {
+  workTypes: Set<string>;
+  varieties: Set<string>;
+  details: Set<string>;
+  remarks: Set<string>;
+} {
+  const workTypes = new Set<string>();
+  const varieties = new Set<string>();
+  const details = new Set<string>();
+  const remarks = new Set<string>();
+
+  const root = CONSTRUCTION_HIERARCHY["直接工事費"] as any;
+
+  // 階層をトラバース
+  for (const catKey in root) {
+    const category = root[catKey];
+    for (const workTypeKey in category) {
+      if (workTypeKey) workTypes.add(workTypeKey); // 空白は除外
+      const workType = category[workTypeKey];
+      for (const varietyKey in workType) {
+        if (varietyKey) varieties.add(varietyKey);
+        const variety = workType[varietyKey];
+        for (const detailKey in variety) {
+          if (detailKey) details.add(detailKey);
+          const detail = variety[detailKey];
+          // aliasesがある場合
+          if (detail.aliases) {
+            detail.aliases.forEach((a: string) => remarks.add(a));
+          }
+          // 細別の下のキー（状況名）をremarksとして追加
+          for (const remarkKey in detail) {
+            if (remarkKey !== 'aliases' && remarkKey) {
+              remarks.add(remarkKey);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { workTypes, varieties, details, remarks };
+}
+
+// AIの出力をバリデート：マスタにない値は空白に、警告を返す
+export function validateAgainstMaster(
+  workType: string,
+  variety: string,
+  detail: string,
+  _remarks: string
+): {
+  validatedWorkType: string;
+  validatedVariety: string;
+  validatedDetail: string;
+  warnings: string[];
+} {
+  const { workTypes, varieties, details } = extractAllValidValues();
+  const warnings: string[] = [];
+
+  let validatedWorkType = workType;
+  let validatedVariety = variety;
+  let validatedDetail = detail;
+
+  // 空白は許可（特に安全管理写真で使用）
+  if (workType && !workTypes.has(workType)) {
+    warnings.push(`工種「${workType}」はマスタにありません`);
+    validatedWorkType = "";
+  }
+  if (variety && !varieties.has(variety)) {
+    warnings.push(`種別「${variety}」はマスタにありません`);
+    validatedVariety = "";
+  }
+  if (detail && !details.has(detail)) {
+    warnings.push(`細別「${detail}」はマスタにありません`);
+    validatedDetail = "";
+  }
+
+  return { validatedWorkType, validatedVariety, validatedDetail, warnings };
+}
 
 // 備考テキストから写真区分を推定する
 export function inferPhotoCategory(remarkText: string): PhotoCategoryType {

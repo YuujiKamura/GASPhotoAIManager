@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
-import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes } from "../utils/constructionMaster";
+import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
 
 // API Key Management (localStorage)
@@ -804,11 +804,28 @@ export const analyzePhotoBatch = async (
         return { ...res, station, variety, workType, fileName: targetRecord.fileName };
       });
 
+      // Validate against master data and log warnings for AI-invented values
+      const validatedResults = finalResults.map(res => {
+        const { validatedWorkType, validatedVariety, validatedDetail, warnings } =
+          validateAgainstMaster(res.workType, res.variety, res.detail, res.remarks);
+
+        if (warnings.length > 0) {
+          onLog?.(`[MASTER警告] ${res.fileName}: ${warnings.join(', ')}`, "warn");
+        }
+
+        return {
+          ...res,
+          workType: validatedWorkType,
+          variety: validatedVariety,
+          detail: validatedDetail
+        };
+      });
+
       const totalTime = performance.now() - batchStartTime;
       const perPhotoTime = totalTime / records.length;
       onLog?.(`[PROFILER] Batch complete: Total=${formatDuration(totalTime)}, Per photo=${formatDuration(perPhotoTime)}, Parse=${formatDuration(parseTime)}`, "success");
 
-      return finalResults;
+      return validatedResults;
 
     } catch (error: any) {
       attempt++;
