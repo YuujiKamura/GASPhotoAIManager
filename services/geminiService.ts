@@ -801,14 +801,38 @@ export const analyzePhotoBatch = async (
         onIndividualResult?.(res.fileName, res);
       });
 
+      // Match AI results to original records by fileName (not by index)
+      // This fixes the bug where AI might return results in a different order
+      const matchedResults: AIAnalysisResult[] = records.map(record => {
+        // Find the AI result that matches this record's fileName
+        const aiResult = validResults.find(res => res.fileName === record.fileName);
+
+        if (aiResult) {
+          return aiResult;
+        } else {
+          // If no match found, log warning and create placeholder
+          onLog?.(`[WARNING] No AI result found for ${record.fileName}, using placeholder`, 'error');
+          return {
+            fileName: record.fileName,
+            workType: '',
+            variety: '',
+            detail: '',
+            station: '',
+            remarks: '',
+            description: '',
+            hasBoard: false,
+            detectedText: '',
+            reasoning: ''
+          };
+        }
+      });
+
       // Apply context relay: inherit station, variety, and workType from previous photos
       // This ensures continuity across sequential photos (e.g., 未舗装部舗装工 persists)
       let lastKnownStation = "";
       let lastKnownVariety = "";
       let lastKnownWorkType = "";
-      const finalResults = validResults.map((res, idx) => {
-        const targetRecord = records[idx];
-
+      const finalResults = matchedResults.map((res) => {
         // Apply context relay for empty fields
         const station = res.station || lastKnownStation;
         const variety = res.variety || lastKnownVariety;
@@ -819,8 +843,7 @@ export const analyzePhotoBatch = async (
         if (res.variety) lastKnownVariety = res.variety;
         if (res.workType) lastKnownWorkType = res.workType;
 
-        // Ensure fileName is from the original record to maintain order and correctness
-        return { ...res, station, variety, workType, fileName: targetRecord.fileName };
+        return { ...res, station, variety, workType };
       });
 
       // Validate against master data and log warnings for AI-invented values
