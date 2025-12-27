@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode } from '../types';
-import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings, MousePointer } from 'lucide-react';
+import { Upload, FileUp, HardHat, Camera, MessageSquare, Trash2, Check, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, Cpu, ChevronDown } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
-import { getSelectedModel } from '../services/geminiService';
+import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -49,6 +49,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [instruction, setInstruction] = useState("");
   const [useCache, setUseCache] = useState(true); // Default to True
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
+  const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
 
   // コスト見積もり
   const costEstimate = useMemo(() => {
@@ -102,6 +103,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   // 解析を開始
   const handleConfirmStart = () => {
     if (pendingFiles && pendingFiles.length > 0) {
+      setSelectedModel(selectedModelLocal); // モデル設定を保存
       onStartProcessing(pendingFiles, instruction, useCache);
       setPendingFiles(null);
     }
@@ -297,13 +299,54 @@ const UploadView: React.FC<UploadViewProps> = ({
                   </div>
                 </div>
 
-                {/* Cache Notice */}
-                {useCache && (
-                  <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 p-2 rounded-lg">
-                    <Database className="w-4 h-4" />
-                    <span>キャッシュ有効: 既に解析済みの画像はスキップされます</span>
+                {/* Settings Section */}
+                <div className="space-y-3 border-t border-gray-200 pt-4">
+                  {/* Model Selection */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1.5 block">使用モデル</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {AVAILABLE_MODELS.map((model) => (
+                        <button
+                          key={model.id}
+                          onClick={() => setSelectedModelLocal(model.id)}
+                          className={`p-2 rounded-lg border text-xs transition-all ${
+                            selectedModelLocal === model.id
+                              ? 'bg-blue-50 border-blue-500 text-blue-700'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="font-medium truncate">{model.name.replace('Gemini ', '')}</div>
+                          <div className="text-[10px] text-gray-400 truncate">{model.description.split('（')[0]}</div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                )}
+
+                  {/* Cache Toggle */}
+                  <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-700">キャッシュを使用</span>
+                    </div>
+                    <button
+                      onClick={() => setUseCache(!useCache)}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${
+                        useCache ? 'bg-blue-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                          useCache ? 'left-6' : 'left-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {useCache && (
+                    <p className="text-[10px] text-green-600 pl-1">
+                      解析済みの写真はスキップしてAPI消費を抑えます
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}
