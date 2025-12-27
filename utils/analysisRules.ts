@@ -243,6 +243,72 @@ export const getEnabledRules = (settings: RuleSettings): AnalysisRule[] => {
   return ANALYSIS_RULES.filter(rule => settings[rule.id]);
 };
 
+// ============================================
+// ルール違反チェック
+// ============================================
+
+export interface RuleViolation {
+  ruleId: string;
+  ruleName: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+/**
+ * AIの解析結果をルールに照らしてチェック
+ * @param result 解析結果
+ * @param settings 有効なルール設定
+ * @returns 違反リスト
+ */
+export const checkRuleViolations = (
+  result: { photoCategory?: string; remarksCategory?: string; remarksValue?: string; detail?: string },
+  settings: RuleSettings
+): RuleViolation[] => {
+  const violations: RuleViolation[] = [];
+
+  // tp_value_required: 温度写真には実測値が必須
+  if (settings['tp_value_required']) {
+    const tempCategories = ['到着温度', '敷均し温度', '初期締固め前温度', '開放温度'];
+    if (tempCategories.includes(result.remarksCategory || '')) {
+      if (!result.remarksValue || !result.remarksValue.includes('℃')) {
+        violations.push({
+          ruleId: 'tp_value_required',
+          ruleName: '実測値必須',
+          message: `温度写真(${result.remarksCategory})に実測値がありません`,
+          severity: 'error'
+        });
+      }
+    }
+  }
+
+  // tp_no_generic: 汎用表現禁止
+  if (settings['tp_no_generic']) {
+    const genericTerms = ['温度測定', 'アスファルト混合物温度測定'];
+    if (genericTerms.includes(result.remarksCategory || '')) {
+      violations.push({
+        ruleId: 'tp_no_generic',
+        ruleName: '汎用表現禁止',
+        message: `「${result.remarksCategory}」は禁止。具体的な温度種別（到着温度等）を使用してください`,
+        severity: 'error'
+      });
+    }
+  }
+
+  // hr_kou_suffix: 「工」は細別まで - 備考に「工」が付いていたら警告
+  if (settings['hr_kou_suffix']) {
+    if (result.remarksCategory && result.remarksCategory.endsWith('工')) {
+      violations.push({
+        ruleId: 'hr_kou_suffix',
+        ruleName: '「工」は細別まで',
+        message: `備考に「${result.remarksCategory}」: 備考には「工」を付けないでください`,
+        severity: 'warning'
+      });
+    }
+  }
+
+  return violations;
+};
+
 // ルール設定をプロンプト用テキストに変換
 export const rulesToPromptText = (settings: RuleSettings): string => {
   const enabledRules = getEnabledRules(settings);
