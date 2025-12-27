@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -33,6 +33,7 @@ interface PreviewViewProps {
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto: (fileName: string) => void;
   onAutoPair: () => void;
+  onManualPair: () => void;
   onSortByDate: () => void;
   onSendInstruction?: (instruction: string) => void;
   onSelectCacheFolder?: () => void;
@@ -61,6 +62,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onUpdatePhoto,
   onDeletePhoto,
   onAutoPair,
+  onManualPair,
   onSortByDate,
   onSendInstruction,
   onSelectCacheFolder,
@@ -179,8 +181,30 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          <div className="flex gap-2 items-center">
 
 
+            {/* Pairing Buttons */}
+            <div className="flex bg-slate-700 rounded overflow-hidden mr-2">
+              <button
+                onClick={handleAutoPairClick}
+                className="px-3 py-2 text-xs font-medium text-slate-300 hover:bg-blue-600 hover:text-white transition-colors flex items-center gap-1"
+                disabled={isProcessing}
+                title={txt.btnPairing}
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">AI</span>
+              </button>
+              <button
+                onClick={() => { setPhotosPerPage(2); onManualPair(); }}
+                className="px-3 py-2 text-xs font-medium text-slate-300 hover:bg-amber-500 hover:text-white transition-colors flex items-center gap-1 border-l border-slate-600"
+                disabled={isProcessing}
+                title={lang === 'ja' ? '手動ペアリング' : 'Manual Pairing'}
+              >
+                <MousePointer className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">{lang === 'ja' ? '手動' : 'Manual'}</span>
+              </button>
+            </div>
+
             {/* Refine Button */}
-            <button 
+            <button
               onClick={onRefine}
               className="p-2 bg-purple-600 hover:bg-purple-500 rounded text-white shadow-lg shadow-purple-900/20 mr-2"
               disabled={isProcessing}

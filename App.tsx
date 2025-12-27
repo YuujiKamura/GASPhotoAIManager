@@ -15,6 +15,7 @@ import LimitModal from './components/LimitModal';
 import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
 import UsagePanel from './components/UsagePanel';
+import ManualPairingModal from './components/ManualPairingModal';
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -65,6 +66,8 @@ export default function App() {
   const [selectionStart, setSelectionStart] = useState(1);
   const [selectionCount, setSelectionCount] = useState(MAX_PHOTOS);
   const [showRefineModal, setShowRefineModal] = useState(false);
+  const [showManualPairing, setShowManualPairing] = useState(false);
+  const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   // Store initial instruction if files are pending selection
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
@@ -612,6 +615,84 @@ export default function App() {
     const sorted = sortPhotosLogical([...photos]);
     setPhotos(sorted);
     setSuccessMsg(lang === 'ja' ? "測点・シーン情報に基づいて並び替えました" : "Sorted by Scene & Phase");
+  };
+
+  // --- Manual Pairing ---
+
+  const handleOpenManualPairing = (photosToUse: PhotoRecord[]) => {
+    setManualPairingPhotos(photosToUse);
+    setShowManualPairing(true);
+  };
+
+  const handleManualPairingComplete = (pairs: Array<{ before: PhotoRecord, after: PhotoRecord, id: string }>) => {
+    // プロンプトから測点名を抽出
+    const locationName = extractLocationName(activeInstruction || initialInstruction);
+
+    // ペアをPhotoRecord[]に変換
+    const pairedPhotos: PhotoRecord[] = [];
+    pairs.forEach((pair, index) => {
+      const sceneId = `MANUAL_S${index + 1}`;
+
+      const beforePhoto: PhotoRecord = {
+        ...pair.before,
+        analysis: {
+          ...(pair.before.analysis || {
+            fileName: pair.before.fileName,
+            workType: '',
+            variety: '',
+            detail: '',
+            station: '',
+            remarks: '',
+            description: '',
+            hasBoard: false,
+            detectedText: ''
+          }),
+          sceneId,
+          phase: 'before' as const,
+          station: locationName,
+          remarks: '着手前'
+        },
+        status: 'done'
+      };
+
+      const afterPhoto: PhotoRecord = {
+        ...pair.after,
+        analysis: {
+          ...(pair.after.analysis || {
+            fileName: pair.after.fileName,
+            workType: '',
+            variety: '',
+            detail: '',
+            station: '',
+            remarks: '',
+            description: '',
+            hasBoard: false,
+            detectedText: ''
+          }),
+          sceneId,
+          phase: 'after' as const,
+          station: locationName,
+          remarks: '竣工'
+        },
+        status: 'done'
+      };
+
+      pairedPhotos.push(beforePhoto, afterPhoto);
+    });
+
+    setPhotos(pairedPhotos);
+    setStats({
+      total: pairedPhotos.length,
+      processed: pairedPhotos.length,
+      success: pairedPhotos.length,
+      failed: 0,
+      cached: 0
+    });
+    setInitialLayout(2); // 2-upレイアウトに切り替え
+    setShowPreview(true);
+    setShowManualPairing(false);
+    setSuccessMsg(lang === 'ja' ? `${pairs.length}組のペアを手動作成しました` : `Created ${pairs.length} pairs manually`);
+    addLog(`手動ペアリング完了: ${pairs.length}組`, 'success');
   };
 
   // --- Pipeline Steps ---
@@ -1205,6 +1286,7 @@ export default function App() {
         onUpdatePhoto={handleUpdatePhoto}
         onDeletePhoto={handleDeletePhoto}
         onAutoPair={handleAutoPair}
+        onManualPair={() => handleOpenManualPairing(photos)}
         onSortByDate={handleSmartSort}
         onSendInstruction={handleConsoleInstruction}
         onSelectCacheFolder={handleSelectCacheFolder}
@@ -1238,6 +1320,15 @@ export default function App() {
           photos={photos}
           onClose={() => setShowRefineModal(false)}
           onRunAnalysis={handleRefineAnalysis}
+        />
+      )}
+
+      {showManualPairing && (
+        <ManualPairingModal
+          photos={manualPairingPhotos}
+          lang={lang}
+          onComplete={handleManualPairingComplete}
+          onCancel={() => setShowManualPairing(false)}
         />
       )}
     </>
