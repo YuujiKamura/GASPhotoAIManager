@@ -11,6 +11,7 @@ import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
 import { learnFromOrder, getLearnedOrderValue } from './utils/learnedSortOrder';
 import { applyAliasesToRecords, loadAliasSettings, hasAliases } from './utils/workTypeAliases';
+import { recordManualEdit, initLearningService } from './services/learningService';
 
 // Components
 import UploadView from './components/UploadView';
@@ -138,6 +139,9 @@ export default function App() {
   useEffect(() => {
     const initLoad = async () => {
       try {
+        // 学習サービスを初期化
+        await initLearningService();
+
         // File System Cache の復元を試みる
         if (fsCache.isAvailable()) {
           const restored = await fsCache.restoreHandle();
@@ -471,6 +475,9 @@ export default function App() {
   const handleUpdatePhoto = (fileName: string, field: keyof AIAnalysisResult, value: string) => {
     setPhotos(prev => prev.map(p => {
       if (p.fileName === fileName && p.analysis) {
+        // 元の値を保存（学習用）
+        const oldValue = String(p.analysis[field] || '');
+
         // Track which fields are manually edited
         const editedFields = p.analysis.editedFields ? [...p.analysis.editedFields] : [];
         if (!editedFields.includes(field as string)) {
@@ -485,6 +492,13 @@ export default function App() {
 
         // Update persistent cache immediately so future loads reflect manual edits
         cacheAnalysis(p, updatedAnalysis).catch(e => console.error("Cache update failed", e));
+
+        // 学習サービスに修正を記録（自動でGitHubにプッシュされる）
+        if (oldValue !== value) {
+          recordManualEdit(p.analysis, field, oldValue, value).catch(e =>
+            console.warn("Failed to record edit for learning:", e)
+          );
+        }
 
         return {
           ...p,
