@@ -91,6 +91,89 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       },
       required: ['filePath', 'newContent', 'commitMessage']
     }
+  },
+  // === 追加ツール：検証・分析系 ===
+  {
+    name: 'runLint',
+    description: 'ESLintを実行してコードスタイルと軽微なエラーを検出する',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        filePath: {
+          type: Type.STRING,
+          description: '検査するファイルパス（省略で全体）'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'runTypeCheck',
+    description: 'TypeScriptの型チェックを実行する（tsc --noEmit）',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'getGitHistory',
+    description: '最近のコミット履歴を取得して変更の流れを理解する',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        count: {
+          type: Type.NUMBER,
+          description: '取得するコミット数（デフォルト10）'
+        },
+        filePath: {
+          type: Type.STRING,
+          description: '特定ファイルの履歴のみ取得'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'getPackageInfo',
+    description: 'package.jsonから依存パッケージやスクリプトを確認する',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'getDiff',
+    description: '2つのコード内容の差分を取得する',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        oldContent: {
+          type: Type.STRING,
+          description: '変更前のコード'
+        },
+        newContent: {
+          type: Type.STRING,
+          description: '変更後のコード'
+        }
+      },
+      required: ['oldContent', 'newContent']
+    }
+  },
+  {
+    name: 'parseErrors',
+    description: 'ビルド/Lint/型エラーを解析して修正方針を立てる',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        errorOutput: {
+          type: Type.STRING,
+          description: 'エラー出力テキスト'
+        }
+      },
+      required: ['errorOutput']
+    }
   }
 ];
 
@@ -136,6 +219,115 @@ export const executeToolCall = async (
       return await pushCodeEdit(token, args.filePath, args.newContent, args.commitMessage);
     }
 
+    case 'runLint': {
+      const { runCommand } = await import('./webContainerService');
+      const target = args.filePath || '.';
+      return await runCommand(`npx eslint ${target} --format json`, onLog);
+    }
+
+    case 'runTypeCheck': {
+      const { runCommand } = await import('./webContainerService');
+      return await runCommand('npx tsc --noEmit', onLog);
+    }
+
+    case 'getGitHistory': {
+      const count = args.count || 10;
+      const url = args.filePath
+        ? `https://api.github.com/repos/YuujiKamura/GASPhotoAIManager/commits?path=${encodeURIComponent(args.filePath)}&per_page=${count}`
+        : `https://api.github.com/repos/YuujiKamura/GASPhotoAIManager/commits?per_page=${count}`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      });
+
+      if (!response.ok) return null;
+
+      const commits = await response.json();
+      return commits.map((c: any) => ({
+        sha: c.sha.slice(0, 7),
+        message: c.commit.message.split('\n')[0],
+        author: c.commit.author.name,
+        date: c.commit.author.date
+      }));
+    }
+
+    case 'getPackageInfo': {
+      const { fetchCodeFile } = await import('./githubSync');
+      const result = await fetchCodeFile(token, 'package.json');
+      if (!result) return null;
+
+      const pkg = JSON.parse(result.content);
+      return {
+        name: pkg.name,
+        version: pkg.version,
+        scripts: pkg.scripts,
+        dependencies: Object.keys(pkg.dependencies || {}),
+        devDependencies: Object.keys(pkg.devDependencies || {})
+      };
+    }
+
+    case 'getDiff': {
+      // 簡易diff: 行ごとの追加・削除を検出
+      const oldLines = args.oldContent.split('\n');
+      const newLines = args.newContent.split('\n');
+
+      const added: string[] = [];
+      const removed: string[] = [];
+
+      // 単純な比較（本格的にはdiff-match-patchなど使う）
+      const oldSet = new Set(oldLines);
+      const newSet = new Set(newLines);
+
+      for (const line of newLines) {
+        if (!oldSet.has(line)) added.push(line);
+      }
+      for (const line of oldLines) {
+        if (!newSet.has(line)) removed.push(line);
+      }
+
+      return { added, removed, summary: `+${added.length} -${removed.length}` };
+    }
+
+    case 'parseErrors': {
+      // エラー出力をパースして構造化
+      const lines = args.errorOutput.split('\n');
+      const errors: Array<{ file?: string; line?: number; message: string; type: string }> = [];
+
+      for (const line of lines) {
+        // TypeScript error: TS2345: ...
+        const tsMatch = line.match(/(.+)\((\d+),\d+\):\s*error\s*(TS\d+):\s*(.+)/);
+        if (tsMatch) {
+          errors.push({
+            file: tsMatch[1],
+            line: parseInt(tsMatch[2]),
+            type: tsMatch[3],
+            message: tsMatch[4]
+          });
+          continue;
+        }
+
+        // ESLint: /path/file.ts:10:5: error ...
+        const eslintMatch = line.match(/(.+):(\d+):\d+:\s*(error|warning)\s+(.+)/);
+        if (eslintMatch) {
+          errors.push({
+            file: eslintMatch[1],
+            line: parseInt(eslintMatch[2]),
+            type: eslintMatch[3],
+            message: eslintMatch[4]
+          });
+        }
+      }
+
+      return {
+        errorCount: errors.filter(e => e.type !== 'warning').length,
+        warningCount: errors.filter(e => e.type === 'warning').length,
+        errors
+      };
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -157,17 +349,41 @@ export const runAIAgent = async (
   const genAI = new GoogleGenAI({ apiKey });
 
   const systemPrompt = `あなたはコード編集AIエージェントです。
-ユーザーの要求に応じて、以下のツールを使ってコードを調査・編集できます。
+ユーザーの要求に応じて、ツールを使ってコードを調査・編集できます。
+
+## 利用可能なツール
+
+### 調査系
+- listDirectory: ディレクトリ一覧
+- fetchCodeFile: ファイル内容を読む
+- searchCode: コード検索
+- getGitHistory: 変更履歴
+- getPackageInfo: 依存関係確認
+
+### 検証系
+- runLint: ESLintでコードスタイルチェック
+- runTypeCheck: TypeScript型チェック
+- validateCodeChange: ビルド検証
+- parseErrors: エラー解析
+
+### 編集系
+- getDiff: 変更差分を確認
+- pushCodeEdit: GitHubにプッシュ
 
 ## 作業フロー
-1. まず listDirectory や searchCode でコードベースを調査
-2. fetchCodeFile で関連ファイルを読む
-3. 変更が必要な場合は validateCodeChange でビルド検証
-4. 検証成功したら pushCodeEdit でGitHubにプッシュ
+1. getPackageInfo と listDirectory でプロジェクト構成を把握
+2. getGitHistory で最近の変更を確認
+3. searchCode と fetchCodeFile で関連コードを読む
+4. 変更案を作成し getDiff で確認
+5. validateCodeChange でビルド検証
+6. エラーがあれば parseErrors で分析し修正
+7. runLint と runTypeCheck で品質確認
+8. 問題なければ pushCodeEdit でプッシュ
 
 ## 注意
 - 変更前に必ず現在のコードを読むこと
 - ビルド検証なしでプッシュしないこと
+- エラーが出たら parseErrors で分析して修正を試みること
 - 小さな変更を積み重ねること`;
 
   const chat = genAI.chats.create({

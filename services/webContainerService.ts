@@ -233,3 +233,38 @@ export const getWebContainerStatus = (): 'not-supported' | 'not-booted' | 'booti
   if (webcontainerInstance) return 'ready';
   return 'not-booted';
 };
+
+/**
+ * 任意のコマンドを実行
+ */
+export const runCommand = async (
+  command: string,
+  onLog?: (log: string) => void
+): Promise<{ success: boolean; output: string }> => {
+  const container = await bootWebContainer();
+
+  console.log(`[WebContainer] Running: ${command}`);
+  onLog?.(`実行中: ${command}`);
+
+  const parts = command.split(' ');
+  const cmd = parts[0];
+  const args = parts.slice(1);
+
+  const process = await container.spawn(cmd, args);
+
+  let output = '';
+
+  process.output.pipeTo(new WritableStream({
+    write(data) {
+      output += data;
+      onLog?.(data);
+    }
+  }));
+
+  const exitCode = await process.exit;
+
+  return {
+    success: exitCode === 0,
+    output
+  };
+};
