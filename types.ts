@@ -109,9 +109,10 @@ export interface AnalysisSession {
 // 解析履歴（セッション単位で保存）
 export interface AnalysisHistoryEntry {
   id: string;                      // ユニークID (UUID)
-  createdAt: number;               // 解析日時
+  createdAt: number;               // 作成日時
+  updatedAt: number;               // 更新日時（自動保存で更新）
   photoCount: number;              // 写真数
-  instruction: string;             // 使用した指示文
+  instruction?: string;            // 使用した指示文（解析前は未設定）
   workTypes: string[];             // 含まれる工種（サマリー用）
   photos: PhotoRecord[];           // 写真データ（base64含む）
   modelUsed?: string;              // 使用モデル

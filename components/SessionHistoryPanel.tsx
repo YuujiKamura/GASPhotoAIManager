@@ -118,7 +118,7 @@ const SessionHistoryPanel: React.FC<Props> = ({ onLoad, onClose }) => {
                       {/* Date & Time */}
                       <div className="flex items-center gap-2 text-gray-700 font-medium">
                         <Calendar className="w-4 h-4 text-purple-500" />
-                        <span>{formatFullDate(entry.createdAt)}</span>
+                        <span>{formatFullDate(entry.updatedAt || entry.createdAt)}</span>
                       </div>
 
                       {/* Stats */}

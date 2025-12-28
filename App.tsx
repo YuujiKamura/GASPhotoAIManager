@@ -4,7 +4,7 @@ import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection, getSelectedModel } from './services/geminiService';
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
-import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
+import { saveCurrentSession, loadCurrentSession, clearCurrentSession, startNewSession, restoreSessionFromHistory, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, deleteAnalysisHistory } from './utils/storage';
 import { extractSessionFromPdf, isSmartPdf } from './utils/pdfGenerator';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
@@ -146,7 +146,7 @@ export default function App() {
           }
         }
 
-        const savedPhotos = await loadProjectData();
+        const savedPhotos = await loadCurrentSession();
         if (savedPhotos && savedPhotos.length > 0) {
           setPhotos(savedPhotos);
           const success = savedPhotos.filter(p => p.status === 'done').length;
@@ -154,7 +154,7 @@ export default function App() {
           const cached = savedPhotos.filter(p => p.fromCache).length;
           setStats({ total: savedPhotos.length, processed: success + failed, success, failed, cached });
           setShowPreview(true); // Restore view if data exists
-          addLog("Restored previous session data.", 'success');
+          addLog("セッションを復元しました", 'success');
         }
       } catch (err) {
         console.error("Failed to load session", err);
@@ -165,12 +165,12 @@ export default function App() {
     initLoad();
   }, []);
 
-  // Auto-Save
+  // Auto-Save to history
   useEffect(() => {
     if (!isStorageLoaded) return;
     const timer = setTimeout(() => {
       if (photos.length > 0) {
-        saveProjectData(photos).catch(console.error);
+        saveCurrentSession(photos).catch(console.error);
       }
     }, 500); // Reduced to 500ms for snappier saves
     return () => clearTimeout(timer);
@@ -298,7 +298,7 @@ export default function App() {
       setPendingFiles(null);
       setInitialLayout(3); // レイアウトをデフォルトに戻す
       clearLogs();
-      await clearProjectData();
+      await clearCurrentSession(); // セッションIDをクリア（履歴は残る）
     }
   };
 
@@ -466,9 +466,6 @@ export default function App() {
     }));
   };
 
-  const handleResume = () => {
-    setShowPreview(true);
-  };
 
   // --- Sorting Logic ---
 
@@ -995,14 +992,19 @@ export default function App() {
   };
 
   // 履歴から読み込み
-  const handleLoadHistory = (entry: AnalysisHistoryEntry) => {
+  const handleLoadHistory = async (entry: AnalysisHistoryEntry) => {
+    // 履歴からセッションを復元（セッションIDも更新）
+    await restoreSessionFromHistory(entry.id);
     setPhotos(entry.photos);
-    setInitialInstruction(entry.instruction);
-    setActiveInstruction(entry.instruction);
+    if (entry.instruction) {
+      setInitialInstruction(entry.instruction);
+      setActiveInstruction(entry.instruction);
+    }
     setShowPreview(true);
     setShowHistory(false);
-    addLog(`履歴読み込み: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success');
-    setSuccessMsg(`${entry.photoCount}枚の写真を履歴から読み込みました`);
+    const dateStr = new Date(entry.updatedAt || entry.createdAt).toLocaleString('ja-JP');
+    addLog(`セッション復元: ${entry.photoCount}枚 (${dateStr})`, 'success');
+    setSuccessMsg(`${entry.photoCount}枚の写真をセッションから復元しました`);
   };
 
   // --- Pipeline Steps ---
@@ -1753,7 +1755,6 @@ export default function App() {
           apiKey={apiKey || ''}
           setAppMode={setAppMode}
           onStartProcessing={handleStartProcessing}
-          onResume={handleResume}
           onCloseProject={handleCloseProject}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}

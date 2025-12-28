@@ -15,7 +15,6 @@ interface UploadViewProps {
   apiKey: string; // Only for checking availability
   setAppMode: (mode: AppMode) => void;
   onStartProcessing: (files: File[], instruction: string, useCache: boolean, sortPolicy: SortPolicy) => void;
-  onResume: () => void;
   onCloseProject: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -38,7 +37,6 @@ const UploadView: React.FC<UploadViewProps> = ({
   apiKey,
   setAppMode,
   onStartProcessing,
-  onResume,
   onCloseProject,
   onExportJson,
   onImportJson,
@@ -465,12 +463,6 @@ const UploadView: React.FC<UploadViewProps> = ({
         )}
 
         <div className="flex gap-4 items-center">
-          {photos.length > 0 && (
-            <button onClick={onResume} className="hover:text-gray-800 transition-colors border-b border-transparent hover:border-gray-800 pb-0.5">
-              {txt.resumeLabel}
-            </button>
-          )}
-          <span className="w-px bg-gray-300 mx-1 h-4"></span>
           <button onClick={onExportJson} className="hover:text-gray-800 transition-colors">
             Backup (JSON)
           </button>

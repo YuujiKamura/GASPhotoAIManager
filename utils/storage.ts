@@ -3,14 +3,14 @@ import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
 const DB_VERSION = 6; // Version 6: Added analysisHistory store
-const STORE_SESSION = 'projectData';
+const STORE_SESSION = 'projectData'; // Legacy - kept for migration
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
 const STORE_EXAMPLES = 'analysisExamples'; // Store for few-shot examples
 const STORE_SESSIONS = 'analysisSessions'; // Store for saved sessions (お手本セッション)
-const STORE_HISTORY = 'analysisHistory'; // Store for analysis history (履歴)
-const KEY_SESSION = 'currentSession';
-const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
+const STORE_HISTORY = 'analysisHistory'; // Store for analysis history (履歴) - NOW MAIN SESSION STORE
+const KEY_CURRENT_SESSION_ID = 'currentSessionId'; // LocalStorage key for current session ID
+const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected example session
 
 export interface AnalysisRule {
   id: string;
@@ -71,44 +71,205 @@ const openDB = (): Promise<IDBDatabase> => {
   });
 };
 
-// --- Session Management (Current View) ---
+// --- Session Management (Unified with History) ---
 
-export const saveProjectData = async (photos: PhotoRecord[]): Promise<void> => {
-  if (photos.length === 0) return;
+/**
+ * 現在のセッションIDを取得
+ */
+export const getCurrentSessionId = (): string | null => {
+  return localStorage.getItem(KEY_CURRENT_SESSION_ID);
+};
 
-  // We NOW store the full record including the File object (supported by IDB).
-  // This ensures that on reload, the 'originalFile' is preserved.
+/**
+ * 現在のセッションIDを設定
+ */
+export const setCurrentSessionId = (id: string): void => {
+  localStorage.setItem(KEY_CURRENT_SESSION_ID, id);
+};
+
+/**
+ * 現在のセッションIDをクリア
+ */
+export const clearCurrentSessionId = (): void => {
+  localStorage.removeItem(KEY_CURRENT_SESSION_ID);
+};
+
+/**
+ * 新しいセッションを開始（IDを生成して設定）
+ */
+export const startNewSession = (): string => {
+  const id = crypto.randomUUID();
+  setCurrentSessionId(id);
+  return id;
+};
+
+/**
+ * 現在のセッションを履歴に保存/更新（自動保存用）
+ */
+export const saveCurrentSession = async (
+  photos: PhotoRecord[],
+  instruction?: string,
+  modelUsed?: string
+): Promise<AnalysisHistoryEntry | null> => {
+  if (photos.length === 0) return null;
+
   const db = await openDB();
+  let sessionId = getCurrentSessionId();
+  const now = Date.now();
+
+  // 工種をサマリーとして抽出
+  const workTypes = [...new Set(
+    photos
+      .map(p => p.analysis?.workType)
+      .filter((w): w is string => !!w)
+  )];
+
+  // 既存セッションがあれば更新、なければ新規作成
+  if (sessionId) {
+    const existing = await getAnalysisHistoryEntry(sessionId);
+    if (existing) {
+      // 更新
+      const updated: AnalysisHistoryEntry = {
+        ...existing,
+        updatedAt: now,
+        photoCount: photos.length,
+        photos,
+        workTypes,
+        instruction: instruction || existing.instruction,
+        modelUsed: modelUsed || existing.modelUsed
+      };
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+        const store = transaction.objectStore(STORE_HISTORY);
+        const request = store.put(updated);
+        request.onsuccess = () => resolve(updated);
+        request.onerror = () => reject(request.error);
+      });
+    }
+  }
+
+  // 新規作成
+  sessionId = startNewSession();
+  const entry: AnalysisHistoryEntry = {
+    id: sessionId,
+    createdAt: now,
+    updatedAt: now,
+    photoCount: photos.length,
+    instruction,
+    workTypes,
+    photos,
+    modelUsed
+  };
+
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_SESSION, 'readwrite');
-    const store = transaction.objectStore(STORE_SESSION);
-    const request = store.put(photos, KEY_SESSION);
-    request.onsuccess = () => resolve();
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const request = store.add(entry);
+    request.onsuccess = () => resolve(entry);
     request.onerror = () => reject(request.error);
   });
 };
 
-export const loadProjectData = async (): Promise<PhotoRecord[] | null> => {
+/**
+ * 現在のセッション（または最新履歴）を読み込む
+ * 旧projectDataからのマイグレーションも行う
+ */
+export const loadCurrentSession = async (): Promise<PhotoRecord[] | null> => {
   const db = await openDB();
+
+  // 1. 現在のセッションIDがあればそれを読み込む
+  const sessionId = getCurrentSessionId();
+  if (sessionId) {
+    const entry = await getAnalysisHistoryEntry(sessionId);
+    if (entry && entry.photos.length > 0) {
+      return entry.photos;
+    }
+  }
+
+  // 2. 最新の履歴を読み込む
+  const history = await getAnalysisHistory();
+  if (history.length > 0) {
+    const latest = history[0]; // 新しい順でソート済み
+    setCurrentSessionId(latest.id);
+    return latest.photos;
+  }
+
+  // 3. 旧projectDataからマイグレーション
+  const legacyPhotos = await loadLegacyProjectData(db);
+  if (legacyPhotos && legacyPhotos.length > 0) {
+    // 履歴に移行
+    const entry = await saveCurrentSession(legacyPhotos);
+    if (entry) {
+      // 旧データを削除
+      await clearLegacyProjectData(db);
+      return legacyPhotos;
+    }
+  }
+
+  return null;
+};
+
+/**
+ * 旧projectDataを読み込む（マイグレーション用）
+ */
+const loadLegacyProjectData = async (db: IDBDatabase): Promise<PhotoRecord[] | null> => {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_SESSION, 'readonly');
-    const store = transaction.objectStore(STORE_SESSION);
-    const request = store.get(KEY_SESSION);
-    request.onsuccess = () => resolve(request.result as PhotoRecord[] || null);
-    request.onerror = () => reject(request.error);
+    try {
+      const transaction = db.transaction(STORE_SESSION, 'readonly');
+      const store = transaction.objectStore(STORE_SESSION);
+      const request = store.get('currentSession');
+      request.onsuccess = () => resolve(request.result as PhotoRecord[] || null);
+      request.onerror = () => resolve(null); // エラーでもnullを返す
+    } catch {
+      resolve(null);
+    }
   });
 };
 
-export const clearProjectData = async (): Promise<void> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_SESSION, 'readwrite');
-    const store = transaction.objectStore(STORE_SESSION);
-    const request = store.delete(KEY_SESSION);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+/**
+ * 旧projectDataをクリア（マイグレーション後）
+ */
+const clearLegacyProjectData = async (db: IDBDatabase): Promise<void> => {
+  return new Promise((resolve) => {
+    try {
+      const transaction = db.transaction(STORE_SESSION, 'readwrite');
+      const store = transaction.objectStore(STORE_SESSION);
+      const request = store.delete('currentSession');
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve(); // エラーでも続行
+    } catch {
+      resolve();
+    }
   });
 };
+
+/**
+ * 現在のセッションをクリア（プロジェクトを閉じる時）
+ */
+export const clearCurrentSession = async (): Promise<void> => {
+  const sessionId = getCurrentSessionId();
+  if (sessionId) {
+    // 履歴は残す（必要なら削除は別途）
+  }
+  clearCurrentSessionId();
+};
+
+/**
+ * 履歴から特定のセッションを復元
+ */
+export const restoreSessionFromHistory = async (id: string): Promise<PhotoRecord[] | null> => {
+  const entry = await getAnalysisHistoryEntry(id);
+  if (entry && entry.photos.length > 0) {
+    setCurrentSessionId(id);
+    return entry.photos;
+  }
+  return null;
+};
+
+// Legacy aliases for backward compatibility (will be removed later)
+export const saveProjectData = saveCurrentSession;
+export const loadProjectData = loadCurrentSession;
+export const clearProjectData = clearCurrentSession;
 
 // --- Persistent Analysis Cache (Data Pool) ---
 
@@ -661,43 +822,23 @@ export const importRulesFromJson = (jsonStr: string): AnalysisRule[] => {
 // ============================================
 
 /**
- * 解析結果を履歴として保存
+ * 解析結果を履歴として保存（現在のセッションを更新）
  */
 export const saveAnalysisHistory = async (
   photos: PhotoRecord[],
   instruction: string,
   modelUsed?: string
 ): Promise<AnalysisHistoryEntry> => {
-  const db = await openDB();
-
-  // 工種をサマリーとして抽出
-  const workTypes = [...new Set(
-    photos
-      .map(p => p.analysis?.workType)
-      .filter((w): w is string => !!w)
-  )];
-
-  const entry: AnalysisHistoryEntry = {
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
-    photoCount: photos.length,
-    instruction,
-    workTypes,
-    photos,
-    modelUsed
-  };
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
-    const store = transaction.objectStore(STORE_HISTORY);
-    const request = store.add(entry);
-    request.onsuccess = () => resolve(entry);
-    request.onerror = () => reject(request.error);
-  });
+  // 現在のセッションを更新する形で保存
+  const entry = await saveCurrentSession(photos, instruction, modelUsed);
+  if (!entry) {
+    throw new Error('Failed to save analysis history');
+  }
+  return entry;
 };
 
 /**
- * 履歴一覧を取得（新しい順）
+ * 履歴一覧を取得（更新日時の新しい順）
  */
 export const getAnalysisHistory = async (): Promise<AnalysisHistoryEntry[]> => {
   const db = await openDB();
@@ -707,8 +848,8 @@ export const getAnalysisHistory = async (): Promise<AnalysisHistoryEntry[]> => {
     const request = store.getAll();
     request.onsuccess = () => {
       const entries = request.result as AnalysisHistoryEntry[];
-      // 新しい順にソート
-      entries.sort((a, b) => b.createdAt - a.createdAt);
+      // updatedAtがあればそれで、なければcreatedAtでソート（新しい順）
+      entries.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
       resolve(entries);
     };
     request.onerror = () => reject(request.error);
