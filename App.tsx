@@ -1484,8 +1484,11 @@ export default function App() {
       const isReanalyzeAllRequest = instruction === "__REANALYZE__" ||
         (instruction && /全体|すべて|全件|全部|all\s*(photos?)?|re-?analyze\s*all/i.test(instruction));
 
+      addLog(`[DEBUG] instruction="${instruction}", isReanalyzeAllRequest=${isReanalyzeAllRequest}, photos.length=${photos.length}`, 'info');
+
       if (isReanalyzeAllRequest) {
         targetFileNames = photos.map(p => p.fileName);
+        addLog(`[DEBUG] targetFileNames.length=${targetFileNames.length}`, 'info');
         if (instruction === "__REANALYZE__") {
           addLog("Re-analyzing ALL photos.", 'info');
         } else {
