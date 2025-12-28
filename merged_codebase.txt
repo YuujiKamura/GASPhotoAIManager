@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 08:16:15
+生成日時: 2025-12-29 08:17:59
 ================================================================================
 
 === ファイル一覧 ===
@@ -3355,13 +3355,43 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                         </div>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(
-                              `タスク: ${task.title}\nID: ${task.id}\n説明: ${task.description}\nファイル: ${task.file || 'なし'}`
-                            );
+                            const prompt = `# タスク: ${task.title}
+
+## 概要
+${task.description}
+
+## 対象ファイル
+${task.file || '複数ファイル'}
+
+## 作業内容
+${task.priority === 'high' ?
+`1. まず対象ファイルを読んで現状を把握
+2. 分離できるロジックを特定（カスタムフック、ユーティリティ、サブコンポーネント等）
+3. 新規ファイルを作成して移行
+4. 元ファイルからimportに置き換え
+5. ビルド確認してコミット` :
+task.id.startsWith('refactor-') ?
+`1. 対象ファイルを読んで冗長な部分を特定
+2. 重複コードの共通化
+3. 不要なコードの削除
+4. ビルド確認してコミット` :
+`1. 対象ファイルを確認
+2. 必要な変更を実施
+3. ビルド確認してコミット`}
+
+## 完了条件
+${task.estimatedLines ? `- 目標: ${task.estimatedLines}行以上削減` : '- 機能が正常動作すること'}
+- npm run build が通ること
+- 完了したらダッシュボードのタスク状態を更新
+
+## タスクID
+${task.id}`;
+                            navigator.clipboard.writeText(prompt);
+                            alert('📋 クリップボードにコピーしました！\n\n新しいClaudeチャットに貼り付けてください');
                           }}
-                          className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+                          className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 whitespace-nowrap"
                         >
-                          📋 Copy
+                          📋 指示をコピー
                         </button>
                       </div>
                     </div>
