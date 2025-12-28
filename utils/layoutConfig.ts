@@ -110,16 +110,8 @@ export const LAYOUT_FIELDS: FieldDefinition[] = [
     id: 'f_measurements',
     key: 'measurements',
     labelKey: 'labelMeasurements',
-    rowSpan: 2,
-    heightClass: 'h-[56px]', // 2 rows for measurement data
-    multiline: true
-  },
-  {
-    id: 'f_description',
-    key: 'description',
-    labelKey: 'labelDescription',
     rowSpan: 3,
-    heightClass: 'flex-1', // Takes remaining space
+    heightClass: 'flex-1', // Takes remaining space (was description's role)
     multiline: true
   }
 ];
