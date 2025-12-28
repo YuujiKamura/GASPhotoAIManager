@@ -456,9 +456,31 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     }
   };
 
+  // 工種をカテゴリ別に並べ替え（舗装系→構造物系→上下水道系→その他）
+  const workTypeCategoryOrder: Record<string, number> = {
+    // 舗装系
+    '舗装工': 1,
+    '道路土工': 2,
+    '区画線工': 3,
+    // 構造物系
+    '構造物撤去工': 10,
+    // 上下水道系
+    '排水構造物工': 20,
+    '人孔改良工': 21,
+    // その他
+    '仮設工': 30,
+  };
+
   const workTypeList = Array.from(allWorkTypes.values())
     .filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    .sort((a, b) => {
+      const orderA = workTypeCategoryOrder[a.name] ?? 100;
+      const orderB = workTypeCategoryOrder[b.name] ?? 100;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return a.name.localeCompare(b.name, 'ja');
+    });
 
   const categoryShortNames: Record<string, string> = {
     '着手前及び完成写真': '着工/完成',
