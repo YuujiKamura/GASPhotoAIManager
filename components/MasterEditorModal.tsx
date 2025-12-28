@@ -457,6 +457,8 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   };
 
   // 工種をカテゴリ別に並べ替え（舗装系→構造物系→上下水道系→その他）
+  // 未分類の工種は末尾に配置
+  const UNCATEGORIZED_ORDER = 100;
   const workTypeCategoryOrder: Record<string, number> = {
     // 舗装系
     '舗装工': 1,
@@ -474,8 +476,8 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   const workTypeList = Array.from(allWorkTypes.values())
     .filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
-      const orderA = workTypeCategoryOrder[a.name] ?? 100;
-      const orderB = workTypeCategoryOrder[b.name] ?? 100;
+      const orderA = workTypeCategoryOrder[a.name] ?? UNCATEGORIZED_ORDER;
+      const orderB = workTypeCategoryOrder[b.name] ?? UNCATEGORIZED_ORDER;
       if (orderA !== orderB) {
         return orderA - orderB;
       }
