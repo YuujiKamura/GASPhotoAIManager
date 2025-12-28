@@ -1619,7 +1619,7 @@ export default function App() {
       addLog(`${extractedImages.length}枚の画像を抽出しました`, 'info');
 
       // セッションデータと画像をマッチング
-      const restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
+      let restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
         const fileName = data.fileName || `photo_${index + 1}.jpg`;
 
         // 抽出した画像があれば使用
@@ -1648,7 +1648,47 @@ export default function App() {
         };
       });
 
-      const matchedCount = restoredPhotos.filter(p => p.base64).length;
+      let matchedCount = restoredPhotos.filter(p => p.base64).length;
+
+      // PDFから画像が取得できなかった場合、フォルダ選択を提案
+      const missingCount = restoredPhotos.length - matchedCount;
+      if (missingCount > 0 && 'showDirectoryPicker' in window) {
+        const shouldSelectFolder = window.confirm(
+          lang === 'ja'
+            ? `${missingCount}枚の画像がPDFから抽出できませんでした。\n元の画像フォルダを選択して復元しますか？`
+            : `${missingCount} images could not be extracted from PDF.\nSelect the original image folder to restore?`
+        );
+
+        if (shouldSelectFolder) {
+          try {
+            // @ts-ignore - File System Access API
+            const dirHandle = await window.showDirectoryPicker();
+            addLog('フォルダ選択: 画像を検索中...', 'info');
+
+            // フォルダ内のファイルを検索
+            for await (const entry of dirHandle.values()) {
+              if (entry.kind === 'file') {
+                const missingPhoto = restoredPhotos.find(p => p.fileName === entry.name && !p.base64);
+                if (missingPhoto) {
+                  const file = await entry.getFile();
+                  const { base64, mimeType } = await processImageForAI(file);
+                  missingPhoto.base64 = base64;
+                  missingPhoto.mimeType = mimeType;
+                  missingPhoto.fileSize = file.size;
+                  missingPhoto.lastModified = file.lastModified;
+                  matchedCount++;
+                  addLog(`  ✓ ${entry.name}`, 'success');
+                }
+              }
+            }
+          } catch (folderErr: any) {
+            if (folderErr.name !== 'AbortError') {
+              console.error('Folder selection error:', folderErr);
+              addLog('フォルダ選択エラー', 'error');
+            }
+          }
+        }
+      }
 
       setPhotos(restoredPhotos);
       setStats({
@@ -1667,8 +1707,8 @@ export default function App() {
         addLog(`PDFから${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`, 'success');
         setSuccessMsg(`${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`);
       } else {
-        addLog(`PDFから${restoredPhotos.length}枚の解析データを復元しました（画像抽出失敗）`, 'info');
-        setSuccessMsg(`${restoredPhotos.length}枚の解析データを復元しました（画像抽出失敗）`);
+        addLog(`PDFから${restoredPhotos.length}枚の解析データを復元しました（画像なし）`, 'info');
+        setSuccessMsg(`${restoredPhotos.length}枚の解析データを復元しました（画像なし）`);
       }
 
     } catch (err: any) {
