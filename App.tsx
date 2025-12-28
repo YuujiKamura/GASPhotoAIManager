@@ -1622,15 +1622,19 @@ export default function App() {
       let restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
         const fileName = data.fileName || `photo_${index + 1}.jpg`;
 
-        // 抽出した画像があれば使用
+        // 抽出した画像があれば使用（データURL形式で設定）
         let base64 = '';
         if (extractedImages[index]) {
           const bytes = extractedImages[index].data;
+          const mimeType = extractedImages[index].mimeType || 'image/jpeg';
+          // チャンク処理でパフォーマンス改善
+          const chunkSize = 8192;
           let binary = '';
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, Array.from(chunk));
           }
-          base64 = btoa(binary);
+          base64 = `data:${mimeType};base64,${btoa(binary)}`;
         }
 
         return {

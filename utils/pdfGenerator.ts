@@ -122,9 +122,10 @@ export const extractImagesFromPdf = async (
       const objs = page.objs;
 
       // OperatorListから画像オブジェクトを探す
+      const OPS = pdfjsLib.OPS;
       for (let i = 0; i < operatorList.fnArray.length; i++) {
-        // OPS.paintImageXObject = 85, OPS.paintJpegXObject = 82
-        if (operatorList.fnArray[i] === 85 || operatorList.fnArray[i] === 82) {
+        const op = operatorList.fnArray[i];
+        if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
           const imgName = operatorList.argsArray[i][0];
 
           try {
