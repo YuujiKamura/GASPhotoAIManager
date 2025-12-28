@@ -7,6 +7,7 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
 import { getGitHubToken } from './githubSync';
+import { getApiKey } from './geminiService';
 
 // 利用可能なツールを定義（実装と連動）
 export const CODE_TOOLS: FunctionDeclaration[] = [
@@ -391,9 +392,9 @@ export const runAIAgent = async (
   onLog?: (log: string) => void,
   maxIterations: number = 10
 ): Promise<string> => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not set');
+    throw new Error('APIキーが設定されていません');
   }
 
   const genAI = new GoogleGenAI({ apiKey });
