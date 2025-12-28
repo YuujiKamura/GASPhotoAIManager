@@ -460,13 +460,13 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   const workTypeCategoryOrder: Record<string, number> = {
     // 舗装系
     '舗装工': 1,
-    '道路土工': 2,
-    '区画線工': 3,
+    '区画線工': 2,
     // 構造物系
-    '構造物撤去工': 10,
+    '道路土工': 10,
+    '排水構造物工': 11,
+    '構造物撤去工': 12,
     // 上下水道系
-    '排水構造物工': 20,
-    '人孔改良工': 21,
+    '人孔改良工': 20,
     // その他
     '仮設工': 30,
   };
