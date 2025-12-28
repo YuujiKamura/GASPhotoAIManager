@@ -30,6 +30,7 @@ import NormalizationPreviewModal, { OriginalData } from './components/Normalizat
 import SessionHistoryPanel from './components/SessionHistoryPanel';
 import GitHubSyncPanel from './components/GitHubSyncPanel';
 import PdfLoadDialog from './components/PdfLoadDialog';
+import CodebaseHealthDashboard from './components/CodebaseHealthDashboard';
 import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
@@ -106,6 +107,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showGitHubSync, setShowGitHubSync] = useState(false);
   const [showWorkTypeConfirm, setShowWorkTypeConfirm] = useState(false);
+  const [showHealthDashboard, setShowHealthDashboard] = useState(false);
   const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
 
   // Normalization approval flow
@@ -2011,7 +2013,12 @@ export default function App() {
         />
       )}
 
-      {showMasterEditor ? (
+      {showHealthDashboard ? (
+        <CodebaseHealthDashboard
+          lang={lang}
+          onClose={() => setShowHealthDashboard(false)}
+        />
+      ) : showMasterEditor ? (
         <MasterEditorModal
           lang={lang}
           onClose={() => setShowMasterEditor(false)}
@@ -2050,6 +2057,7 @@ export default function App() {
           onManualPairing={handleStartManualPairing}
           onShowHistory={() => setShowHistory(true)}
           onOpenMasterEditor={() => setShowMasterEditor(true)}
+          onOpenHealthDashboard={() => setShowHealthDashboard(true)}
           onAskAI={handleAskAI}
           onClearLogs={clearLogs}
         />
