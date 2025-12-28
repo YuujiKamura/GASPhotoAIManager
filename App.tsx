@@ -1735,21 +1735,74 @@ export default function App() {
       }
 
       // セッションデータがない場合、テキスト解析を試みる
+      // 画像が抽出できなかった場合はフォルダ選択を提案
+      let folderImages: { file: File; base64: string; mimeType: string }[] = [];
+
       if (!sessionData || sessionData.length === 0) {
         if (extractedImages.length === 0) {
-          alert(lang === 'ja'
-            ? 'このPDFから画像を抽出できませんでした。'
-            : 'Could not extract images from this PDF.');
-          return;
+          // 画像がPDFに埋め込まれていない場合、フォルダ選択を提案
+          if ('showDirectoryPicker' in window) {
+            const shouldSelectFolder = window.confirm(
+              lang === 'ja'
+                ? 'このPDFから画像を抽出できませんでした。\n画像フォルダを選択して読み込みますか？'
+                : 'Could not extract images from this PDF.\nWould you like to select an image folder?'
+            );
+
+            if (shouldSelectFolder) {
+              try {
+                // @ts-ignore - File System Access API
+                const dirHandle = await window.showDirectoryPicker();
+                addLog('フォルダ選択: 画像を読み込み中...', 'info');
+
+                // フォルダ内の画像ファイルを収集
+                for await (const entry of dirHandle.values()) {
+                  if (entry.kind === 'file') {
+                    const file = await entry.getFile();
+                    if (file.type.startsWith('image/')) {
+                      const { base64, mimeType } = await processImageForAI(file);
+                      folderImages.push({ file, base64, mimeType });
+                      addLog(`  ✓ ${file.name}`, 'success');
+                    }
+                  }
+                }
+
+                // ファイル名でソート
+                folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
+                addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
+
+                if (folderImages.length === 0) {
+                  alert(lang === 'ja'
+                    ? '選択したフォルダに画像がありませんでした。'
+                    : 'No images found in the selected folder.');
+                  return;
+                }
+              } catch (folderErr: any) {
+                if (folderErr.name === 'AbortError') {
+                  return; // ユーザーがキャンセル
+                }
+                console.error('Folder selection error:', folderErr);
+                setErrorMsg('フォルダ選択エラー');
+                return;
+              }
+            } else {
+              return; // ユーザーがキャンセル
+            }
+          } else {
+            alert(lang === 'ja'
+              ? 'このPDFから画像を抽出できませんでした。'
+              : 'Could not extract images from this PDF.');
+            return;
+          }
         }
 
         addLog('セッションデータなし - テキスト解析を試行...', 'info');
 
         // ユーザーに確認
+        const imageCount = folderImages.length > 0 ? folderImages.length : extractedImages.length;
         const shouldProceed = window.confirm(
           lang === 'ja'
-            ? `このPDFにはセッションデータが含まれていません。\n${extractedImages.length}枚の画像が見つかりました。\n\nテキストを解析して復元を試みますか？`
-            : `This PDF does not contain session data.\nFound ${extractedImages.length} images.\n\nWould you like to try text analysis to restore?`
+            ? `このPDFにはセッションデータが含まれていません。\n${imageCount}枚の画像が見つかりました。\n\nテキストを解析して復元を試みますか？`
+            : `This PDF does not contain session data.\nFound ${imageCount} images.\n\nWould you like to try text analysis to restore?`
         );
 
         if (!shouldProceed) {
@@ -1760,18 +1813,39 @@ export default function App() {
         addLog('PDFテキストを解析中...', 'info');
         const textData = await extractTextWithPositions(pdfFile);
 
+        // フォルダから読み込んだ画像があればそちらを使用
+        const actualImageCount = folderImages.length > 0 ? folderImages.length : extractedImages.length;
+
         // ページ数から1ページあたりの写真数を推測
         const totalPages = textData.length;
-        const photosPerPage: 2 | 3 = totalPages > 0 && extractedImages.length / totalPages <= 2.5 ? 2 : 3;
+        const photosPerPage: 2 | 3 = totalPages > 0 && actualImageCount / totalPages <= 2.5 ? 2 : 3;
         addLog(`レイアウト推定: ${photosPerPage}枚/ページ`, 'info');
 
         // テキストからセッションデータを生成
-        sessionData = parsePositionedTextToRecords(textData, extractedImages.length, photosPerPage);
+        sessionData = parsePositionedTextToRecords(textData, actualImageCount, photosPerPage);
         addLog(`テキスト解析完了: ${sessionData.length}件のレコードを生成`, 'info');
       }
 
       // セッションデータと画像をマッチング
       let restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
+        // フォルダから読み込んだ画像があればそちらを優先
+        if (folderImages.length > 0 && folderImages[index]) {
+          const img = folderImages[index];
+          return {
+            fileName: img.file.name,
+            base64: img.base64,
+            mimeType: img.mimeType,
+            fileSize: img.file.size,
+            lastModified: img.file.lastModified,
+            status: (data.status as any) || 'done',
+            date: data.date,
+            analysis: data.analysis,
+            sceneId: data.sceneId,
+            phase: data.phase,
+            fromCache: false
+          };
+        }
+
         const fileName = data.fileName || `photo_${index + 1}.jpg`;
 
         // 抽出した画像があれば使用（データURL形式で設定）
