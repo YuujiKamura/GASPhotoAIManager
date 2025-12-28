@@ -24,19 +24,70 @@ export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void =
   }
 };
 
-// API Key Management (localStorage for persistence)
+// API Key Management (暗号化対応)
+import { encrypt, decrypt } from '../utils/crypto';
+
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
+const ENCRYPTED_KEY_STORAGE = 'gaspm_encrypted_api_key';
+const MASTER_HASH_KEY = 'gaspm_master_hash';
+
+// メモリキャッシュ（同期アクセス用）
+let cachedApiKey: string | null = null;
 
 export const getApiKey = (): string | null => {
+  // メモリキャッシュがあればそれを返す
+  if (cachedApiKey) return cachedApiKey;
+  // フォールバック: 平文localStorage（移行期間）
   return localStorage.getItem(API_KEY_STORAGE_KEY);
 };
 
 export const setApiKey = (key: string): void => {
+  cachedApiKey = key;
+  // 平文でも保存（移行期間・フォールバック用）
   localStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
-export const clearApiKey = (): void => {
+// 暗号化してAPIキーを保存
+export const setApiKeyEncrypted = async (key: string, masterPassword: string): Promise<void> => {
+  cachedApiKey = key;
+  const { encrypted, iv, salt } = await encrypt(key, masterPassword);
+  localStorage.setItem(ENCRYPTED_KEY_STORAGE, JSON.stringify({ encrypted, iv, salt }));
+  // 平文版を削除
   localStorage.removeItem(API_KEY_STORAGE_KEY);
+};
+
+// 暗号化されたAPIキーを復号してロード
+export const loadApiKeyEncrypted = async (masterPassword: string): Promise<boolean> => {
+  const stored = localStorage.getItem(ENCRYPTED_KEY_STORAGE);
+  if (!stored) return false;
+
+  try {
+    const { encrypted, iv, salt } = JSON.parse(stored);
+    const decrypted = await decrypt(encrypted, masterPassword, iv, salt);
+    if (decrypted && decrypted.startsWith('AIza')) {
+      cachedApiKey = decrypted;
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+// 暗号化されたAPIキーが存在するか
+export const hasEncryptedApiKey = (): boolean => {
+  return !!localStorage.getItem(ENCRYPTED_KEY_STORAGE);
+};
+
+// マスターパスワードが設定済みか
+export const hasMasterPassword = (): boolean => {
+  return !!localStorage.getItem(MASTER_HASH_KEY);
+};
+
+export const clearApiKey = (): void => {
+  cachedApiKey = null;
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  localStorage.removeItem(ENCRYPTED_KEY_STORAGE);
 };
 
 export const hasApiKey = (): boolean => {
