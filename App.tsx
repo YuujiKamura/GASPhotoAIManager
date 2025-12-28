@@ -10,6 +10,7 @@ import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
 import { learnFromOrder, getLearnedOrderValue } from './utils/learnedSortOrder';
+import { applyAliasesToRecords, loadAliasSettings, hasAliases } from './utils/workTypeAliases';
 
 // Components
 import UploadView from './components/UploadView';
@@ -1754,6 +1755,18 @@ export default function App() {
         <MasterEditorModal
           lang={lang}
           onClose={() => setShowMasterEditor(false)}
+          onApplyAliasesToSession={() => {
+            const settings = loadAliasSettings();
+            if (!settings.enabled || !hasAliases(settings)) {
+              return { modifiedCount: 0 };
+            }
+            const { modifiedCount, records } = applyAliasesToRecords(photos, settings);
+            if (modifiedCount > 0) {
+              setPhotos(records);
+              addLog(`エイリアス適用: ${modifiedCount}件のデータを変換しました`, 'success');
+            }
+            return { modifiedCount };
+          }}
         />
       ) : !showPreview ? (
         <UploadView
