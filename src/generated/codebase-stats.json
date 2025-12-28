@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-28T23:15:53.333Z",
-  "totalFiles": 92,
-  "totalLines": 30223,
+  "generatedAt": "2025-12-28T23:29:52.474Z",
+  "totalFiles": 82,
+  "totalLines": 26124,
   "largeFiles": [
     {
       "path": "App.tsx",
@@ -19,11 +19,6 @@
       "size": 35658
     },
     {
-      "path": "services/gemini/analysis.ts",
-      "lines": 1088,
-      "size": 44897
-    },
-    {
       "path": "utils/pdfGenerator.ts",
       "lines": 927,
       "size": 31630
@@ -34,24 +29,29 @@
       "size": 26474
     },
     {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 734,
+      "size": 30959
+    },
+    {
       "path": "components/PhotoAlbumView.tsx",
       "lines": 715,
       "size": 31320
     },
     {
-      "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 704,
-      "size": 29869
-    },
-    {
-      "path": "scripts/test-pdf-image-extraction.ts",
-      "lines": 702,
-      "size": 23411
-    },
-    {
       "path": "components/PreviewView.tsx",
       "lines": 642,
       "size": 28993
+    },
+    {
+      "path": "services/githubSync.ts",
+      "lines": 617,
+      "size": 17419
+    },
+    {
+      "path": "services/aiAgentService.ts",
+      "lines": 589,
+      "size": 17175
     }
   ],
   "components": {
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (704行)",
+      "components/CodebaseHealthDashboard.tsx (734行)",
       "components/ConsolePanel.tsx (171行)",
       "components/ExamplesModal.tsx (317行)",
       "components/GitHubSyncPanel.tsx (341行)",
@@ -86,15 +86,19 @@
     ]
   },
   "services": {
-    "count": 19,
+    "count": 23,
     "files": [
       "services/agentContext.ts (198行)",
       "services/aiAgentService.ts (589行)",
-      "services/gemini/analysis.ts (1088行)",
+      "services/gemini/analysis.ts (509行)",
       "services/gemini/apiKey.ts (170行)",
+      "services/gemini/helpers.ts (106行)",
       "services/gemini/index.ts (88行)",
+      "services/gemini/interactiveAnalysis.ts (156行)",
       "services/gemini/models.ts (150行)",
       "services/gemini/normalization.ts (445行)",
+      "services/gemini/systemPrompts.ts (260行)",
+      "services/gemini/workTypeSelector.ts (119行)",
       "services/geminiService.ts (12行)",
       "services/githubSync.ts (617行)",
       "services/learningService.ts (462行)",
@@ -169,15 +173,6 @@
       "estimatedLines": 596
     },
     {
-      "id": "split-services-gemini-analysis-ts",
-      "title": "services/gemini/analysis.ts を分割",
-      "description": "1088行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出",
-      "file": "services/gemini/analysis.ts",
-      "priority": "medium",
-      "status": "todo",
-      "estimatedLines": 588
-    },
-    {
       "id": "refactor-utils-pdfGenerator-ts",
       "title": "utils/pdfGenerator.ts をリファクタ",
       "description": "927行。重複削除・ロジック整理で300行以下を目指す",
@@ -196,6 +191,15 @@
       "estimatedLines": 518
     },
     {
+      "id": "refactor-components-CodebaseHealthDashboard-tsx",
+      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
+      "description": "734行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "components/CodebaseHealthDashboard.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 434
+    },
+    {
       "id": "refactor-components-PhotoAlbumView-tsx",
       "title": "components/PhotoAlbumView.tsx をリファクタ",
       "description": "715行。重複削除・ロジック整理で300行以下を目指す",
@@ -203,24 +207,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 415
-    },
-    {
-      "id": "refactor-components-CodebaseHealthDashboard-tsx",
-      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "704行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/CodebaseHealthDashboard.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 404
-    },
-    {
-      "id": "refactor-scripts-test-pdf-image-extraction-ts",
-      "title": "scripts/test-pdf-image-extraction.ts をリファクタ",
-      "description": "702行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "scripts/test-pdf-image-extraction.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 402
     },
     {
       "id": "refactor-components-PreviewView-tsx",
@@ -293,6 +279,15 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 213
+    },
+    {
+      "id": "refactor-services-gemini-analysis-ts",
+      "title": "services/gemini/analysis.ts をリファクタ",
+      "description": "509行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "services/gemini/analysis.ts",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 209
     },
     {
       "id": "apply-hooks",
