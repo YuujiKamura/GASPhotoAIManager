@@ -5,6 +5,7 @@ import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWor
 import { trackUsage } from "./usageTracker";
 import { getRelevantExamples, getActiveSession } from "../utils/storage";
 import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../utils/analysisRules";
+import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "./learningService";
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -1127,7 +1128,20 @@ export const analyzePhotoBatch = async (
   }
 
   const systemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy, ruleSettings);
-  const fullSystemPrompt = examplesPrompt ? `${systemPrompt}\n\n${examplesPrompt}` : systemPrompt;
+
+  // 学習ルールを取得してプロンプトに追加
+  let learnedRulesPrompt = "";
+  try {
+    const learnedSettings = await getLearnedSettings();
+    if (learnedSettings.rules.length > 0 || learnedSettings.aliases.length > 0) {
+      learnedRulesPrompt = learnedRulesToPromptText(learnedSettings);
+      onLog?.(`[LEARNING] ${learnedSettings.rules.length}件のルール、${learnedSettings.aliases.length}件のエイリアスを適用`, "success");
+    }
+  } catch (e) {
+    console.warn('Failed to load learned settings:', e);
+  }
+
+  const fullSystemPrompt = [systemPrompt, examplesPrompt, learnedRulesPrompt].filter(Boolean).join('\n\n');
 
   // Context relay: Build context hint from previously analyzed photos in this batch
   let contextHint = "";
