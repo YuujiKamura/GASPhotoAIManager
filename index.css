@@ -1,3 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Tailwind v4: Import the default theme to get all colors */
+@theme {
+  /* Use default Tailwind colors */
+}
