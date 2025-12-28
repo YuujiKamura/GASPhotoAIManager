@@ -26,6 +26,7 @@ import StationReplaceModal from './components/StationReplaceModal';
 import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
 import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
 import SessionHistoryPanel from './components/SessionHistoryPanel';
+import GitHubSyncPanel from './components/GitHubSyncPanel';
 import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
@@ -99,6 +100,7 @@ export default function App() {
   const [showMasterEditor, setShowMasterEditor] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showGitHubSync, setShowGitHubSync] = useState(false);
   const [showWorkTypeConfirm, setShowWorkTypeConfirm] = useState(false);
   const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
 
@@ -1968,6 +1970,7 @@ export default function App() {
           }
           return { modifiedCount };
         }}
+        onOpenGitHubSync={() => setShowGitHubSync(true)}
       />
       )}
 
@@ -2036,6 +2039,12 @@ export default function App() {
         <SessionHistoryPanel
           onLoad={handleLoadHistory}
           onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {showGitHubSync && (
+        <GitHubSyncPanel
+          onClose={() => setShowGitHubSync(false)}
         />
       )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical, Star, RefreshCw } from 'lucide-react';
+import { FileText, Loader2, Download, Printer, AlertCircle, ZoomIn, Maximize, Home, Wand2, X, Database, FileArchive, Layers, GitCompare, CalendarClock, Check, FileText as FileTextIcon, MousePointer, StopCircle, Settings, ArrowUpDown, Save, ChevronDown, Replace, MoreVertical, Star, RefreshCw, Github } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -46,6 +46,7 @@ interface PreviewViewProps {
   onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
   onOpenStationReplace?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
+  onOpenGitHubSync?: () => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
@@ -79,7 +80,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onOpenMasterEditor,
   onReorderPhotos,
   onOpenStationReplace,
-  onApplyAliases
+  onApplyAliases,
+  onOpenGitHubSync
 }) => {
   const txt = TRANS[lang];
   const [scale, setScale] = useState(1);
@@ -493,6 +495,16 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                       >
                         <RefreshCw className="w-4 h-4 text-cyan-400" />
                         {lang === 'ja' ? 'エイリアス適用' : 'Apply Aliases'}
+                      </button>
+                    )}
+                    {onOpenGitHubSync && (
+                      <button
+                        onClick={() => { onOpenGitHubSync(); setShowToolsMenu(false); }}
+                        className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-purple-600 flex items-center gap-2 transition-colors"
+                        title={lang === 'ja' ? '学習データをGitHubと同期' : 'Sync learned data with GitHub'}
+                      >
+                        <Github className="w-4 h-4 text-purple-400" />
+                        {lang === 'ja' ? 'GitHub同期' : 'GitHub Sync'}
                       </button>
                     )}
                   </div>
