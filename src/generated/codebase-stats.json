@@ -1,17 +1,12 @@
 {
-  "generatedAt": "2025-12-28T23:41:23.801Z",
-  "totalFiles": 107,
-  "totalLines": 30415,
+  "generatedAt": "2025-12-28T23:42:14.171Z",
+  "totalFiles": 111,
+  "totalLines": 30326,
   "largeFiles": [
     {
       "path": "App.tsx",
       "lines": 2212,
       "size": 84723
-    },
-    {
-      "path": "components/MasterEditorModal.tsx",
-      "lines": 1105,
-      "size": 41701
     },
     {
       "path": "utils/pdfGenerator.ts",
@@ -52,15 +47,21 @@
       "path": "services/aiAgentService.ts",
       "lines": 589,
       "size": 17175
+    },
+    {
+      "path": "components/UploadView.tsx",
+      "lines": 555,
+      "size": 23417
     }
   ],
   "components": {
-    "count": 26,
+    "count": 27,
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
       "components/CodebaseHealthDashboard.tsx (780行)",
       "components/ConsolePanel.tsx (171行)",
+      "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
       "components/GitHubSyncPanel.tsx (341行)",
       "components/InteractiveAnalysisDialog/index.tsx (288行)",
@@ -68,7 +69,7 @@
       "components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts (228行)",
       "components/LimitModal.tsx (74行)",
       "components/ManualPairingModal.tsx (290行)",
-      "components/MasterEditorModal.tsx (1105行)",
+      "components/MasterEditorModal.tsx (349行)",
       "components/ModelValidation.tsx (381行)",
       "components/NormalizationPresetsPanel.tsx (241行)",
       "components/NormalizationPreviewModal.tsx (228行)",
@@ -114,18 +115,20 @@
     ]
   },
   "hooks": {
-    "count": 6,
+    "count": 8,
     "files": [
-      "hooks/index.ts (6行)",
+      "hooks/index.ts (8行)",
       "hooks/useAppModals.ts (90行)",
       "hooks/useFsCache.ts (66行)",
+      "hooks/useMasterEditorAlias.ts (145行)",
+      "hooks/useMasterEditorState.ts (151行)",
       "hooks/useNormalizationFlow.ts (46行)",
       "hooks/usePendingState.ts (76行)",
       "hooks/useProcessingState.ts (95行)"
     ]
   },
   "utils": {
-    "count": 26,
+    "count": 27,
     "files": [
       "utils/analysisRules.ts (330行)",
       "utils/constructionMaster.ts (818行)",
@@ -135,6 +138,7 @@
       "utils/imageUtils.ts (90行)",
       "utils/layoutConfig.ts (119行)",
       "utils/learnedSortOrder.ts (89行)",
+      "utils/masterEditorStorage.ts (165行)",
       "utils/pdfGenerator.ts (927行)",
       "utils/storage/analysisCache.ts (103行)",
       "utils/storage/dbCore.ts (68行)",
@@ -164,15 +168,6 @@
       "priority": "high",
       "status": "todo",
       "estimatedLines": 1712
-    },
-    {
-      "id": "split-components-MasterEditorModal-tsx",
-      "title": "components/MasterEditorModal.tsx を分割",
-      "description": "1105行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出",
-      "file": "components/MasterEditorModal.tsx",
-      "priority": "medium",
-      "status": "todo",
-      "estimatedLines": 605
     },
     {
       "id": "refactor-utils-pdfGenerator-ts",
@@ -303,7 +298,7 @@
     {
       "id": "apply-hooks",
       "title": "カスタムフックをApp.tsxに適用",
-      "description": "hooks/ の 6 個のフックをApp.tsxで使用して状態管理を整理",
+      "description": "hooks/ の 8 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
       "status": "todo",
