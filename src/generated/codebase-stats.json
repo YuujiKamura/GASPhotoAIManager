@@ -1,13 +1,8 @@
 {
-  "generatedAt": "2025-12-28T23:42:14.171Z",
-  "totalFiles": 111,
-  "totalLines": 30326,
+  "generatedAt": "2025-12-28T23:43:19.782Z",
+  "totalFiles": 117,
+  "totalLines": 29985,
   "largeFiles": [
-    {
-      "path": "App.tsx",
-      "lines": 2212,
-      "size": 84723
-    },
     {
       "path": "utils/pdfGenerator.ts",
       "lines": 927,
@@ -32,6 +27,11 @@
       "path": "scripts/test-pdf-image-extraction.ts",
       "lines": 702,
       "size": 23411
+    },
+    {
+      "path": "hooks/useAnalysisHandlers.ts",
+      "lines": 684,
+      "size": 28145
     },
     {
       "path": "components/PreviewView.tsx",
@@ -115,31 +115,37 @@
     ]
   },
   "hooks": {
-    "count": 8,
+    "count": 11,
     "files": [
-      "hooks/index.ts (8行)",
+      "hooks/index.ts (11行)",
+      "hooks/useAnalysisHandlers.ts (684行)",
+      "hooks/useApiKey.ts (60行)",
       "hooks/useAppModals.ts (90行)",
       "hooks/useFsCache.ts (66行)",
       "hooks/useMasterEditorAlias.ts (145行)",
       "hooks/useMasterEditorState.ts (151行)",
       "hooks/useNormalizationFlow.ts (46行)",
       "hooks/usePendingState.ts (76行)",
+      "hooks/usePhotosState.ts (171行)",
       "hooks/useProcessingState.ts (95行)"
     ]
   },
   "utils": {
-    "count": 27,
+    "count": 30,
     "files": [
       "utils/analysisRules.ts (330行)",
       "utils/constructionMaster.ts (818行)",
       "utils/crypto.ts (149行)",
       "utils/excelGenerator.ts (243行)",
+      "utils/fileHandlers.ts (95行)",
       "utils/fileSystemCache.ts (355行)",
       "utils/imageUtils.ts (90行)",
       "utils/layoutConfig.ts (119行)",
       "utils/learnedSortOrder.ts (89行)",
+      "utils/locationUtils.ts (43行)",
       "utils/masterEditorStorage.ts (165行)",
       "utils/pdfGenerator.ts (927行)",
+      "utils/sortingUtils.ts (276行)",
       "utils/storage/analysisCache.ts (103行)",
       "utils/storage/dbCore.ts (68行)",
       "utils/storage/examples.ts (185行)",
@@ -160,15 +166,6 @@
     ]
   },
   "tasks": [
-    {
-      "id": "split-App-tsx",
-      "title": "App.tsx を分割",
-      "description": "2212行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出",
-      "file": "App.tsx",
-      "priority": "high",
-      "status": "todo",
-      "estimatedLines": 1712
-    },
     {
       "id": "refactor-utils-pdfGenerator-ts",
       "title": "utils/pdfGenerator.ts をリファクタ",
@@ -215,6 +212,15 @@
       "estimatedLines": 402
     },
     {
+      "id": "refactor-hooks-useAnalysisHandlers-ts",
+      "title": "hooks/useAnalysisHandlers.ts をリファクタ",
+      "description": "684行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "hooks/useAnalysisHandlers.ts",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 384
+    },
+    {
       "id": "refactor-components-PreviewView-tsx",
       "title": "components/PreviewView.tsx をリファクタ",
       "description": "642行。重複削除・ロジック整理で300行以下を目指す",
@@ -249,6 +255,15 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 255
+    },
+    {
+      "id": "refactor-App-tsx",
+      "title": "App.tsx をリファクタ",
+      "description": "539行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "App.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 239
     },
     {
       "id": "refactor-services-personalStorage-ts",
@@ -298,7 +313,7 @@
     {
       "id": "apply-hooks",
       "title": "カスタムフックをApp.tsxに適用",
-      "description": "hooks/ の 8 個のフックをApp.tsxで使用して状態管理を整理",
+      "description": "hooks/ の 11 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
       "status": "todo",
