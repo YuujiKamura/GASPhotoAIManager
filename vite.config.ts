@@ -24,6 +24,22 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              // PDF関連を別チャンクに分離
+              'pdf': ['pdfjs-dist', 'pdf-lib'],
+              // React関連をvendorチャンクに
+              'vendor': ['react', 'react-dom'],
+              // UI関連
+              'ui': ['lucide-react'],
+            },
+          },
+        },
+        // チャンクサイズ警告の閾値を上げる
+        chunkSizeWarningLimit: 600,
+      },
     };
 });
