@@ -82,7 +82,11 @@ export const TRANS = {
     showReasoning: "Show AI Reasoning",
     reasoningTitle: "AI Reasoning",
     noReasoning: "No reasoning available for this analysis.",
-    closeBtn: "Close"
+    closeBtn: "Close",
+    changeLogTitle: "Change History",
+    noChanges: "No changes were made during processing.",
+    changedFrom: "From",
+    changedTo: "To"
   },
   ja: {
     appTitle: "工事写真帳メーカー",
@@ -167,6 +171,10 @@ export const TRANS = {
     showReasoning: "判断根拠を表示",
     reasoningTitle: "AI判断根拠",
     noReasoning: "この解析に判断根拠がありません。",
-    closeBtn: "閉じる"
+    closeBtn: "閉じる",
+    changeLogTitle: "変更履歴",
+    noChanges: "処理中に変更はありませんでした。",
+    changedFrom: "変更前",
+    changedTo: "変更後"
   }
 };

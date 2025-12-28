@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample } from "../types";
+import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample, FieldChange, ChangeStage } from "../types";
 import { extractBase64Data } from "../utils/imageUtils";
 import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../utils/constructionMaster";
 import { trackUsage } from "./usageTracker";
@@ -113,6 +113,45 @@ export const setAutoApiSettings = (settings: Partial<AutoApiSettings>): void => 
   const current = getAutoApiSettings();
   const updated = { ...current, ...settings };
   localStorage.setItem(AUTO_API_SETTINGS_KEY, JSON.stringify(updated));
+};
+
+// ============================================
+// 変更履歴追跡ヘルパー
+// ============================================
+
+/**
+ * フィールドの変更を記録する
+ */
+const trackFieldChange = (
+  changeLog: FieldChange[],
+  field: string,
+  stage: ChangeStage,
+  before: string,
+  after: string,
+  reason?: string
+): void => {
+  if (before !== after) {
+    changeLog.push({ field, stage, before, after, reason });
+  }
+};
+
+/**
+ * 複数フィールドの変更を一括追跡
+ */
+const trackChanges = (
+  changeLog: FieldChange[],
+  stage: ChangeStage,
+  before: Record<string, string>,
+  after: Record<string, string>,
+  reason?: string
+): void => {
+  for (const field of Object.keys(before)) {
+    const beforeVal = before[field] || '';
+    const afterVal = after[field] || '';
+    if (beforeVal !== afterVal) {
+      changeLog.push({ field, stage, before: beforeVal, after: afterVal, reason });
+    }
+  }
 };
 
 // 信頼セッションの場合は全機能を自動許可、そうでなければ個別設定を参照
@@ -1242,7 +1281,8 @@ export const analyzePhotoBatch = async (
           measurements: measurements, // 測定値は別フィールド
           hasBoard: !!item.hasBoard,
           detectedText: item.detectedText || "",
-          reasoning: item.reasoning || "" // Capture reasoning
+          reasoning: item.reasoning || "", // Capture reasoning
+          changeLog: [] // 変更履歴を初期化
         };
       });
 
@@ -1275,7 +1315,8 @@ export const analyzePhotoBatch = async (
             measurements: '',
             hasBoard: false,
             detectedText: '',
-            reasoning: ''
+            reasoning: '',
+            changeLog: []
           };
         }
       });
@@ -1296,6 +1337,8 @@ export const analyzePhotoBatch = async (
       let lastKnownMeasurements = "";
 
       const finalResults = matchedResults.map((res) => {
+        const changeLog = res.changeLog || [];
+
         // Safety management photos should keep empty workType/variety
         if (isSafetyRemarks(res.remarks || '')) {
           // Don't inherit - keep original empty values
@@ -1311,6 +1354,14 @@ export const analyzePhotoBatch = async (
         const remarks = res.remarks || lastKnownRemarks;
         const measurements = res.measurements || lastKnownMeasurements;
 
+        // 継承による変更を記録
+        trackFieldChange(changeLog, 'station', 'context_relay', res.station || '', station, '前の写真から継承');
+        trackFieldChange(changeLog, 'variety', 'context_relay', res.variety || '', variety, '前の写真から継承');
+        trackFieldChange(changeLog, 'workType', 'context_relay', res.workType || '', workType, '前の写真から継承');
+        trackFieldChange(changeLog, 'detail', 'context_relay', res.detail || '', detail, '前の写真から継承');
+        trackFieldChange(changeLog, 'remarks', 'context_relay', res.remarks || '', remarks, '前の写真から継承');
+        trackFieldChange(changeLog, 'measurements', 'context_relay', res.measurements || '', measurements, '前の写真から継承');
+
         // Update context for next iteration (only if current has value)
         if (res.station) lastKnownStation = res.station;
         if (res.variety) lastKnownVariety = res.variety;
@@ -1319,17 +1370,23 @@ export const analyzePhotoBatch = async (
         if (res.remarks) lastKnownRemarks = res.remarks;
         if (res.measurements) lastKnownMeasurements = res.measurements;
 
-        return { ...res, station, variety, workType, detail, remarks, measurements };
+        return { ...res, station, variety, workType, detail, remarks, measurements, changeLog };
       });
 
       // Validate against master data and log warnings for AI-invented values
       const validatedResults = finalResults.map(res => {
+        const changeLog = res.changeLog || [];
         const { validatedWorkType, validatedVariety, validatedDetail, warnings } =
           validateAgainstMaster(res.workType, res.variety, res.detail, res.remarks);
 
         if (warnings.length > 0) {
           onLog?.(`[MASTER警告] ${res.fileName}: ${warnings.join(', ')}`, "error");
         }
+
+        // マスタバリデーションによる変更を記録
+        trackFieldChange(changeLog, 'workType', 'master_validation', res.workType || '', validatedWorkType, 'マスタに存在しない値を修正');
+        trackFieldChange(changeLog, 'variety', 'master_validation', res.variety || '', validatedVariety, 'マスタに存在しない値を修正');
+        trackFieldChange(changeLog, 'detail', 'master_validation', res.detail || '', validatedDetail, 'マスタに存在しない値を修正');
 
         // 備考に「〜工」が含まれている場合は警告（細別以下には「工」は不要）
         if (res.remarks && res.remarks.match(/[^着手完]工/) && !res.remarks.includes('施工')) {
@@ -1354,10 +1411,13 @@ export const analyzePhotoBatch = async (
 
             // 修正を適用
             if (tempValidation.correctedCategory) {
+              trackFieldChange(changeLog, 'remarksCategory', 'temperature_validation', res.remarksCategory || '', tempValidation.correctedCategory, '温度バリデーションで修正');
               finalRemarksCategory = tempValidation.correctedCategory;
+              trackFieldChange(changeLog, 'remarks', 'temperature_validation', res.remarks || '', finalRemarksCategory, '温度バリデーションで修正');
               finalRemarks = finalRemarksCategory; // 備考はカテゴリのみ
             }
             if (tempValidation.correctedValue) {
+              trackFieldChange(changeLog, 'measurements', 'temperature_validation', res.measurements || '', tempValidation.correctedValue, '温度バリデーションで修正');
               finalMeasurements = tempValidation.correctedValue;
             }
           }
@@ -1370,7 +1430,8 @@ export const analyzePhotoBatch = async (
           detail: validatedDetail,
           remarks: finalRemarks,
           remarksCategory: finalRemarksCategory,
-          measurements: finalMeasurements
+          measurements: finalMeasurements,
+          changeLog
         };
       });
 

@@ -1,10 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
+import { PhotoRecord, AppMode, AIAnalysisResult, FieldChange, ChangeStage } from '../types';
 import { TRANS } from '../utils/translations';
 import { Trash2, Wand2, Star, Brain, X } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 import { saveExample } from '../utils/storage';
+
+// 変更段階の日本語表示
+const STAGE_LABELS: Record<ChangeStage, { ja: string; en: string; color: string }> = {
+  'ai_initial': { ja: 'AI初期解析', en: 'AI Initial', color: 'bg-blue-100 text-blue-700' },
+  'context_relay': { ja: '前後継承', en: 'Context Relay', color: 'bg-green-100 text-green-700' },
+  'master_validation': { ja: 'マスタ検証', en: 'Master Validation', color: 'bg-orange-100 text-orange-700' },
+  'temperature_validation': { ja: '温度検証', en: 'Temp Validation', color: 'bg-red-100 text-red-700' },
+  'normalization': { ja: '正規化', en: 'Normalization', color: 'bg-purple-100 text-purple-700' },
+  'user_edit': { ja: 'ユーザー編集', en: 'User Edit', color: 'bg-gray-100 text-gray-700' }
+};
+
+// フィールド名の日本語表示
+const FIELD_LABELS: Record<string, { ja: string; en: string }> = {
+  'workType': { ja: '工種', en: 'Work Type' },
+  'variety': { ja: '種別', en: 'Variety' },
+  'detail': { ja: '細別', en: 'Detail' },
+  'station': { ja: '測点', en: 'Station' },
+  'remarks': { ja: '備考', en: 'Remarks' },
+  'remarksCategory': { ja: '備考カテゴリ', en: 'Remarks Category' },
+  'measurements': { ja: '測定値', en: 'Measurements' },
+  'description': { ja: '記事', en: 'Description' }
+};
 
 interface Props {
   records: PhotoRecord[];
@@ -444,7 +466,8 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
             </div>
 
             {/* Reasoning Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* AI Reasoning */}
               {reasoningModal.reasoning ? (
                 <div className="prose prose-sm max-w-none">
                   <div className="whitespace-pre-wrap text-gray-700 leading-relaxed bg-gradient-to-br from-purple-50/50 to-indigo-50/50 p-4 rounded-lg border border-purple-100">
@@ -452,18 +475,65 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <div className="p-4 bg-gray-100 rounded-full w-fit mx-auto mb-4">
-                    <Brain className="w-8 h-8 text-gray-400" />
+                <div className="text-center py-4">
+                  <div className="p-3 bg-gray-100 rounded-full w-fit mx-auto mb-3">
+                    <Brain className="w-6 h-6 text-gray-400" />
                   </div>
-                  <p className="text-gray-500">{txt.noReasoning}</p>
-                  <p className="text-sm text-gray-400 mt-2">
+                  <p className="text-gray-500 text-sm">{txt.noReasoning}</p>
+                  <p className="text-xs text-gray-400 mt-1">
                     {lang === 'ja'
                       ? '再解析を行うと判断根拠が記録されます'
                       : 'Re-analyze the photo to record AI reasoning'}
                   </p>
                 </div>
               )}
+
+              {/* Change History */}
+              <div className="border-t border-gray-200 pt-4">
+                <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <span className="w-5 h-5 bg-amber-100 rounded flex items-center justify-center text-amber-600 text-xs">📝</span>
+                  {txt.changeLogTitle}
+                </h4>
+                {reasoningModal.analysis.changeLog && reasoningModal.analysis.changeLog.length > 0 ? (
+                  <div className="space-y-2">
+                    {reasoningModal.analysis.changeLog.map((change, idx) => {
+                      const stageInfo = STAGE_LABELS[change.stage];
+                      const fieldInfo = FIELD_LABELS[change.field] || { ja: change.field, en: change.field };
+                      return (
+                        <div key={idx} className="bg-gray-50 rounded-lg p-3 text-sm border border-gray-100">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${stageInfo.color}`}>
+                              {lang === 'ja' ? stageInfo.ja : stageInfo.en}
+                            </span>
+                            <span className="font-medium text-gray-700">
+                              {lang === 'ja' ? fieldInfo.ja : fieldInfo.en}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-500">{txt.changedFrom}:</span>
+                            <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded line-through">
+                              {change.before || '(空)'}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded font-medium">
+                              {change.after || '(空)'}
+                            </span>
+                          </div>
+                          {change.reason && (
+                            <div className="text-xs text-gray-500 mt-1 italic">
+                              {change.reason}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-400 text-sm bg-gray-50 rounded-lg">
+                    {txt.noChanges}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Modal Footer */}

@@ -41,7 +41,28 @@ export interface AIAnalysisResult {
   phase?: 'before' | 'after' | 'status' | 'unknown'; // The phase within that scene
   visualAnchors?: string; // NEW: Verbalized description of background landmarks (e.g., "White house left, Pole right")
   reasoning?: string; // NEW: AI's thought process explaining the classification
+
+  // Change tracking for transparency
+  changeLog?: FieldChange[]; // History of changes made during processing
 }
+
+// 各フィールドの変更履歴
+export interface FieldChange {
+  field: string;           // フィールド名（workType, remarks など）
+  stage: ChangeStage;      // どの段階で変更されたか
+  before: string;          // 変更前の値
+  after: string;           // 変更後の値
+  reason?: string;         // 変更理由
+}
+
+// 処理段階
+export type ChangeStage =
+  | 'ai_initial'           // AI初期解析
+  | 'context_relay'        // 前後写真からの継承
+  | 'master_validation'    // マスタデータ照合
+  | 'temperature_validation' // 温度バリデーション
+  | 'normalization'        // 正規化処理
+  | 'user_edit';           // ユーザー手動編集
 
 export interface PhotoRecord extends PhotoMetadata {
   analysis?: AIAnalysisResult;
