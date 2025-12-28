@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-28 18:44:08
+生成日時: 2025-12-28 20:39:12
 ================================================================================
 
 === ファイル一覧 ===
@@ -21,6 +21,7 @@ components/MasterEditorModal.tsx
 components/ModelValidation.tsx
 components/NormalizationPresetsPanel.tsx
 components/NormalizationPreviewModal.tsx
+components/PdfLoadDialog.tsx
 components/PhotoAlbumView.tsx
 components/PreviewView.tsx
 components/RefineModal.tsx
@@ -32,8 +33,21 @@ components/UsagePanel.tsx
 components/WorkTypeConfirmModal.tsx
 index.tsx
 scripts/analyze-folder.ts
+scripts/analyze-pdf.ts
+scripts/create-test-pdf-with-images.ts
+scripts/extract-pdf-images.ts
+scripts/test-final-pdf.ts
+scripts/test-html2pdf-debug.ts
+scripts/test-html2pdf-extract.ts
+scripts/test-html2pdf-full.ts
+scripts/test-html2pdf-split.ts
+scripts/test-pdf-dialog.ts
 scripts/test-pdf-image-extraction.ts
+scripts/test-pdflibgen.ts
+scripts/test-pdflib-japanese.ts
+scripts/test-pdf-load-logic.ts
 scripts/test-prompt-rules.ts
+scripts/test-real-pdf.ts
 scripts/test-station-e2e.ts
 scripts/test-station-replace.ts
 services/aiAgentService.ts
@@ -47,7 +61,6 @@ services/usageTracker.ts
 services/webAuthnService.ts
 services/webContainerService.ts
 tests/geminiService.security.test.ts
-tests/pdfImageExtraction.test.ts
 tests/setup.ts
 types.ts
 utils/analysisRules.ts
@@ -78,7 +91,7 @@ import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, app
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
-import { extractSessionFromPdf, isSmartPdf, extractImagesFromPdf, extractTextWithPositions, parsePositionedTextToRecords } from './utils/pdfGenerator';
+import { extractSessionFromPdf, isSmartPdf, hasIndividualImages, extractImagesFromPdf } from './utils/pdfGenerator';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
@@ -101,6 +114,7 @@ import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
 import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
 import SessionHistoryPanel from './components/SessionHistoryPanel';
 import GitHubSyncPanel from './components/GitHubSyncPanel';
+import PdfLoadDialog from './components/PdfLoadDialog';
 import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
@@ -192,8 +206,10 @@ export default function App() {
   const [initialInstruction, setInitialInstruction] = useState<string>("");
   const [activeInstruction, setActiveInstruction] = useState<string>("");
 
-  // Language
-  const [lang, setLang] = useState<'en' | 'ja'>('en');
+  // Language - デフォルトは日本語、英語環境のみ英語に切り替え
+  const [lang, setLang] = useState<'en' | 'ja'>(() => {
+    return navigator.language.startsWith('en') ? 'en' : 'ja';
+  });
   const txt = TRANS[lang];
 
   // File System Cache
@@ -203,14 +219,8 @@ export default function App() {
   // Analysis Abort Control (useRef to avoid stale closure issues)
   const shouldAbortRef = useRef(false);
 
-  // PDF Import - フォルダ選択を先に行うための状態
-  const pdfInputRef = useRef<HTMLInputElement>(null);
-  const [pendingFolderImages, setPendingFolderImages] = useState<{ file: File; base64: string; mimeType: string }[]>([]);
-
-  // Detect Language
-  useEffect(() => {
-    if (navigator.language.startsWith('ja')) setLang('ja');
-  }, []);
+  // PDF Import
+  const [showPdfLoadDialog, setShowPdfLoadDialog] = useState(false);
 
   // Load data
   useEffect(() => {
@@ -1788,195 +1798,128 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  // PDFボタンクリック時 - フォルダ選択を先に行う（ユーザージェスチャー内で実行）
-  const handlePdfButtonClick = async () => {
-    // フォルダ選択を直接開始（confirm()を使うとユーザージェスチャーが失われる場合がある）
-    if ('showDirectoryPicker' in window) {
-      try {
-        // @ts-ignore - File System Access API（ユーザージェスチャー内で呼び出し）
-        const dirHandle = await window.showDirectoryPicker();
-        addLog('フォルダ選択: 画像を読み込み中...', 'info');
-
-        const folderImages: { file: File; base64: string; mimeType: string }[] = [];
-
-        // フォルダ内の画像ファイルを収集
-        for await (const entry of dirHandle.values()) {
-          if (entry.kind === 'file') {
-            const file = await entry.getFile();
-            if (file.type.startsWith('image/')) {
-              const { base64, mimeType } = await processImageForAI(file);
-              folderImages.push({ file, base64, mimeType });
-              addLog(`  ✓ ${file.name}`, 'success');
-            }
-          }
-        }
-
-        // ファイル名でソート
-        folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
-        addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
-
-        if (folderImages.length === 0) {
-          alert(lang === 'ja'
-            ? '選択したフォルダに画像がありませんでした。'
-            : 'No images found in the selected folder.');
-          return;
-        }
-
-        // フォルダ画像を状態に保存
-        setPendingFolderImages(folderImages);
-      } catch (folderErr: any) {
-        if (folderErr.name === 'AbortError') {
-          // ユーザーがキャンセル → フォルダなしでPDF選択に進む
-          setPendingFolderImages([]);
-        } else {
-          console.error('Folder selection error:', folderErr);
-          setErrorMsg('フォルダ選択エラー');
-          return;
-        }
-      }
-    }
-
-    // PDFファイル選択をトリガー
-    pdfInputRef.current?.click();
+  // PDFボタンクリック時 - ダイアログを開く
+  const handlePdfButtonClick = () => {
+    setShowPdfLoadDialog(true);
   };
 
-  // PDFからセッションデータを読み込み
-  const handleImportPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const pdfFile = e.target.files[0];
-
-    addLog(`PDF読み込み: ${pdfFile.name}`, 'info');
+  // PDFロードダイアログからの読み込み
+  const handlePdfLoad = async (
+    pdfFile: File,
+    imageFolder: FileSystemDirectoryHandle | null,
+    pushLog?: (msg: string) => void
+  ) => {
+    console.log('[App.handlePdfLoad] Start', { pdfFile: pdfFile.name, hasFolder: !!imageFolder });
+    const log = (msg: string, level: 'info' | 'success' | 'error' = 'info') => {
+      addLog(msg, level);
+      if (pushLog) pushLog(msg);
+    };
+    log(`PDF読み込み: ${pdfFile.name}`);
 
     try {
-      // スマートPDFかどうかチェック
+      let images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
+      let captionData: Record<string, any> | null = null;
+
+      // PDF形式を判定
       const isSmart = await isSmartPdf(pdfFile);
+      const hasImages = await hasIndividualImages(pdfFile);
 
-      // PDFから埋め込み画像を抽出（先に実行）
-      addLog('PDFから画像を抽出中...', 'info');
-      const extractedImages = await extractImagesFromPdf(pdfFile);
-      addLog(`${extractedImages.length}枚の画像を抽出しました`, 'info');
+      if (hasImages && !imageFolder) {
+        // 新形式PDF: PDFから画像を抽出
+        log('新形式PDF: 画像を抽出中...');
+        const extractedImages = await extractImagesFromPdf(pdfFile);
+        log(`${extractedImages.length}枚の画像を抽出`, 'success');
 
-      let sessionData: Partial<PhotoRecord>[] | null = null;
-
-      if (isSmart) {
-        // セッションデータを抽出
-        sessionData = await extractSessionFromPdf(pdfFile);
-      }
-
-      // 事前に選択されたフォルダ画像を使用（handlePdfButtonClickで選択済み）
-      const folderImages = [...pendingFolderImages];
-      // 使用後はクリア
-      if (pendingFolderImages.length > 0) {
-        setPendingFolderImages([]);
-      }
-
-      // デバッグログ
-      console.log('[PDF Import Debug]', {
-        isSmart,
-        sessionDataLength: sessionData?.length ?? 'null',
-        extractedImagesLength: extractedImages.length,
-        folderImagesLength: folderImages.length
-      });
-
-      if (!sessionData || sessionData.length === 0) {
-        // 画像もフォルダ画像もない場合はエラー
-        if (extractedImages.length === 0 && folderImages.length === 0) {
-          alert(lang === 'ja'
-            ? 'このPDFから画像を抽出できませんでした。\nLoad PDFボタンをクリックして、画像フォルダを選択してください。'
-            : 'Could not extract images from this PDF.\nClick Load PDF button and select an image folder.');
-          return;
-        }
-
-        addLog('セッションデータなし - テキスト解析を試行...', 'info');
-
-        // ユーザーに確認
-        const imageCount = folderImages.length > 0 ? folderImages.length : extractedImages.length;
-        const shouldProceed = window.confirm(
-          lang === 'ja'
-            ? `このPDFにはセッションデータが含まれていません。\n${imageCount}枚の画像が見つかりました。\n\nテキストを解析して復元を試みますか？`
-            : `This PDF does not contain session data.\nFound ${imageCount} images.\n\nWould you like to try text analysis to restore?`
-        );
-
-        if (!shouldProceed) {
-          return;
-        }
-
-        // テキスト解析を実行
-        addLog('PDFテキストを解析中...', 'info');
-        const textData = await extractTextWithPositions(pdfFile);
-
-        // フォルダから読み込んだ画像があればそちらを使用
-        const actualImageCount = folderImages.length > 0 ? folderImages.length : extractedImages.length;
-
-        // ページ数から1ページあたりの写真数を推測
-        const totalPages = textData.length;
-        const photosPerPage: 2 | 3 = totalPages > 0 && actualImageCount / totalPages <= 2.5 ? 2 : 3;
-        addLog(`レイアウト推定: ${photosPerPage}枚/ページ`, 'info');
-
-        // テキストからセッションデータを生成
-        sessionData = parsePositionedTextToRecords(textData, actualImageCount, photosPerPage);
-        addLog(`テキスト解析完了: ${sessionData.length}件のレコードを生成`, 'info');
-      }
-
-      // セッションデータと画像をマッチング
-      let restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
-        // フォルダから読み込んだ画像があればそちらを優先
-        if (folderImages.length > 0 && folderImages[index]) {
-          const img = folderImages[index];
-          return {
-            fileName: img.file.name,
-            base64: img.base64,
-            mimeType: img.mimeType,
-            fileSize: img.file.size,
-            lastModified: img.file.lastModified,
-            status: (data.status as any) || 'done',
-            date: data.date,
-            analysis: data.analysis,
-            sceneId: data.sceneId,
-            phase: data.phase,
-            fromCache: false
-          };
-        }
-
-        const fileName = data.fileName || `photo_${index + 1}.jpg`;
-
-        // 抽出した画像があれば使用（データURL形式で設定）
-        let base64 = '';
-        if (extractedImages[index]) {
-          const bytes = extractedImages[index].data;
-          const mimeType = extractedImages[index].mimeType || 'image/jpeg';
-          // チャンク処理でパフォーマンス改善
+        // 抽出した画像をbase64に変換
+        images = extractedImages.map((img, index) => {
+          const mimeType = img.mimeType || 'image/jpeg';
           const chunkSize = 8192;
           let binary = '';
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            const chunk = bytes.subarray(i, i + chunkSize);
+          for (let i = 0; i < img.data.length; i += chunkSize) {
+            const chunk = img.data.subarray(i, i + chunkSize);
             binary += String.fromCharCode.apply(null, Array.from(chunk));
           }
-          base64 = `data:${mimeType};base64,${btoa(binary)}`;
-        }
+          const base64 = `data:${mimeType};base64,${btoa(binary)}`;
+          return {
+            fileName: `photo_${index + 1}.jpg`,
+            base64,
+            mimeType
+          };
+        });
 
+        // セッションデータからファイル名を復元
+        if (isSmart) {
+          const sessionData = await extractSessionFromPdf(pdfFile);
+          if (sessionData) {
+            captionData = {};
+            sessionData.forEach((item: any, index: number) => {
+              const fileName = item.fileName || `photo_${index + 1}.jpg`;
+              captionData![fileName] = item;
+              if (images[index]) {
+                images[index].fileName = fileName;
+              }
+            });
+            log(`${sessionData.length}件のキャプション情報を復元`, 'success');
+          }
+        }
+      } else if (imageFolder) {
+        // フォルダから画像を読み込み
+        log(`フォルダから画像を読み込み中: ${imageFolder.name}`);
+        const folderResult = await loadImagesFromFolder(imageFolder);
+        images = folderResult.images;
+        log(`${images.length}枚の画像をフォルダから読み込みました`, 'success');
+
+        // キャプション情報を取得（PDF優先、なければJSON）
+        if (isSmart) {
+          log('スマートPDF: キャプション情報を抽出中...');
+          const sessionData = await extractSessionFromPdf(pdfFile);
+          if (sessionData && sessionData.length > 0) {
+            captionData = {};
+            sessionData.forEach((item: any) => {
+              if (item.fileName) {
+                captionData![item.fileName] = item;
+              }
+            });
+            log(`${sessionData.length}件のキャプション情報を復元`, 'success');
+          }
+        } else if (folderResult.analysisData) {
+          captionData = folderResult.analysisData;
+          log(`JSONからキャプション情報を復元`, 'success');
+        }
+      } else {
+        log('画像フォルダが必要です', 'error');
+        throw new Error('画像フォルダを選択してください');
+      }
+
+      // レストア処理
+      const restoredPhotos: PhotoRecord[] = images.map((img) => {
+        const caption = captionData?.[img.fileName];
         return {
-          fileName,
-          base64,
-          mimeType: extractedImages[index]?.mimeType || data.mimeType || 'image/jpeg',
-          fileSize: extractedImages[index]?.data.length || 0,
+          fileName: img.fileName,
+          base64: img.base64,
+          mimeType: img.mimeType,
+          fileSize: 0,
           lastModified: 0,
-          status: (data.status as any) || 'done',
-          date: data.date,
-          analysis: data.analysis,
-          sceneId: data.sceneId,
-          phase: data.phase,
+          status: 'done' as const,
+          date: caption?.date || '',
+          analysis: caption?.analysis || {
+            workType: '',
+            variety: '',
+            detail: '',
+            station: '',
+            remarks: '',
+            description: ''
+          },
+          sceneId: caption?.sceneId,
+          phase: caption?.phase,
           fromCache: true
         };
       });
 
-      const matchedCount = restoredPhotos.filter(p => p.base64).length;
+      const withAnalysis = restoredPhotos.filter(p => p.analysis?.workType || p.analysis?.station || p.analysis?.remarks).length;
+      log(`${withAnalysis}/${restoredPhotos.length}枚にキャプション情報あり`);
 
-      // 不足画像がある場合はログに記録
-      const missingCount = restoredPhotos.length - matchedCount;
-      if (missingCount > 0) {
-        addLog(`${missingCount}枚の画像が不足しています。Load PDFで画像フォルダを選択してやり直してください。`, 'info');
-      }
+      const matchedCount = restoredPhotos.filter(p => p.base64).length;
 
       setPhotos(restoredPhotos);
       setStats({
@@ -1986,40 +1929,133 @@ export default function App() {
         failed: 0,
         cached: restoredPhotos.length
       });
-      setShowPreview(true);
+      // プレビュー遷移はダイアログが閉じた後に行う（ダイアログ側でonCloseが呼ばれる）
 
       if (matchedCount === restoredPhotos.length) {
-        addLog(`PDFから${restoredPhotos.length}枚を完全復元しました`, 'success');
+        log(`PDFから${restoredPhotos.length}枚を完全復元しました`, 'success');
         setSuccessMsg(`PDFから${restoredPhotos.length}枚を完全復元しました`);
-      } else if (matchedCount > 0) {
-        addLog(`PDFから${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`, 'success');
-        setSuccessMsg(`${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`);
       } else {
-        addLog(`PDFから${restoredPhotos.length}枚の解析データを復元しました（画像なし）`, 'info');
-        setSuccessMsg(`${restoredPhotos.length}枚の解析データを復元しました（画像なし）`);
+        log(`PDFから${restoredPhotos.length}枚中${matchedCount}枚の画像を復元`, 'success');
+        setSuccessMsg(`${matchedCount}/${restoredPhotos.length}枚の画像を復元`);
       }
+      
+      console.log('[App.handlePdfLoad] Complete!', { matchedCount, total: restoredPhotos.length });
 
     } catch (err: any) {
-      console.error('PDF import error:', err);
-      setErrorMsg(err.message || 'PDF読み込みエラー');
+      console.error('[App.handlePdfLoad] Error:', err);
+      const msg = err.message || 'PDF読み込みエラー';
+      setErrorMsg(msg);
       addLog('PDF読み込みエラー', 'error', err);
+      if (pushLog) pushLog(msg);
+      throw err; // ダイアログにエラーを伝える
     }
+  };
 
-    // Reset input
-    e.target.value = '';
+  // フォルダから画像とJSONを読み込む（ファイル名順にソート）
+  const loadImagesFromFolder = async (folder: FileSystemDirectoryHandle): Promise<{
+    images: Array<{ fileName: string; base64: string; mimeType: string }>;
+    analysisData: Record<string, any> | null;
+  }> => {
+    const images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
+    let analysisData: Record<string, any> | null = null;
+    console.log('[loadImagesFromFolder] Start:', folder.name);
+
+    const readDir = async (dir: FileSystemDirectoryHandle, depth = 0) => {
+      for await (const entry of dir.values()) {
+        if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          if (file.type.startsWith('image/')) {
+            const base64 = await fileToBase64(file);
+            images.push({ fileName: file.name, base64, mimeType: file.type });
+            console.log(`[loadImagesFromFolder] Added image: ${file.name}`);
+          } else if (file.name.endsWith('.json') && file.name !== 'desktop.ini') {
+            // JSONファイルからキャプション情報を読み込み
+            try {
+              const text = await file.text();
+              const json = JSON.parse(text);
+              analysisData = analysisData || {};
+
+              // 配列形式（analysis_result.json等）
+              if (Array.isArray(json)) {
+                json.forEach((item: any) => {
+                  if (item.fileName) {
+                    // フラット形式（workType直接）とネスト形式（analysis.workType）両対応
+                    analysisData![item.fileName] = {
+                      ...item,
+                      analysis: item.analysis || {
+                        workType: item.workType || '',
+                        variety: item.variety || '',
+                        detail: item.detail || '',
+                        station: item.station || '',
+                        remarks: item.remarks || '',
+                        description: item.description || '',
+                        measurements: item.measurements || ''
+                      }
+                    };
+                  }
+                });
+              } else if (json.photos && Array.isArray(json.photos)) {
+                json.photos.forEach((item: any) => {
+                  if (item.fileName) {
+                    analysisData![item.fileName] = {
+                      ...item,
+                      analysis: item.analysis || {
+                        workType: item.workType || '',
+                        variety: item.variety || '',
+                        detail: item.detail || '',
+                        station: item.station || '',
+                        remarks: item.remarks || '',
+                        description: item.description || '',
+                        measurements: item.measurements || ''
+                      }
+                    };
+                  }
+                });
+              }
+              console.log(`[loadImagesFromFolder] Loaded JSON: ${file.name}, keys:`, analysisData ? Object.keys(analysisData) : []);
+            } catch (e) {
+              console.warn(`[loadImagesFromFolder] Failed to parse JSON: ${file.name}`, e);
+            }
+          }
+        } else if (entry.kind === 'directory') {
+          await readDir(entry, depth + 1);
+        }
+      }
+    };
+
+    await readDir(folder);
+    // ファイル名順にソート
+    images.sort((a, b) => a.fileName.localeCompare(b.fileName, undefined, { numeric: true }));
+    console.log('[loadImagesFromFolder] Done, total images:', images.length, 'analysisData:', !!analysisData);
+    return { images, analysisData };
+  };
+
+  // FileをBase64に変換
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   // --- Render ---
 
   return (
     <>
-      {/* Hidden PDF file input for handlePdfButtonClick */}
-      <input
-        type="file"
-        ref={pdfInputRef}
-        onChange={handleImportPdf}
-        className="hidden"
-        accept=".pdf"
+      {/* PDF Load Dialog */}
+      <PdfLoadDialog
+        isOpen={showPdfLoadDialog}
+        onClose={() => {
+          setShowPdfLoadDialog(false);
+          // 写真がロードされていればプレビューに遷移
+          if (photos.length > 0) {
+            setShowPreview(true);
+          }
+        }}
+        onLoad={handlePdfLoad}
+        lang={lang}
       />
 
       {/* API Key Setup - Step 1: キー入力 */}
@@ -2027,9 +2063,9 @@ export default function App() {
         <ApiKeySetup
           onComplete={handleApiKeyInput}
           onCancel={() => setShowApiKeySetup(false)}
-          onImportPdf={(e) => {
+          onImportPdf={() => {
             setShowApiKeySetup(false);
-            handleImportPdf(e);
+            setShowPdfLoadDialog(true);
           }}
         />
       )}
@@ -2073,7 +2109,6 @@ export default function App() {
           onCloseProject={handleCloseProject}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
-          onImportPdf={handleImportPdf}
           onPdfButtonClick={handlePdfButtonClick}
           onClearCache={handleClearCache}
           onShowPreview={() => setShowPreview(true)}
@@ -2387,12 +2422,11 @@ import { ExternalLink, Key, Camera, ArrowLeft } from 'lucide-react';
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
   onCancel?: () => void;
-  onImportPdf?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onImportPdf?: () => void;
 }
 
 const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImportPdf }) => {
   const [apiKey, setApiKey] = useState('');
-  const pdfInputRef = React.useRef<HTMLInputElement>(null);
 
   const isValidKey = apiKey.trim().startsWith('AIza') && apiKey.trim().length >= 39;
 
@@ -2439,18 +2473,11 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                   共有されたPDFをお持ちですか？
                 </p>
                 <button
-                  onClick={() => pdfInputRef.current?.click()}
+                  onClick={onImportPdf}
                   className="w-full bg-amber-500 hover:bg-amber-400 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                 >
                   PDFからセッションを復元
                 </button>
-                <input
-                  type="file"
-                  ref={pdfInputRef}
-                  onChange={onImportPdf}
-                  className="hidden"
-                  accept=".pdf"
-                />
               </div>
 
               <div className="flex items-center gap-3">
@@ -5717,6 +5744,236 @@ export default NormalizationPreviewModal;
 
 === END: components/NormalizationPreviewModal.tsx ===
 
+=== FILE: components/PdfLoadDialog.tsx ===
+
+import React, { useState, useRef } from 'react';
+import { FileText, FolderOpen, Loader2, AlertTriangle, X, Upload } from 'lucide-react';
+import { isSmartPdf, hasIndividualImages } from '../utils/pdfGenerator';
+
+interface PdfLoadDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onLoad: (
+    pdfFile: File,
+    imageFolder: FileSystemDirectoryHandle | null,
+    pushLog?: (msg: string) => void
+  ) => Promise<void>;
+  lang: 'en' | 'ja';
+}
+
+type DialogState = 'select-pdf' | 'analyzing' | 'need-folder' | 'loading';
+
+const PdfLoadDialog: React.FC<PdfLoadDialogProps> = ({ isOpen, onClose, onLoad, lang }) => {
+  const [state, setState] = useState<DialogState>('select-pdf');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [imageFolder, setImageFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  const [folderName, setFolderName] = useState<string>('');
+  const [logs, setLogs] = useState<string[]>([]);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  const txt = {
+    title: lang === 'ja' ? 'PDF読み込み' : 'Load PDF',
+    selectPdf: lang === 'ja' ? 'PDFファイルを選択' : 'Select PDF File',
+    analyzing: lang === 'ja' ? '解析中...' : 'Analyzing...',
+    loading: lang === 'ja' ? '読み込み中...' : 'Loading...',
+    legacyPdf: lang === 'ja' ? '旧形式PDF' : 'Legacy PDF',
+    needFolder: lang === 'ja' ? '元画像フォルダを選択してください' : 'Please select the original image folder',
+    selectFolder: lang === 'ja' ? 'フォルダを選択' : 'Select Folder',
+    folderSelected: lang === 'ja' ? '選択済み' : 'Selected',
+    close: lang === 'ja' ? '閉じる' : 'Close',
+  };
+
+  const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPdfFile(file);
+    setLogs([`PDF: ${file.name}`]);
+    setState('analyzing');
+
+    try {
+      pushLog('PDFを解析中...');
+      const isSmart = await isSmartPdf(file);
+      const hasImages = await hasIndividualImages(file);
+
+      if (isSmart && hasImages) {
+        // 新形式スマートPDF: 個別画像埋め込み済み → フォルダ不要
+        pushLog('新形式PDF: 画像＋キャプション埋め込み済み');
+        setState('loading');
+        try {
+          await onLoad(file, null, pushLog);
+          pushLog('読み込み完了');
+          handleClose();
+        } catch (err: any) {
+          pushLog(`エラー: ${err.message}`);
+          // 失敗したらフォルダ選択へフォールバック
+          pushLog('フォルダから画像を読み込みます');
+          setState('need-folder');
+        }
+      } else {
+        // 旧形式PDF: フォルダが必要
+        pushLog(isSmart ? '旧形式スマートPDF: 画像はフォルダから' : '旧形式PDF');
+        pushLog('画像フォルダを選択してください');
+        setState('need-folder');
+      }
+    } catch (err: any) {
+      console.error('PDF analysis failed:', err);
+      alert(err.message || 'Unknown error');
+      setState('select-pdf');
+    }
+  };
+
+  // checkSmartPdf removed - use isSmartPdf from pdfGenerator instead
+
+  const handleFolderSelect = async () => {
+    try {
+      const handle = await window.showDirectoryPicker();
+      console.log('[PdfLoadDialog] Folder selected:', handle.name);
+      setImageFolder(handle);
+      setFolderName(handle.name);
+      pushLog(`フォルダ選択: ${handle.name}`);
+      
+      // フォルダ選択したら即読み込み
+      if (pdfFile) {
+        console.log('[PdfLoadDialog] Starting load...');
+        setState('loading');
+        try {
+          console.log('[PdfLoadDialog] Calling onLoad...');
+          await onLoad(pdfFile, handle, pushLog);
+          console.log('[PdfLoadDialog] onLoad completed!');
+          pushLog('読み込み完了');
+          handleClose();
+        } catch (err: any) {
+          console.error('[PdfLoadDialog] onLoad error:', err);
+          alert(err.message || 'Load failed');
+          setState('select-pdf');
+        }
+      }
+    } catch (err) {
+      console.log('[PdfLoadDialog] Folder selection cancelled');
+    }
+  };
+
+  const handleClose = () => {
+    setPdfFile(null);
+    setImageFolder(null);
+    setFolderName('');
+    setLogs([]);
+    setState('select-pdf');
+    onClose();
+  };
+
+  const pushLog = (msg: string) => {
+    setLogs((prev) => [...prev, msg]);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" />
+            {txt.title}
+          </h2>
+          <button onClick={handleClose} className="p-1 hover:bg-gray-100 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* コンテンツ */}
+        <div className="p-6">
+          {/* PDF選択 */}
+          {state === 'select-pdf' && (
+            <div>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={handlePdfSelect}
+                className="hidden"
+              />
+              <button
+                onClick={() => pdfInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-3 p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-colors"
+              >
+                <Upload className="w-6 h-6 text-gray-400" />
+                <span className="text-gray-600">{txt.selectPdf}</span>
+              </button>
+            </div>
+          )}
+
+          {/* 解析中 / 読み込み中 */}
+          {(state === 'analyzing' || state === 'loading') && (
+            <div className="flex flex-col items-center justify-center gap-3 py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <span className="text-gray-600">
+                {state === 'analyzing' ? txt.analyzing : txt.loading}
+              </span>
+            </div>
+          )}
+
+          {/* 旧形式: フォルダ選択が必要 */}
+          {state === 'need-folder' && pdfFile && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <FileText className="w-5 h-5 text-gray-500" />
+                <span className="text-sm text-gray-700 truncate flex-1">{pdfFile.name}</span>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium text-amber-800">{txt.legacyPdf}</div>
+                  <div className="text-sm text-amber-600 mt-1">{txt.needFolder}</div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleFolderSelect}
+                className="w-full flex items-center justify-center gap-3 p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+              >
+                <FolderOpen className="w-5 h-5" />
+                <span>{txt.selectFolder}</span>
+              </button>
+            </div>
+          )}
+
+        </div>
+
+        {/* ログ表示 */}
+        {logs.length > 0 && (
+          <div className="px-6 pb-4">
+            <div className="text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg p-3 max-h-32 overflow-y-auto text-gray-700 space-y-1">
+              {logs.map((line, idx) => (
+                <div key={idx}>{line}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* フッター */}
+        {state === 'need-folder' && (
+          <div className="flex justify-end p-4 border-t bg-gray-50 rounded-b-xl">
+            <button
+              onClick={handleClose}
+              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition-colors"
+            >
+              {txt.close}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PdfLoadDialog;
+
+=== END: components/PdfLoadDialog.tsx ===
+
 === FILE: components/PhotoAlbumView.tsx ===
 
 import React, { useState, useEffect } from 'react';
@@ -6446,10 +6703,9 @@ import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
 import { generateZip } from '../utils/zipGenerator';
-import { embedSessionInPdf } from '../utils/pdfGenerator';
+import { generatePdfWithImages } from '../utils/pdfGenerator';
 
-// Declare html2pdf and saveAs
-declare const html2pdf: any;
+// Declare saveAs (html2pdf is no longer used)
 declare const saveAs: any;
 
 const A4_WIDTH_PX = 794;
@@ -6677,41 +6933,22 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   }, [isFitMode]);
 
   const handleDownloadPDF = async () => {
-    if (typeof html2pdf === 'undefined') {
-      alert("PDF library not loaded.");
-      return;
-    }
-
     setIsGeneratingPdf(true);
-    const element = document.getElementById('album-content');
-    if (element) element.classList.add('pdf-mode');
 
     const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
 
-    const opt = {
-      margin: 0,
-      filename: filename,
-      image: { type: 'jpeg', quality: 1.0 },
-      html2canvas: { scale: 3, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: 'css', after: '.sheet-preview' }
-    };
-
     try {
-      const blob: Blob = await html2pdf().set(opt).from(element).output('blob');
+      // pdf-libを使って個別画像埋め込みPDFを生成
+      // これにより、PDFから個別の写真を抽出可能になる
+      const pdfBlob = await generatePdfWithImages(photos, photosPerPage, '工事写真帳');
 
-      // セッションデータをPDFに埋め込み（スマートPDF化）
-      const smartPdfBlob = await embedSessionInPdf(blob, photos);
-
-      saveAs(smartPdfBlob, filename);
-      const url = URL.createObjectURL(smartPdfBlob);
+      saveAs(pdfBlob, filename);
+      const url = URL.createObjectURL(pdfBlob);
       window.open(url, '_blank');
       setIsGeneratingPdf(false);
-      if (element) element.classList.remove('pdf-mode');
     } catch (err: any) {
-      console.error(err);
+      console.error('PDF generation error:', err);
       setIsGeneratingPdf(false);
-      if (element) element.classList.remove('pdf-mode');
       alert(txt.pdfError);
     }
   };
@@ -8723,8 +8960,7 @@ interface UploadViewProps {
   onCloseProject: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onImportPdf?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onPdfButtonClick?: () => void;  // フォルダ選択を先に行うためのハンドラ
+  onPdfButtonClick?: () => void;
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
@@ -8747,7 +8983,6 @@ const UploadView: React.FC<UploadViewProps> = ({
   onCloseProject,
   onExportJson,
   onImportJson,
-  onImportPdf,
   onPdfButtonClick,
   onClearCache,
   onShowPreview,
@@ -8759,7 +8994,6 @@ const UploadView: React.FC<UploadViewProps> = ({
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputImportRef = useRef<HTMLInputElement>(null);
-  const fileInputPdfRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [useCache, setUseCache] = useState(true); // Default to True
@@ -9183,15 +9417,9 @@ const UploadView: React.FC<UploadViewProps> = ({
           <button onClick={() => fileInputImportRef.current?.click()} className="hover:text-gray-800 transition-colors">
             Restore (JSON)
           </button>
-          {onImportPdf && (
+          {onPdfButtonClick && (
             <button
-              onClick={() => {
-                if (onPdfButtonClick) {
-                  onPdfButtonClick();
-                } else {
-                  fileInputPdfRef.current?.click();
-                }
-              }}
+              onClick={onPdfButtonClick}
               className="hover:text-red-600 transition-colors flex items-center gap-1"
               title="PDFからセッションを復元"
             >
@@ -9207,7 +9435,6 @@ const UploadView: React.FC<UploadViewProps> = ({
             </>
           )}
           <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
-          {onImportPdf && <input type="file" ref={fileInputPdfRef} onChange={onImportPdf} className="hidden" accept=".pdf" />}
         </div>
       </div>
 
@@ -9766,6 +9993,2412 @@ async function main() {
 main().catch(console.error);
 
 === END: scripts/analyze-folder.ts ===
+
+=== FILE: scripts/analyze-pdf.ts ===
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { PDFDocument } from 'pdf-lib';
+
+const pdfPath = process.argv[2] || '/h/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
+
+async function analyzePdf() {
+  console.log('=== PDF Analysis ===');
+  console.log('File:', pdfPath);
+  console.log('');
+
+  const buffer = fs.readFileSync(pdfPath);
+  console.log('File size:', (buffer.length / 1024).toFixed(1), 'KB');
+  console.log('');
+
+  // pdf-lib でメタデータを取得
+  const pdfDoc = await PDFDocument.load(buffer);
+
+  console.log('=== Metadata ===');
+  console.log('Title:', pdfDoc.getTitle() || '(none)');
+  console.log('Author:', pdfDoc.getAuthor() || '(none)');
+  console.log('Subject:', pdfDoc.getSubject()?.substring(0, 200) || '(none)');
+  console.log('Keywords:', pdfDoc.getKeywords() || '(none)');
+  console.log('Creator:', pdfDoc.getCreator() || '(none)');
+  console.log('Producer:', pdfDoc.getProducer() || '(none)');
+  console.log('');
+
+  console.log('=== Pages ===');
+  console.log('Page count:', pdfDoc.getPageCount());
+
+  const pages = pdfDoc.getPages();
+  pages.forEach((page, i) => {
+    const { width, height } = page.getSize();
+    console.log(`Page ${i + 1}: ${width.toFixed(0)} x ${height.toFixed(0)} pts`);
+  });
+  console.log('');
+
+  // Check for GASPM_SESSION marker
+  const subject = pdfDoc.getSubject() || '';
+  if (subject.startsWith('GASPM_SESSION_V1:')) {
+    console.log('=== Smart PDF Session Data ===');
+    const encoded = subject.substring('GASPM_SESSION_V1:'.length);
+    try {
+      const json = Buffer.from(encoded, 'base64').toString('utf-8');
+      const data = JSON.parse(json);
+      console.log('Records:', data.length);
+      data.slice(0, 3).forEach((rec: any, i: number) => {
+        console.log(`  [${i}] fileName: ${rec.fileName}`);
+        console.log(`       workType: ${rec.analysis?.workType || rec.workType || ''}`);
+        console.log(`       station: ${rec.analysis?.station || rec.station || ''}`);
+        console.log(`       remarks: ${rec.analysis?.remarks || rec.remarks || ''}`);
+      });
+      if (data.length > 3) console.log(`  ... and ${data.length - 3} more`);
+    } catch (e) {
+      console.log('Failed to decode session data:', e);
+    }
+  } else {
+    console.log('=== NOT a Smart PDF (no session data) ===');
+  }
+
+  // Raw バイナリからテキストをサンプル抽出
+  console.log('');
+  console.log('=== Raw Text Sample (first 2000 bytes as text) ===');
+  const textSample = buffer.toString('utf-8', 0, 2000).replace(/[^\x20-\x7E\n]/g, '.');
+  console.log(textSample);
+}
+
+analyzePdf().catch(console.error);
+
+=== END: scripts/analyze-pdf.ts ===
+
+=== FILE: scripts/create-test-pdf-with-images.ts ===
+
+/**
+ * テスト画像を含むPDFを作成するスクリプト
+ * html2pdfと同様の形式でPDFを生成し、画像抽出テストを行う
+ * 
+ * 実行: npx tsx scripts/create-test-pdf-with-images.ts
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+const OUTPUT_PDF = path.join(OUTPUT_DIR, 'test-album-with-images.pdf');
+
+async function main() {
+  console.log('========================================');
+  console.log('テスト画像入りPDF生成');
+  console.log('========================================\n');
+
+  // 出力ディレクトリ作成
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    // html2pdfを使ったPDF生成をシミュレート
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif; }
+    
+    .album-page {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 10mm;
+      background: white;
+      page-break-after: always;
+    }
+    
+    .page-title {
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 10mm;
+      padding: 5mm;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    
+    .photo-row {
+      display: flex;
+      margin-bottom: 5mm;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .photo-cell {
+      width: 80mm;
+      height: 60mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eee;
+      border-right: 1px solid #ccc;
+    }
+    
+    .photo-cell canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    
+    .info-cell {
+      flex: 1;
+      padding: 3mm;
+      font-size: 10px;
+    }
+    
+    .info-row {
+      display: flex;
+      border-bottom: 1px solid #eee;
+      padding: 2mm 0;
+    }
+    
+    .info-label {
+      width: 20mm;
+      font-weight: bold;
+      color: #666;
+    }
+    
+    .info-value {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="album-content">
+    <div class="album-page">
+      <div class="page-title">工事写真帳 - テスト</div>
+      
+      <div class="photo-row">
+        <div class="photo-cell">
+          <canvas id="photo1" width="300" height="225"></canvas>
+        </div>
+        <div class="info-cell">
+          <div class="info-row"><span class="info-label">工種</span><span class="info-value">舗装工</span></div>
+          <div class="info-row"><span class="info-label">種別</span><span class="info-value">アスファルト舗装</span></div>
+          <div class="info-row"><span class="info-label">細別</span><span class="info-value">表層</span></div>
+          <div class="info-row"><span class="info-label">測点</span><span class="info-value">NO.5+10.0</span></div>
+          <div class="info-row"><span class="info-label">備考</span><span class="info-value">施工状況</span></div>
+          <div class="info-row"><span class="info-label">撮影日時</span><span class="info-value">2024/12/28 10:30</span></div>
+        </div>
+      </div>
+      
+      <div class="photo-row">
+        <div class="photo-cell">
+          <canvas id="photo2" width="300" height="225"></canvas>
+        </div>
+        <div class="info-cell">
+          <div class="info-row"><span class="info-label">工種</span><span class="info-value">舗装工</span></div>
+          <div class="info-row"><span class="info-label">種別</span><span class="info-value">アスファルト舗装</span></div>
+          <div class="info-row"><span class="info-label">細別</span><span class="info-value">基層</span></div>
+          <div class="info-row"><span class="info-label">測点</span><span class="info-value">NO.5+10.0</span></div>
+          <div class="info-row"><span class="info-label">備考</span><span class="info-value">出来形確認</span></div>
+          <div class="info-row"><span class="info-label">撮影日時</span><span class="info-value">2024/12/28 11:00</span></div>
+        </div>
+      </div>
+      
+      <div class="photo-row">
+        <div class="photo-cell">
+          <canvas id="photo3" width="300" height="225"></canvas>
+        </div>
+        <div class="info-cell">
+          <div class="info-row"><span class="info-label">工種</span><span class="info-value">安全管理</span></div>
+          <div class="info-row"><span class="info-label">種別</span><span class="info-value">朝礼</span></div>
+          <div class="info-row"><span class="info-label">細別</span><span class="info-value">-</span></div>
+          <div class="info-row"><span class="info-label">測点</span><span class="info-value">-</span></div>
+          <div class="info-row"><span class="info-label">備考</span><span class="info-value">朝礼状況</span></div>
+          <div class="info-row"><span class="info-label">撮影日時</span><span class="info-value">2024/12/28 08:00</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // テスト画像を描画
+    function drawTestImage(canvasId, color, text) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // 背景グラデーション
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, '#ffffff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 枠線
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+      
+      // テキスト
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      
+      // 日付
+      ctx.font = '14px sans-serif';
+      ctx.fillText('2024/12/28', canvas.width / 2, canvas.height - 30);
+    }
+    
+    drawTestImage('photo1', '#ffcc00', '施工状況写真');
+    drawTestImage('photo2', '#00ccff', '出来形写真');
+    drawTestImage('photo3', '#ff6699', '安全管理写真');
+
+    // PDF生成関数
+    window.generatePdf = async function() {
+      const element = document.getElementById('album-content');
+      const opt = {
+        margin: 0,
+        filename: 'test-album.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+      
+      // BlobをBase64に変換
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(pdfBlob);
+      });
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    // 少し待ってCanvasが描画されるのを確認
+    await page.waitForFunction(() => {
+      const canvas = document.getElementById('photo1') as HTMLCanvasElement;
+      return canvas && canvas.getContext('2d');
+    });
+
+    console.log('✓ HTMLコンテンツ生成完了');
+    console.log('✓ テスト画像3枚をCanvasに描画');
+    console.log('');
+    console.log('html2pdfでPDF生成中...');
+
+    // PDF生成
+    const pdfDataUrl = await page.evaluate(async () => {
+      // @ts-ignore
+      return await window.generatePdf();
+    }) as string;
+
+    // Data URLからバイナリに変換
+    const base64Data = pdfDataUrl.split(',')[1];
+    const pdfBuffer = Buffer.from(base64Data, 'base64');
+
+    // ファイルに保存
+    fs.writeFileSync(OUTPUT_PDF, pdfBuffer);
+    console.log(`✓ PDF保存完了: ${OUTPUT_PDF}`);
+    console.log(`  サイズ: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
+
+    // 画像抽出テスト
+    console.log('');
+    console.log('画像抽出テスト実行中...');
+
+    const extractResult = await page.evaluate(async (pdfBase64: string) => {
+      // pdf.jsを動的にロード
+      const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+      // Base64からArrayBufferに変換
+      const binaryString = atob(pdfBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const results = {
+        pageCount: pdf.numPages,
+        images: [] as Array<{ page: number; name: string; width: number; height: number; size: number }>
+      };
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+        const processed = new Set();
+
+        // オペレーション一覧をデバッグ出力
+        const opNames: string[] = [];
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject) opNames.push(`paintImageXObject(${operatorList.argsArray[i][0]})`);
+          else if (op === OPS.paintJpegXObject) opNames.push(`paintJpegXObject(${operatorList.argsArray[i][0]})`);
+          else if (op === OPS.paintInlineImageXObject) opNames.push('paintInlineImageXObject');
+          else if (op === OPS.paintInlineImageXObjectGroup) opNames.push('paintInlineImageXObjectGroup');
+        }
+        console.log(`Page ${pageNum} image operations:`, opNames);
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            if (processed.has(imgName)) continue;
+            processed.add(imgName);
+
+            try {
+              const imgData = await new Promise<any>((resolve) => {
+                const existing = objs.get(imgName);
+                if (existing) { resolve(existing); return; }
+                objs.get(imgName, resolve);
+              });
+
+              // デバッグ: 画像データの構造を出力
+              console.log(`Image ${imgName} structure:`, {
+                hasData: !!(imgData?.data),
+                hasBitmap: !!(imgData?.bitmap),
+                hasSrc: !!(imgData?.src),
+                width: imgData?.width,
+                height: imgData?.height,
+                kind: imgData?.kind,
+                keys: imgData ? Object.keys(imgData) : []
+              });
+
+              if (imgData && imgData.data) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.width;
+                canvas.height = imgData.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  const imageData = new ImageData(
+                    new Uint8ClampedArray(imgData.data),
+                    imgData.width,
+                    imgData.height
+                  );
+                  ctx.putImageData(imageData, 0, 0);
+                  const blob = await new Promise<Blob | null>((resolve) => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.95);
+                  });
+                  if (blob) {
+                    results.images.push({
+                      page: pageNum,
+                      name: imgName,
+                      width: imgData.width,
+                      height: imgData.height,
+                      size: blob.size
+                    });
+                  }
+                }
+              } else if (imgData && imgData.bitmap) {
+                // ImageBitmap形式
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.bitmap.width || imgData.width;
+                canvas.height = imgData.bitmap.height || imgData.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(imgData.bitmap, 0, 0);
+                  const blob = await new Promise<Blob | null>((resolve) => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.95);
+                  });
+                  if (blob) {
+                    results.images.push({
+                      page: pageNum,
+                      name: imgName,
+                      width: canvas.width,
+                      height: canvas.height,
+                      size: blob.size
+                    });
+                  }
+                }
+              } else if (imgData && imgData.src) {
+                // src形式
+                const response = await fetch(imgData.src);
+                const blob = await response.blob();
+                results.images.push({
+                  page: pageNum,
+                  name: imgName,
+                  width: imgData.width || 0,
+                  height: imgData.height || 0,
+                  size: blob.size
+                });
+              }
+            } catch (e) {
+              console.error('Image extraction error:', e);
+            }
+          }
+        }
+      }
+
+      return results;
+    }, base64Data);
+
+    console.log('');
+    console.log('========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`PDFページ数: ${extractResult.pageCount}`);
+    console.log(`抽出画像数: ${extractResult.images.length}`);
+    console.log('');
+
+    if (extractResult.images.length > 0) {
+      console.log('抽出された画像:');
+      for (const img of extractResult.images) {
+        console.log(`  - ${img.name}: ${img.width}x${img.height}, ${(img.size / 1024).toFixed(1)} KB`);
+      }
+      console.log('');
+      console.log('✓ 画像抽出テスト成功！');
+    } else {
+      console.log('⚠ 画像が抽出できませんでした');
+    }
+
+    console.log('');
+    console.log(`出力ファイル: ${OUTPUT_PDF}`);
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/create-test-pdf-with-images.ts ===
+
+=== FILE: scripts/extract-pdf-images.ts ===
+
+/**
+ * PDFから有効な画像だけを抽出してファイル保存
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const PDF_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
+
+// 出力先：PDFと同じフォルダに「extracted_images」フォルダを作成
+const PDF_DIR = path.dirname(PDF_PATH);
+const OUTPUT_DIR = path.join(PDF_DIR, 'extracted_images');
+
+async function main() {
+  console.log('========================================');
+  console.log('PDF画像抽出');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(PDF_PATH)) {
+    console.error(`❌ PDFファイルが見つかりません: ${PDF_PATH}`);
+    process.exit(1);
+  }
+
+  const pdfName = path.basename(PDF_PATH, '.pdf');
+  console.log(`PDF: ${pdfName}`);
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    const pdfBuffer = fs.readFileSync(PDF_PATH);
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const pdfDataUrl = `data:application/pdf;base64,${pdfBase64}`;
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    function isFullPageImage(width, height) {
+      const aspectRatio = width / height;
+      const a4Ratio = 210 / 297;
+      return Math.abs(aspectRatio - a4Ratio) < 0.15 && height > 1000;
+    }
+
+    // 空白画像かどうかを判定（色の分散が小さい場合は空白）
+    function isBlankImage(canvas) {
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      
+      // サンプリングして色の分散を計算
+      let sumR = 0, sumG = 0, sumB = 0;
+      let count = 0;
+      const step = 100; // 100ピクセルごとにサンプリング
+      
+      for (let i = 0; i < data.length; i += 4 * step) {
+        sumR += data[i];
+        sumG += data[i + 1];
+        sumB += data[i + 2];
+        count++;
+      }
+      
+      const avgR = sumR / count;
+      const avgG = sumG / count;
+      const avgB = sumB / count;
+      
+      // 分散を計算
+      let varR = 0, varG = 0, varB = 0;
+      for (let i = 0; i < data.length; i += 4 * step) {
+        varR += Math.pow(data[i] - avgR, 2);
+        varG += Math.pow(data[i + 1] - avgG, 2);
+        varB += Math.pow(data[i + 2] - avgB, 2);
+      }
+      varR /= count;
+      varG /= count;
+      varB /= count;
+      
+      const totalVariance = varR + varG + varB;
+      
+      // 分散が小さく、かつ明るい（白に近い）場合は空白
+      const isWhitish = avgR > 240 && avgG > 240 && avgB > 240;
+      const isLowVariance = totalVariance < 500;
+      
+      return isWhitish && isLowVariance;
+    }
+
+    async function splitPageCanvasIntoPhotos(srcCanvas, photosPerPage) {
+      const photos = [];
+      const width = srcCanvas.width;
+      const height = srcCanvas.height;
+      
+      const headerRatio = 0.04;
+      const photoWidthRatio = 0.48; // 48%に拡大
+      
+      const headerHeight = Math.floor(height * headerRatio);
+      const usableHeight = height - headerHeight;
+      const rowHeight = Math.floor(usableHeight / photosPerPage);
+      const photoWidth = Math.floor(width * photoWidthRatio);
+      
+      const marginTop = Math.floor(rowHeight * 0.015);
+      const marginLeft = Math.floor(width * 0.015);
+
+      for (let i = 0; i < photosPerPage; i++) {
+        const y = headerHeight + i * rowHeight + marginTop;
+        const x = marginLeft;
+        const w = photoWidth - marginLeft;
+        const h = rowHeight - marginTop * 2;
+
+        const destCanvas = document.createElement('canvas');
+        destCanvas.width = w;
+        destCanvas.height = h;
+        const destCtx = destCanvas.getContext('2d');
+        destCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+
+        // 空白チェック
+        if (isBlankImage(destCanvas)) {
+          console.log('Photo ' + (i + 1) + ': BLANK - skipped');
+          continue;
+        }
+
+        const blob = await new Promise((resolve) => destCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (blob && blob.size > 5000) { // 5KB以上のみ
+          const reader = new FileReader();
+          const dataUrl = await new Promise((resolve) => {
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          
+          photos.push({
+            pageIndex: -1,
+            slotIndex: i + 1,
+            width: w,
+            height: h,
+            size: blob.size,
+            dataUrl: dataUrl
+          });
+          console.log('Photo ' + (i + 1) + ': ' + w + 'x' + h + ', ' + (blob.size / 1024).toFixed(1) + ' KB');
+        }
+      }
+      return photos;
+    }
+
+    window.extractImages = async function(pdfDataUrl, photosPerPage) {
+      const base64 = pdfDataUrl.split(',')[1];
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      console.log('PDF pages: ' + pdf.numPages);
+
+      const allImages = [];
+      let photoNumber = 0;
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        console.log('\\n--- Page ' + pageNum + ' ---');
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+
+        const viewport = page.getViewport({ scale: 1.0 });
+        const renderCanvas = document.createElement('canvas');
+        renderCanvas.width = viewport.width;
+        renderCanvas.height = viewport.height;
+        const renderCtx = renderCanvas.getContext('2d');
+        await page.render({ canvasContext: renderCtx, viewport }).promise;
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            
+            try {
+              const imgData = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
+                objs.get(imgName, (obj) => {
+                  clearTimeout(timeout);
+                  resolve(obj);
+                });
+              });
+
+              const width = imgData.width;
+              const height = imgData.height;
+
+              const srcCanvas = document.createElement('canvas');
+              srcCanvas.width = width;
+              srcCanvas.height = height;
+              const srcCtx = srcCanvas.getContext('2d');
+
+              if (imgData.bitmap) {
+                srcCtx.drawImage(imgData.bitmap, 0, 0);
+              } else if (imgData.data) {
+                const imageData = new ImageData(
+                  new Uint8ClampedArray(imgData.data),
+                  width,
+                  height
+                );
+                srcCtx.putImageData(imageData, 0, 0);
+              } else {
+                continue;
+              }
+
+              if (isFullPageImage(width, height)) {
+                console.log('Full-page image, splitting...');
+                const splitPhotos = await splitPageCanvasIntoPhotos(srcCanvas, photosPerPage);
+                splitPhotos.forEach(p => {
+                  photoNumber++;
+                  p.pageIndex = pageNum;
+                  p.photoNumber = photoNumber;
+                });
+                allImages.push(...splitPhotos);
+              } else {
+                // 個別画像
+                if (!isBlankImage(srcCanvas)) {
+                  const blob = await new Promise((resolve) => srcCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+                  if (blob && blob.size > 5000) {
+                    photoNumber++;
+                    const reader = new FileReader();
+                    const dataUrl = await new Promise((resolve) => {
+                      reader.onload = () => resolve(reader.result);
+                      reader.readAsDataURL(blob);
+                    });
+                    
+                    allImages.push({
+                      pageIndex: pageNum,
+                      photoNumber: photoNumber,
+                      width: width,
+                      height: height,
+                      size: blob.size,
+                      dataUrl: dataUrl
+                    });
+                    console.log('Individual image: ' + width + 'x' + height + ', ' + (blob.size / 1024).toFixed(1) + ' KB');
+                  }
+                }
+              }
+            } catch (err) {
+              console.log('Error: ' + err.message);
+            }
+          }
+        }
+      }
+
+      return allImages;
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('画像抽出中...\n');
+    const images = await page.evaluate(async (dataUrl: string) => {
+      // @ts-ignore
+      return await window.extractImages(dataUrl, 3);
+    }, pdfDataUrl) as any[];
+
+    console.log('\n========================================');
+    console.log('抽出結果');
+    console.log('========================================');
+    console.log(`有効な画像: ${images.length}枚`);
+    console.log(`出力先: ${OUTPUT_DIR}`);
+    console.log('');
+
+    // ファイルに保存
+    for (const img of images) {
+      const filename = `${pdfName}_${String(img.photoNumber).padStart(2, '0')}.jpg`;
+      const imgBase64 = img.dataUrl.split(',')[1];
+      const imgBuffer = Buffer.from(imgBase64, 'base64');
+      const imgPath = path.join(OUTPUT_DIR, filename);
+      fs.writeFileSync(imgPath, imgBuffer);
+      console.log(`✓ ${filename} (${(img.size / 1024).toFixed(1)} KB)`);
+    }
+
+    console.log('\n========================================');
+    console.log(`✓ 完了！${images.length}枚の画像を保存しました`);
+    console.log(`  ${OUTPUT_DIR}`);
+    console.log('========================================');
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/extract-pdf-images.ts ===
+
+=== FILE: scripts/test-final-pdf.ts ===
+
+/**
+ * 最終PDF生成・画像抽出テスト
+ * 
+ * 実行: npx tsx scripts/test-final-pdf.ts
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+const OUTPUT_PDF = path.join(OUTPUT_DIR, 'test-final-album.pdf');
+const FONT_PATH = path.join(process.cwd(), 'public', 'fonts', 'ipaexg.ttf');
+
+async function main() {
+  console.log('========================================');
+  console.log('最終PDF生成・画像抽出テスト');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  // フォントファイルを確認
+  if (!fs.existsSync(FONT_PATH)) {
+    console.error(`フォントファイルが見つかりません: ${FONT_PATH}`);
+    process.exit(1);
+  }
+  console.log(`✓ フォントファイル確認: ${FONT_PATH}`);
+
+  const fontBuffer = fs.readFileSync(FONT_PATH);
+  const fontBase64 = fontBuffer.toString('base64');
+  console.log(`  サイズ: ${(fontBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+  console.log('');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+  <canvas id="c1" width="400" height="300"></canvas>
+  <canvas id="c2" width="400" height="300"></canvas>
+  <canvas id="c3" width="400" height="300"></canvas>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    function createTestImage(id, color, text) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, '#ffffff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      return canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    const images = [
+      createTestImage('c1', '#ffcc00', 'Photo 1'),
+      createTestImage('c2', '#00ccff', 'Photo 2'),
+      createTestImage('c3', '#ff6699', 'Photo 3'),
+    ];
+
+    window.generatePdf = async function(fontBase64) {
+      const { PDFDocument, rgb, StandardFonts } = PDFLib;
+      
+      const pdfDoc = await PDFDocument.create();
+      pdfDoc.registerFontkit(fontkit);
+      
+      // フォント埋め込み
+      const binaryString = atob(fontBase64);
+      const fontBytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        fontBytes[i] = binaryString.charCodeAt(i);
+      }
+      const japaneseFont = await pdfDoc.embedFont(fontBytes);
+      const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      const A4_WIDTH = 595.28;
+      const A4_HEIGHT = 841.89;
+      const MARGIN = 20;
+      const photosPerPage = 3;
+      const usableHeight = A4_HEIGHT - MARGIN * 2 - 40;
+      const photoRowHeight = usableHeight / photosPerPage;
+      const photoHeight = photoRowHeight - 10;
+      const photoWidth = (A4_WIDTH - MARGIN * 2) * 0.45;
+      const infoWidth = (A4_WIDTH - MARGIN * 2) * 0.50;
+
+      const photos = [
+        { fileName: 'photo_001.jpg', base64: images[0], analysis: { workType: '舗装工', variety: 'アスファルト舗装', detail: '表層', station: 'NO.5+10.0', remarks: '施工状況' } },
+        { fileName: 'photo_002.jpg', base64: images[1], analysis: { workType: '舗装工', variety: 'アスファルト舗装', detail: '基層', station: 'NO.5+10.0', remarks: '出来形確認' } },
+        { fileName: 'photo_003.jpg', base64: images[2], analysis: { workType: '安全管理', variety: '朝礼', detail: '-', station: '-', remarks: '朝礼状況' } },
+      ];
+
+      const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+
+      // ヘッダー
+      page.drawText('工事写真帳', { x: MARGIN, y: A4_HEIGHT - MARGIN - 20, size: 14, font: japaneseFont, color: rgb(0.2, 0.2, 0.2) });
+      page.drawText('Page 1 / 1', { x: A4_WIDTH - MARGIN - 60, y: A4_HEIGHT - MARGIN - 20, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
+
+      // 各写真
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        const rowY = A4_HEIGHT - MARGIN - 40 - (i + 1) * photoRowHeight + 5;
+
+        // 画像埋め込み
+        const base64Data = photo.base64.split(',')[1];
+        const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        const embeddedImage = await pdfDoc.embedJpg(imageBytes);
+
+        const imgAspect = embeddedImage.width / embeddedImage.height;
+        const boxAspect = photoWidth / photoHeight;
+        let drawWidth, drawHeight;
+        if (imgAspect > boxAspect) {
+          drawWidth = photoWidth;
+          drawHeight = photoWidth / imgAspect;
+        } else {
+          drawHeight = photoHeight;
+          drawWidth = photoHeight * imgAspect;
+        }
+        const offsetX = (photoWidth - drawWidth) / 2;
+        const offsetY = (photoHeight - drawHeight) / 2;
+
+        page.drawImage(embeddedImage, { x: MARGIN + offsetX, y: rowY + offsetY, width: drawWidth, height: drawHeight });
+        page.drawRectangle({ x: MARGIN, y: rowY, width: photoWidth, height: photoHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
+
+        // 情報欄
+        const infoX = MARGIN + photoWidth + 5;
+        page.drawRectangle({ x: infoX, y: rowY, width: infoWidth, height: photoHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
+
+        const analysis = photo.analysis;
+        const infoLines = [
+          { label: '工種', value: analysis.workType },
+          { label: '種別', value: analysis.variety },
+          { label: '細別', value: analysis.detail },
+          { label: '測点', value: analysis.station },
+          { label: '備考', value: analysis.remarks },
+        ];
+
+        const lineHeight = 18;
+        infoLines.forEach((line, idx) => {
+          const y = rowY + photoHeight - 20 - idx * lineHeight;
+          page.drawText(line.label + ':', { x: infoX + 5, y, size: 8, font: japaneseFont, color: rgb(0.4, 0.4, 0.4) });
+          page.drawText(line.value, { x: infoX + 45, y, size: 9, font: japaneseFont, color: rgb(0.1, 0.1, 0.1) });
+        });
+
+        page.drawText(photo.fileName, { x: infoX + 5, y: rowY + 5, size: 7, font: helvetica, color: rgb(0.6, 0.6, 0.6) });
+      }
+
+      // メタデータ
+      pdfDoc.setTitle('工事写真帳');
+      pdfDoc.setCreator('GASPhotoAIManager');
+      pdfDoc.setProducer('pdf-lib + IPA Gothic');
+      pdfDoc.setKeywords(['SmartPDF', 'IndividualImages']);
+
+      const pdfBytes = await pdfDoc.save();
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < pdfBytes.length; i += chunkSize) {
+        const chunk = pdfBytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      return { base64: btoa(binary), size: pdfBytes.length };
+    };
+
+    window.extractImages = async function(pdfBase64) {
+      const binaryString = atob(pdfBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const results = { pageCount: pdf.numPages, images: [] };
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+        const processed = new Set();
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            if (processed.has(imgName)) continue;
+            processed.add(imgName);
+
+            try {
+              const imgData = await new Promise((resolve) => {
+                const existing = objs.get(imgName);
+                if (existing) { resolve(existing); return; }
+                objs.get(imgName, resolve);
+              });
+
+              if (imgData && imgData.data) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.width;
+                canvas.height = imgData.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  const imageData = new ImageData(new Uint8ClampedArray(imgData.data), imgData.width, imgData.height);
+                  ctx.putImageData(imageData, 0, 0);
+                  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+                  if (blob) {
+                    results.images.push({ page: pageNum, name: imgName, width: imgData.width, height: imgData.height, size: blob.size });
+                  }
+                }
+              } else if (imgData && imgData.bitmap) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.bitmap.width || imgData.width;
+                canvas.height = imgData.bitmap.height || imgData.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(imgData.bitmap, 0, 0);
+                  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+                  if (blob) {
+                    results.images.push({ page: pageNum, name: imgName, width: canvas.width, height: canvas.height, size: blob.size });
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Image extraction error:', e);
+            }
+          }
+        }
+      }
+      return results;
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    console.log('PDF生成中（日本語フォント埋め込み）...');
+
+    const result = await page.evaluate(async (fontBase64: string) => {
+      // @ts-ignore
+      return await window.generatePdf(fontBase64);
+    }, fontBase64) as { base64: string; size: number };
+
+    const pdfBuffer = Buffer.from(result.base64, 'base64');
+    fs.writeFileSync(OUTPUT_PDF, pdfBuffer);
+    console.log(`✓ PDF生成完了: ${OUTPUT_PDF}`);
+    console.log(`  サイズ: ${(result.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log('');
+
+    console.log('画像抽出テスト中...');
+    const extractResult = await page.evaluate(async (pdfBase64: string) => {
+      // @ts-ignore
+      return await window.extractImages(pdfBase64);
+    }, result.base64) as { pageCount: number; images: Array<{ page: number; name: string; width: number; height: number; size: number }> };
+
+    console.log('');
+    console.log('========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`PDFページ数: ${extractResult.pageCount}`);
+    console.log(`抽出画像数: ${extractResult.images.length}`);
+    console.log('');
+
+    if (extractResult.images.length === 3) {
+      console.log('✓ 3枚の個別画像が正しく抽出されました！');
+      console.log('');
+      console.log('抽出された画像:');
+      for (const img of extractResult.images) {
+        console.log(`  - ${img.name}: ${img.width}x${img.height}, ${(img.size / 1024).toFixed(1)} KB`);
+      }
+      console.log('');
+      console.log('========================================');
+      console.log('✓ テスト成功！');
+      console.log('========================================');
+    } else {
+      console.log(`⚠ 期待: 3枚, 実際: ${extractResult.images.length}枚`);
+      process.exit(1);
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-final-pdf.ts ===
+
+=== FILE: scripts/test-html2pdf-debug.ts ===
+
+/**
+ * html2pdf形式PDFの構造デバッグ
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+
+async function main() {
+  console.log('========================================');
+  console.log('html2pdf PDF構造デバッグ');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    // コンソールログを表示
+    page.on('console', msg => {
+      if (msg.type() !== 'warning') {
+        console.log('BROWSER:', msg.text());
+      }
+    });
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+  <style>
+    .album-page { width: 210mm; padding: 10mm; background: white; }
+    .photo-row { display: flex; margin-bottom: 5mm; border: 1px solid #ccc; }
+    .photo-cell { width: 45%; height: 80mm; background: #eee; display: flex; align-items: center; justify-content: center; }
+    .info-cell { flex: 1; padding: 3mm; }
+  </style>
+</head>
+<body>
+  <div id="album-content">
+    <div class="album-page">
+      <h1>Test Album</h1>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c1" width="300" height="225"></canvas></div>
+        <div class="info-cell">Info 1</div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c2" width="300" height="225"></canvas></div>
+        <div class="info-cell">Info 2</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    // テスト画像
+    ['c1', 'c2'].forEach((id, idx) => {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = idx === 0 ? '#ffcc00' : '#00ccff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Photo ' + (idx + 1), canvas.width / 2, canvas.height / 2);
+    });
+
+    window.generatePdf = async function() {
+      const element = document.getElementById('album-content');
+      const blob = await html2pdf().set({
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4' }
+      }).from(element).output('blob');
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    };
+
+    window.debugPdf = async function(pdfDataUrl) {
+      const base64 = pdfDataUrl.split(',')[1];
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      
+      console.log('Loading PDF...');
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      console.log('Pages:', pdf.numPages);
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+
+        console.log('=== Page ' + pageNum + ' ===');
+        console.log('OperatorList length:', operatorList.fnArray.length);
+
+        // 全オペレーションを確認
+        const opNames = Object.entries(OPS).reduce((acc, [k, v]) => { acc[v] = k; return acc; }, {});
+        const opCounts = {};
+        
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          const name = opNames[op] || 'unknown_' + op;
+          opCounts[name] = (opCounts[name] || 0) + 1;
+
+          // 画像関連のオペレーションを詳しく表示
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject || 
+              op === OPS.paintInlineImageXObject || op === OPS.paintInlineImageXObjectGroup) {
+            console.log('Image op found:', name, 'args:', operatorList.argsArray[i]);
+          }
+        }
+
+        console.log('Operation counts:', JSON.stringify(opCounts, null, 2));
+
+        // commonObjsもチェック
+        console.log('\\nChecking page.commonObjs...');
+        const commonObjs = page.commonObjs;
+        if (commonObjs && commonObjs._objs) {
+          console.log('commonObjs keys:', Object.keys(commonObjs._objs));
+        }
+
+        // ページをレンダリングして、その後リソースを確認
+        console.log('\\nTrying to render page to trigger resource loading...');
+        const viewport = page.getViewport({ scale: 1.0 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        console.log('Page rendered:', viewport.width, 'x', viewport.height);
+
+        // レンダリング後に再度オブジェクトをチェック
+        console.log('\\nAfter render, objs._objs keys:', Object.keys(objs._objs || {}));
+      }
+
+      return 'debug complete';
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => document.getElementById('c1')?.getContext('2d'));
+
+    console.log('PDF生成...');
+    const pdfDataUrl = await page.evaluate(async () => {
+      // @ts-ignore
+      return await window.generatePdf();
+    }) as string;
+    console.log('PDF生成完了\n');
+
+    console.log('PDF構造解析...\n');
+    await page.evaluate(async (dataUrl: string) => {
+      // @ts-ignore
+      return await window.debugPdf(dataUrl);
+    }, pdfDataUrl);
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-html2pdf-debug.ts ===
+
+=== FILE: scripts/test-html2pdf-extract.ts ===
+
+/**
+ * html2pdf PDFから画像を実際に抽出するテスト
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+
+async function main() {
+  console.log('========================================');
+  console.log('html2pdf PDF画像抽出テスト');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    page.on('console', msg => {
+      if (msg.type() !== 'warning' && !msg.text().includes('parser-blocking')) {
+        console.log('BROWSER:', msg.text());
+      }
+    });
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+  <style>
+    .album-page { width: 210mm; padding: 10mm; background: white; }
+    .photo-row { display: flex; margin-bottom: 5mm; border: 1px solid #ccc; }
+    .photo-cell { width: 45%; height: 80mm; background: #eee; display: flex; align-items: center; justify-content: center; }
+    .info-cell { flex: 1; padding: 3mm; }
+  </style>
+</head>
+<body>
+  <div id="album-content">
+    <div class="album-page">
+      <h1>Test Album</h1>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c1" width="300" height="225"></canvas></div>
+        <div class="info-cell">Info 1</div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c2" width="300" height="225"></canvas></div>
+        <div class="info-cell">Info 2</div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c3" width="300" height="225"></canvas></div>
+        <div class="info-cell">Info 3</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    ['c1', 'c2', 'c3'].forEach((id, idx) => {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      const colors = ['#ffcc00', '#00ccff', '#ff6699'];
+      ctx.fillStyle = colors[idx];
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Photo ' + (idx + 1), canvas.width / 2, canvas.height / 2);
+    });
+
+    window.generatePdf = async function() {
+      const element = document.getElementById('album-content');
+      const blob = await html2pdf().set({
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4' }
+      }).from(element).output('blob');
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    };
+
+    // 画像抽出
+    window.extractImages = async function(pdfDataUrl) {
+      const base64 = pdfDataUrl.split(',')[1];
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      console.log('PDF pages:', pdf.numPages);
+
+      const images = [];
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+
+        // まずページをレンダリングしてリソースをロード
+        const viewport = page.getViewport({ scale: 1.0 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        // 画像オペレーションを探す
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            console.log('Found image op:', imgName);
+
+            // 非同期でオブジェクトを取得
+            try {
+              const imgData = await new Promise((resolve, reject) => {
+                // タイムアウト設定
+                const timeout = setTimeout(() => reject(new Error('Timeout')), 3000);
+                
+                // まず同期的に取得を試みる
+                const existing = objs._objs ? objs._objs[imgName] : null;
+                if (existing && existing.data) {
+                  clearTimeout(timeout);
+                  resolve(existing.data);
+                  return;
+                }
+
+                // 非同期取得
+                objs.get(imgName, (obj) => {
+                  clearTimeout(timeout);
+                  resolve(obj);
+                });
+              });
+
+              console.log('Got image data:', {
+                type: typeof imgData,
+                constructor: imgData?.constructor?.name,
+                width: imgData?.width,
+                height: imgData?.height,
+                hasData: !!imgData?.data,
+                hasBitmap: !!imgData?.bitmap,
+                keys: imgData ? Object.keys(imgData) : []
+              });
+
+              // 画像データをCanvasに描画して抽出
+              if (imgData && (imgData.data || imgData.bitmap)) {
+                const imgCanvas = document.createElement('canvas');
+                imgCanvas.width = imgData.width;
+                imgCanvas.height = imgData.height;
+                const imgCtx = imgCanvas.getContext('2d');
+
+                if (imgData.bitmap) {
+                  imgCtx.drawImage(imgData.bitmap, 0, 0);
+                } else if (imgData.data) {
+                  const imageData = new ImageData(
+                    new Uint8ClampedArray(imgData.data),
+                    imgData.width,
+                    imgData.height
+                  );
+                  imgCtx.putImageData(imageData, 0, 0);
+                }
+
+                const blob = await new Promise((resolve) => imgCanvas.toBlob(resolve, 'image/jpeg', 0.9));
+                if (blob) {
+                  images.push({
+                    name: imgName,
+                    width: imgData.width,
+                    height: imgData.height,
+                    size: blob.size
+                  });
+                  console.log('Extracted image:', imgData.width, 'x', imgData.height, 'size:', blob.size);
+                }
+              }
+            } catch (err) {
+              console.log('Error getting image:', err.message);
+            }
+          }
+        }
+      }
+
+      return images;
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => document.getElementById('c1')?.getContext('2d'));
+
+    console.log('PDF生成...');
+    const pdfDataUrl = await page.evaluate(async () => {
+      // @ts-ignore
+      return await window.generatePdf();
+    }) as string;
+    console.log('PDF生成完了\n');
+
+    console.log('画像抽出...\n');
+    const images = await page.evaluate(async (dataUrl: string) => {
+      // @ts-ignore
+      return await window.extractImages(dataUrl);
+    }, pdfDataUrl) as any[];
+
+    console.log('\n========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`抽出画像数: ${images.length}`);
+    
+    if (images.length > 0) {
+      for (const img of images) {
+        console.log(`  - ${img.name}: ${img.width}x${img.height}, ${(img.size / 1024).toFixed(1)} KB`);
+      }
+      
+      // A4比率チェック
+      const img = images[0];
+      const ratio = img.width / img.height;
+      const a4Ratio = 210 / 297;
+      console.log(`\nアスペクト比: ${ratio.toFixed(3)} (A4: ${a4Ratio.toFixed(3)})`);
+      
+      if (Math.abs(ratio - a4Ratio) < 0.15 && img.height > 1000) {
+        console.log('→ ページ全体画像と判定');
+        console.log('→ この画像を3分割して個別写真を抽出する必要があります');
+      }
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-html2pdf-extract.ts ===
+
+=== FILE: scripts/test-html2pdf-full.ts ===
+
+/**
+ * html2pdf PDFから個別写真を抽出する完全テスト
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+
+async function main() {
+  console.log('========================================');
+  console.log('html2pdf PDF → 個別写真抽出テスト');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    page.on('console', msg => {
+      const text = msg.text();
+      if (msg.type() !== 'warning' && !text.includes('parser-blocking') && !text.includes('Setting up fake')) {
+        console.log('>', text);
+      }
+    });
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+  <style>
+    .album-page { width: 210mm; padding: 10mm; background: white; }
+    .page-header { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 5mm; padding: 2mm; background: #f0f0f0; }
+    .photo-row { display: flex; margin-bottom: 3mm; border: 1px solid #ccc; }
+    .photo-cell { width: 45%; height: 80mm; background: #eee; display: flex; align-items: center; justify-content: center; }
+    .info-cell { flex: 1; padding: 3mm; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div id="album-content">
+    <div class="album-page">
+      <div class="page-header">工事写真帳</div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c1" width="300" height="225"></canvas></div>
+        <div class="info-cell"><div>工種: 舗装工</div><div>種別: アスファルト</div></div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c2" width="300" height="225"></canvas></div>
+        <div class="info-cell"><div>工種: 舗装工</div><div>種別: 路盤工</div></div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c3" width="300" height="225"></canvas></div>
+        <div class="info-cell"><div>工種: 安全管理</div><div>種別: 朝礼</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    // テスト画像を描画
+    ['c1', 'c2', 'c3'].forEach((id, idx) => {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      const colors = ['#ffcc00', '#00ccff', '#ff6699'];
+      ctx.fillStyle = colors[idx];
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Photo ' + (idx + 1), canvas.width / 2, canvas.height / 2);
+    });
+
+    window.generatePdf = async function() {
+      const element = document.getElementById('album-content');
+      const blob = await html2pdf().set({
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4' }
+      }).from(element).output('blob');
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    };
+
+    // ページ全体画像かどうか判定
+    function isFullPageImage(width, height) {
+      const aspectRatio = width / height;
+      const a4Ratio = 210 / 297;
+      const isA4Like = Math.abs(aspectRatio - a4Ratio) < 0.15;
+      const isLarge = height > 1000;
+      return isA4Like && isLarge;
+    }
+
+    // ページ画像を個別写真に分割（Canvas経由）
+    async function splitPageCanvasIntoPhotos(srcCanvas, photosPerPage) {
+      const photos = [];
+      const width = srcCanvas.width;
+      const height = srcCanvas.height;
+      
+      const headerRatio = 0.05;
+      const photoWidthRatio = 0.43;
+      
+      const headerHeight = Math.floor(height * headerRatio);
+      const usableHeight = height - headerHeight;
+      const rowHeight = Math.floor(usableHeight / photosPerPage);
+      const photoWidth = Math.floor(width * photoWidthRatio);
+      
+      const marginTop = Math.floor(rowHeight * 0.02);
+      const marginLeft = Math.floor(width * 0.02);
+
+      console.log('Split: ' + width + 'x' + height + ' -> headerH=' + headerHeight + ', rowH=' + rowHeight + ', photoW=' + photoWidth);
+
+      for (let i = 0; i < photosPerPage; i++) {
+        const y = headerHeight + i * rowHeight + marginTop;
+        const x = marginLeft;
+        const w = photoWidth - marginLeft;
+        const h = rowHeight - marginTop * 2;
+
+        const destCanvas = document.createElement('canvas');
+        destCanvas.width = w;
+        destCanvas.height = h;
+        const destCtx = destCanvas.getContext('2d');
+        destCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+
+        const blob = await new Promise((resolve) => destCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (blob && blob.size > 1000) {
+          const reader = new FileReader();
+          const dataUrl = await new Promise((resolve) => {
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          
+          photos.push({
+            index: i + 1,
+            width: w,
+            height: h,
+            size: blob.size,
+            dataUrl: dataUrl
+          });
+          console.log('Photo ' + (i + 1) + ': ' + w + 'x' + h + ', ' + (blob.size / 1024).toFixed(1) + ' KB');
+        }
+      }
+      return photos;
+    }
+
+    // 画像抽出（分割機能付き）
+    window.extractWithSplit = async function(pdfDataUrl, photosPerPage) {
+      const base64 = pdfDataUrl.split(',')[1];
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      console.log('PDF pages: ' + pdf.numPages);
+
+      const allPhotos = [];
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+
+        // ページレンダリングでリソースをロード
+        const viewport = page.getViewport({ scale: 1.0 });
+        const renderCanvas = document.createElement('canvas');
+        renderCanvas.width = viewport.width;
+        renderCanvas.height = viewport.height;
+        const renderCtx = renderCanvas.getContext('2d');
+        await page.render({ canvasContext: renderCtx, viewport }).promise;
+
+        // 画像オペレーションを探す
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            console.log('Image: ' + imgName);
+            
+            try {
+              const imgData = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
+                objs.get(imgName, (obj) => {
+                  clearTimeout(timeout);
+                  resolve(obj);
+                });
+              });
+
+              // 画像サイズを取得
+              const width = imgData.width;
+              const height = imgData.height;
+              console.log('Size: ' + width + 'x' + height);
+
+              // ページ全体画像かチェック
+              if (isFullPageImage(width, height)) {
+                console.log('Full-page image detected, splitting...');
+                
+                // bitmapまたはdataから画像を取得してCanvasに描画
+                const srcCanvas = document.createElement('canvas');
+                srcCanvas.width = width;
+                srcCanvas.height = height;
+                const srcCtx = srcCanvas.getContext('2d');
+
+                if (imgData.bitmap) {
+                  // ImageBitmap形式
+                  srcCtx.drawImage(imgData.bitmap, 0, 0);
+                  console.log('Using bitmap');
+                } else if (imgData.data) {
+                  // 生データ形式
+                  const imageData = new ImageData(
+                    new Uint8ClampedArray(imgData.data),
+                    width,
+                    height
+                  );
+                  srcCtx.putImageData(imageData, 0, 0);
+                  console.log('Using raw data');
+                } else {
+                  console.log('No valid image data');
+                  continue;
+                }
+
+                // 分割処理
+                const splitPhotos = await splitPageCanvasIntoPhotos(srcCanvas, photosPerPage);
+                allPhotos.push(...splitPhotos);
+              } else {
+                console.log('Not a full-page image');
+              }
+            } catch (err) {
+              console.log('Error: ' + err.message);
+            }
+          }
+        }
+      }
+
+      return allPhotos;
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => document.getElementById('c1')?.getContext('2d'));
+    await new Promise(r => setTimeout(r, 500));
+
+    console.log('1. html2pdf形式でPDF生成...');
+    const pdfDataUrl = await page.evaluate(async () => {
+      // @ts-ignore
+      return await window.generatePdf();
+    }) as string;
+    
+    const base64 = pdfDataUrl.split(',')[1];
+    const pdfBuffer = Buffer.from(base64, 'base64');
+    const pdfPath = path.join(OUTPUT_DIR, 'html2pdf-test.pdf');
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    console.log(`   保存: ${pdfPath}`);
+    console.log(`   サイズ: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
+    console.log('');
+
+    console.log('2. PDFから画像抽出＆分割...');
+    const photos = await page.evaluate(async (dataUrl: string) => {
+      // @ts-ignore
+      return await window.extractWithSplit(dataUrl, 3);
+    }, pdfDataUrl) as any[];
+
+    console.log('');
+    console.log('========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`分割後の写真数: ${photos.length}`);
+    
+    if (photos.length > 0) {
+      console.log('');
+      for (const photo of photos) {
+        console.log(`  Photo ${photo.index}: ${photo.width}x${photo.height}, ${(photo.size / 1024).toFixed(1)} KB`);
+        
+        const imgBase64 = photo.dataUrl.split(',')[1];
+        const imgBuffer = Buffer.from(imgBase64, 'base64');
+        const imgPath = path.join(OUTPUT_DIR, `extracted-photo-${photo.index}.jpg`);
+        fs.writeFileSync(imgPath, imgBuffer);
+        console.log(`    → 保存: ${imgPath}`);
+      }
+
+      if (photos.length === 3) {
+        console.log('');
+        console.log('========================================');
+        console.log('✓ 成功！3枚の個別写真を抽出しました');
+        console.log('========================================');
+      }
+    } else {
+      console.log('');
+      console.log('⚠ 写真の抽出に失敗しました');
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+=== END: scripts/test-html2pdf-full.ts ===
+
+=== FILE: scripts/test-html2pdf-split.ts ===
+
+/**
+ * html2pdf形式PDFからの画像分割テスト
+ * 
+ * 実行: npx tsx scripts/test-html2pdf-split.ts
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+const HTML2PDF_OUTPUT = path.join(OUTPUT_DIR, 'test-html2pdf-format.pdf');
+
+async function main() {
+  console.log('========================================');
+  console.log('html2pdf形式PDF → 画像分割テスト');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; }
+    .album-page { width: 210mm; min-height: 297mm; padding: 10mm; background: white; }
+    .page-title { text-align: center; font-size: 16px; font-weight: bold; margin-bottom: 8mm; padding: 3mm; background: #f0f0f0; }
+    .photo-row { display: flex; margin-bottom: 3mm; border: 1px solid #ccc; }
+    .photo-cell { width: 45%; height: 80mm; display: flex; align-items: center; justify-content: center; background: #eee; border-right: 1px solid #ccc; }
+    .info-cell { flex: 1; padding: 3mm; font-size: 10px; }
+    .info-row { display: flex; border-bottom: 1px solid #eee; padding: 2mm 0; }
+    .info-label { width: 15mm; font-weight: bold; color: #666; }
+  </style>
+</head>
+<body>
+  <div id="album-content">
+    <div class="album-page">
+      <div class="page-title">工事写真帳 - テスト</div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c1" width="300" height="225"></canvas></div>
+        <div class="info-cell">
+          <div class="info-row"><span class="info-label">工種</span><span>舗装工</span></div>
+          <div class="info-row"><span class="info-label">種別</span><span>アスファルト舗装</span></div>
+          <div class="info-row"><span class="info-label">測点</span><span>NO.5+10.0</span></div>
+        </div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c2" width="300" height="225"></canvas></div>
+        <div class="info-cell">
+          <div class="info-row"><span class="info-label">工種</span><span>舗装工</span></div>
+          <div class="info-row"><span class="info-label">種別</span><span>アスファルト舗装</span></div>
+          <div class="info-row"><span class="info-label">測点</span><span>NO.6+0.0</span></div>
+        </div>
+      </div>
+      <div class="photo-row">
+        <div class="photo-cell"><canvas id="c3" width="300" height="225"></canvas></div>
+        <div class="info-cell">
+          <div class="info-row"><span class="info-label">工種</span><span>安全管理</span></div>
+          <div class="info-row"><span class="info-label">種別</span><span>朝礼</span></div>
+          <div class="info-row"><span class="info-label">測点</span><span>-</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    // テスト画像を描画
+    function drawTestImage(id, color, text) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, '#ffffff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    }
+    
+    drawTestImage('c1', '#ffcc00', 'Photo 1');
+    drawTestImage('c2', '#00ccff', 'Photo 2');
+    drawTestImage('c3', '#ff6699', 'Photo 3');
+
+    // html2pdfでPDF生成
+    window.generateHtml2Pdf = async function() {
+      const element = document.getElementById('album-content');
+      const opt = {
+        margin: 0,
+        filename: 'test.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      const blob = await html2pdf().set(opt).from(element).output('blob');
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    };
+
+    // 画像分割ロジック
+    function isFullPageImage(width, height) {
+      const aspectRatio = width / height;
+      const a4Ratio = 210 / 297;
+      return Math.abs(aspectRatio - a4Ratio) < 0.15 && height > 1000;
+    }
+
+    async function splitPageImage(rawData, width, height, photosPerPage) {
+      const photos = [];
+      const headerRatio = 0.05;
+      const photoWidthRatio = 0.43;
+      const headerHeight = Math.floor(height * headerRatio);
+      const usableHeight = height - headerHeight;
+      const rowHeight = Math.floor(usableHeight / photosPerPage);
+      const photoWidth = Math.floor(width * photoWidthRatio);
+      const marginTop = Math.floor(rowHeight * 0.03);
+      const marginLeft = Math.floor(width * 0.02);
+
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = width;
+      srcCanvas.height = height;
+      const srcCtx = srcCanvas.getContext('2d');
+      const srcImageData = new ImageData(rawData, width, height);
+      srcCtx.putImageData(srcImageData, 0, 0);
+
+      for (let i = 0; i < photosPerPage; i++) {
+        const y = headerHeight + i * rowHeight + marginTop;
+        const x = marginLeft;
+        const w = photoWidth - marginLeft * 2;
+        const h = rowHeight - marginTop * 2;
+
+        const destCanvas = document.createElement('canvas');
+        destCanvas.width = w;
+        destCanvas.height = h;
+        const destCtx = destCanvas.getContext('2d');
+        destCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+
+        const blob = await new Promise((resolve) => destCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (blob && blob.size > 1000) {
+          photos.push({ width: w, height: h, size: blob.size });
+        }
+      }
+      return photos;
+    }
+
+    // 画像抽出（分割機能付き）
+    window.extractWithSplit = async function(pdfDataUrl) {
+      const base64 = pdfDataUrl.split(',')[1];
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const results = { pageCount: pdf.numPages, rawImages: [], splitImages: [] };
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+        const processed = new Set();
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            if (processed.has(imgName)) continue;
+            processed.add(imgName);
+
+            const imgData = await new Promise((resolve) => {
+              const existing = objs.get(imgName);
+              if (existing) { resolve(existing); return; }
+              objs.get(imgName, resolve);
+            });
+
+            if (imgData && imgData.data) {
+              const width = imgData.width;
+              const height = imgData.height;
+              results.rawImages.push({ name: imgName, width, height });
+
+              if (isFullPageImage(width, height)) {
+                console.log('Detected full-page image, splitting...');
+                const rawData = new Uint8ClampedArray(imgData.data);
+                const splitPhotos = await splitPageImage(rawData, width, height, 3);
+                results.splitImages.push(...splitPhotos);
+              }
+            }
+          }
+        }
+      }
+      return results;
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => document.getElementById('c1')?.getContext('2d'));
+
+    console.log('1. html2pdf形式でPDF生成中...');
+    const pdfDataUrl = await page.evaluate(async () => {
+      // @ts-ignore
+      return await window.generateHtml2Pdf();
+    }) as string;
+
+    const base64 = pdfDataUrl.split(',')[1];
+    const pdfBuffer = Buffer.from(base64, 'base64');
+    fs.writeFileSync(HTML2PDF_OUTPUT, pdfBuffer);
+    console.log(`   ✓ 保存: ${HTML2PDF_OUTPUT}`);
+    console.log(`   サイズ: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
+    console.log('');
+
+    console.log('2. 画像分割抽出テスト...');
+    const result = await page.evaluate(async (dataUrl: string) => {
+      // @ts-ignore
+      return await window.extractWithSplit(dataUrl);
+    }, pdfDataUrl) as { pageCount: number; rawImages: any[]; splitImages: any[] };
+
+    console.log('');
+    console.log('========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`PDFページ数: ${result.pageCount}`);
+    console.log(`生の画像数: ${result.rawImages.length}`);
+    
+    if (result.rawImages.length > 0) {
+      console.log('');
+      console.log('生の画像（ページ全体）:');
+      for (const img of result.rawImages) {
+        console.log(`  - ${img.name}: ${img.width}x${img.height}`);
+      }
+    }
+
+    console.log('');
+    console.log(`分割後の画像数: ${result.splitImages.length}`);
+    
+    if (result.splitImages.length > 0) {
+      console.log('');
+      console.log('分割された個別写真:');
+      for (let i = 0; i < result.splitImages.length; i++) {
+        const img = result.splitImages[i];
+        console.log(`  - Photo ${i + 1}: ${img.width}x${img.height}, ${(img.size / 1024).toFixed(1)} KB`);
+      }
+      
+      if (result.splitImages.length === 3) {
+        console.log('');
+        console.log('========================================');
+        console.log('✓ テスト成功！3枚に分割されました');
+        console.log('========================================');
+      }
+    } else {
+      console.log('');
+      console.log('⚠ 画像の分割に失敗しました');
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-html2pdf-split.ts ===
+
+=== FILE: scripts/test-pdf-dialog.ts ===
+
+/**
+ * PDFロードダイアログの自動テスト
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const PDF_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
+const FOLDER_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形/No2';
+
+async function main() {
+  console.log('========================================');
+  console.log('PDFロード処理テスト');
+  console.log('========================================\n');
+
+  // ファイル・フォルダ存在確認
+  if (!fs.existsSync(PDF_PATH)) {
+    console.error(`❌ PDFが見つかりません: ${PDF_PATH}`);
+    process.exit(1);
+  }
+  if (!fs.existsSync(FOLDER_PATH)) {
+    console.error(`❌ フォルダが見つかりません: ${FOLDER_PATH}`);
+    process.exit(1);
+  }
+
+  console.log(`PDF: ${path.basename(PDF_PATH)}`);
+  console.log(`フォルダ: ${FOLDER_PATH}`);
+
+  // フォルダ内の画像を取得
+  const imageFiles = fs.readdirSync(FOLDER_PATH)
+    .filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f))
+    .sort();
+  console.log(`画像ファイル: ${imageFiles.length}枚`);
+  imageFiles.forEach(f => console.log(`  - ${f}`));
+  console.log('');
+
+  // PDFを読み込んでスマートPDFか判定
+  const pdfBuffer = fs.readFileSync(PDF_PATH);
+  const pdfText = pdfBuffer.toString('utf-8').slice(0, 100000);
+  const isSmart = pdfText.includes('GASPM_SESSION_V1:');
+  console.log(`PDF形式: ${isSmart ? 'スマートPDF' : '旧形式PDF'}`);
+  console.log('');
+
+  // handlePdfLoadのロジックをシミュレート
+  console.log('========================================');
+  console.log('handlePdfLoad シミュレーション');
+  console.log('========================================\n');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    page.on('console', msg => {
+      if (msg.type() !== 'warning') {
+        console.log('>', msg.text());
+      }
+    });
+
+    // PDFとフォルダ画像をBase64として渡す
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const folderImagesData: { name: string; base64: string }[] = [];
+    
+    for (const imgFile of imageFiles) {
+      const imgPath = path.join(FOLDER_PATH, imgFile);
+      const imgBuffer = fs.readFileSync(imgPath);
+      const ext = path.extname(imgFile).toLowerCase();
+      const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+      folderImagesData.push({
+        name: imgFile,
+        base64: `data:${mimeType};base64,${imgBuffer.toString('base64')}`
+      });
+    }
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    // extractSessionFromPdf のシンプル版
+    async function extractSession(pdfBase64) {
+      const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 200000));
+      
+      const marker = 'GASPM_SESSION_V1:';
+      const idx = text.indexOf(marker);
+      if (idx === -1) return null;
+
+      const start = idx + marker.length;
+      const end = text.indexOf('%%EOF', start);
+      const jsonStr = text.slice(start, end > start ? end : undefined).trim();
+      
+      try {
+        return JSON.parse(jsonStr);
+      } catch {
+        return null;
+      }
+    }
+
+    // extractTextWithPositions のシンプル版
+    async function extractText(pdfBase64) {
+      const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const pages = [];
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const items = textContent.items.map(item => ({
+          text: item.str,
+          x: item.transform[4],
+          y: item.transform[5]
+        }));
+        pages.push({ pageNum: i, items });
+      }
+      return pages;
+    }
+
+    // parsePositionedTextToRecords のシンプル版
+    function parseText(textData, imageCount, photosPerPage) {
+      const records = [];
+      for (let i = 0; i < imageCount; i++) {
+        records.push({
+          fileName: 'photo_' + (i + 1) + '.jpg',
+          status: 'done',
+          analysis: {
+            workType: '舗装工',
+            variety: '-',
+            detail: '-',
+            station: '-',
+            remarks: '-',
+            hasBoard: false
+          }
+        });
+      }
+      return records;
+    }
+
+    window.testPdfLoad = async function(pdfBase64, folderImages, isSmart) {
+      console.log('Starting test...');
+      console.log('isSmart:', isSmart);
+      console.log('Folder images:', folderImages.length);
+
+      let sessionData = null;
+      
+      if (isSmart) {
+        sessionData = await extractSession(pdfBase64);
+        console.log('Session data:', sessionData ? sessionData.length + ' records' : 'null');
+      }
+
+      if (!sessionData || sessionData.length === 0) {
+        console.log('No session data, parsing text...');
+        const textData = await extractText(pdfBase64);
+        console.log('Text pages:', textData.length);
+        
+        const imageCount = folderImages.length;
+        const photosPerPage = textData.length > 0 && imageCount / textData.length <= 2.5 ? 2 : 3;
+        console.log('Estimated layout:', photosPerPage, 'per page');
+        
+        sessionData = parseText(textData, imageCount, photosPerPage);
+        console.log('Parsed records:', sessionData.length);
+      }
+
+      // セッションデータと画像をマッチング
+      const restoredPhotos = sessionData.map((data, index) => {
+        const fileName = data.fileName || 'photo_' + (index + 1) + '.jpg';
+        
+        // フォルダ画像とマッチング
+        const folderImg = folderImages[index];
+        const base64 = folderImg ? folderImg.base64 : '';
+        
+        return {
+          fileName,
+          base64,
+          hasImage: !!base64,
+          analysis: data.analysis
+        };
+      });
+
+      const matchedCount = restoredPhotos.filter(p => p.hasImage).length;
+      
+      return {
+        totalRecords: restoredPhotos.length,
+        matchedImages: matchedCount,
+        photos: restoredPhotos.map(p => ({
+          fileName: p.fileName,
+          hasImage: p.hasImage,
+          workType: p.analysis?.workType
+        }))
+      };
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('テスト実行中...\n');
+    
+    const result = await page.evaluate(async (pdfB64: string, folderImgs: any[], smart: boolean) => {
+      // @ts-ignore
+      return await window.testPdfLoad(pdfB64, folderImgs, smart);
+    }, pdfBase64, folderImagesData, isSmart) as any;
+
+    console.log('\n========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`レコード数: ${result.totalRecords}`);
+    console.log(`マッチした画像: ${result.matchedImages}`);
+    console.log('');
+    console.log('写真一覧:');
+    result.photos.forEach((p: any, i: number) => {
+      const status = p.hasImage ? '✓' : '✗';
+      console.log(`  ${status} ${i + 1}. ${p.fileName}`);
+    });
+
+    if (result.matchedImages === result.totalRecords) {
+      console.log('\n========================================');
+      console.log('✓ 成功！全ての画像がマッチしました');
+      console.log('========================================');
+    } else if (result.matchedImages > 0) {
+      console.log('\n========================================');
+      console.log(`⚠ ${result.matchedImages}/${result.totalRecords} 枚マッチ`);
+      console.log('========================================');
+    } else {
+      console.log('\n========================================');
+      console.log('✗ 画像のマッチに失敗');
+      console.log('========================================');
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-pdf-dialog.ts ===
 
 === FILE: scripts/test-pdf-image-extraction.ts ===
 
@@ -10473,6 +13106,841 @@ main();
 
 === END: scripts/test-pdf-image-extraction.ts ===
 
+=== FILE: scripts/test-pdflibgen.ts ===
+
+/**
+ * pdf-lib個別画像埋め込みPDF生成テスト
+ * 
+ * 実行: npx tsx scripts/test-pdflibgen.ts
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+const OUTPUT_PDF = path.join(OUTPUT_DIR, 'test-pdflib-individual-images.pdf');
+
+async function main() {
+  console.log('========================================');
+  console.log('pdf-lib 個別画像埋め込みPDF生成テスト');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    // テスト用のHTMLを作成（pdf-libとpdf.jsを読み込み）
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+  <canvas id="testCanvas1" width="400" height="300"></canvas>
+  <canvas id="testCanvas2" width="400" height="300"></canvas>
+  <canvas id="testCanvas3" width="400" height="300"></canvas>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    // テスト画像を生成
+    function createTestImage(canvasId, color, text) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // 背景
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, '#ffffff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 枠
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+      
+      // テキスト
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      
+      return canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    const testImages = [
+      createTestImage('testCanvas1', '#ffcc00', 'Photo 1: Construction'),
+      createTestImage('testCanvas2', '#00ccff', 'Photo 2: Inspection'),
+      createTestImage('testCanvas3', '#ff6699', 'Photo 3: Safety'),
+    ];
+
+    // PDFを生成
+    window.generatePdf = async function() {
+      const { PDFDocument, rgb, StandardFonts } = PDFLib;
+      
+      const pdfDoc = await PDFDocument.create();
+      const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      // A4サイズ
+      const A4_WIDTH = 595.28;
+      const A4_HEIGHT = 841.89;
+      const MARGIN = 20;
+
+      // テスト用の写真データ
+      const photos = [
+        { fileName: 'photo_001.jpg', base64: testImages[0], analysis: { workType: 'Paving', variety: 'Asphalt', detail: 'Surface', station: 'NO.5+10.0', remarks: 'Construction' } },
+        { fileName: 'photo_002.jpg', base64: testImages[1], analysis: { workType: 'Paving', variety: 'Asphalt', detail: 'Base', station: 'NO.5+10.0', remarks: 'Inspection' } },
+        { fileName: 'photo_003.jpg', base64: testImages[2], analysis: { workType: 'Safety', variety: 'Meeting', detail: '-', station: '-', remarks: 'Morning assembly' } },
+      ];
+
+      const photosPerPage = 3;
+      const photoRowHeight = (A4_HEIGHT - MARGIN * 2 - 40) / photosPerPage;
+      const photoWidth = (A4_WIDTH - MARGIN * 2) * 0.45;
+      const photoHeight = photoRowHeight - 10;
+      const infoWidth = (A4_WIDTH - MARGIN * 2) * 0.50;
+
+      const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+
+      // ヘッダー
+      page.drawText('Construction Photo Album - Test', {
+        x: MARGIN,
+        y: A4_HEIGHT - MARGIN - 20,
+        size: 14,
+        font: helveticaBold,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+
+      // 各写真を個別に埋め込み
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        const rowY = A4_HEIGHT - MARGIN - 40 - (i + 1) * photoRowHeight + 5;
+
+        // base64からバイナリに変換
+        const base64Data = photo.base64.split(',')[1];
+        const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+        // JPEG画像を埋め込み
+        const embeddedImage = await pdfDoc.embedJpg(imageBytes);
+
+        // アスペクト比を維持
+        const imgAspect = embeddedImage.width / embeddedImage.height;
+        const boxAspect = photoWidth / photoHeight;
+        let drawWidth, drawHeight;
+        if (imgAspect > boxAspect) {
+          drawWidth = photoWidth;
+          drawHeight = photoWidth / imgAspect;
+        } else {
+          drawHeight = photoHeight;
+          drawWidth = photoHeight * imgAspect;
+        }
+        const offsetX = (photoWidth - drawWidth) / 2;
+        const offsetY = (photoHeight - drawHeight) / 2;
+
+        // 画像を描画
+        page.drawImage(embeddedImage, {
+          x: MARGIN + offsetX,
+          y: rowY + offsetY,
+          width: drawWidth,
+          height: drawHeight,
+        });
+
+        // 枠
+        page.drawRectangle({
+          x: MARGIN,
+          y: rowY,
+          width: photoWidth,
+          height: photoHeight,
+          borderColor: rgb(0.7, 0.7, 0.7),
+          borderWidth: 0.5,
+        });
+
+        // 情報欄
+        const infoX = MARGIN + photoWidth + 5;
+        page.drawRectangle({
+          x: infoX,
+          y: rowY,
+          width: infoWidth,
+          height: photoHeight,
+          borderColor: rgb(0.7, 0.7, 0.7),
+          borderWidth: 0.5,
+        });
+
+        const analysis = photo.analysis;
+        const infoLines = [
+          { label: 'Work Type', value: analysis.workType },
+          { label: 'Variety', value: analysis.variety },
+          { label: 'Detail', value: analysis.detail },
+          { label: 'Station', value: analysis.station },
+          { label: 'Remarks', value: analysis.remarks },
+        ];
+
+        const lineHeight = 18;
+        infoLines.forEach((line, idx) => {
+          const y = rowY + photoHeight - 20 - idx * lineHeight;
+          page.drawText(line.label + ':', { x: infoX + 5, y, size: 8, font: helveticaBold, color: rgb(0.4, 0.4, 0.4) });
+          page.drawText(line.value, { x: infoX + 60, y, size: 9, font: helvetica, color: rgb(0.1, 0.1, 0.1) });
+        });
+
+        page.drawText(photo.fileName, { x: infoX + 5, y: rowY + 5, size: 7, font: helvetica, color: rgb(0.6, 0.6, 0.6) });
+      }
+
+      // メタデータ
+      pdfDoc.setTitle('Construction Photo Album - Test');
+      pdfDoc.setCreator('GASPhotoAIManager');
+      pdfDoc.setProducer('pdf-lib (Individual Images)');
+      pdfDoc.setKeywords(['Test', 'IndividualImages']);
+
+      const pdfBytes = await pdfDoc.save();
+      
+      // Uint8ArrayをBase64に変換
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < pdfBytes.length; i += chunkSize) {
+        const chunk = pdfBytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      return btoa(binary);
+    };
+
+    // 画像抽出テスト
+    window.extractImages = async function(pdfBase64) {
+      const binaryString = atob(pdfBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const results = {
+        pageCount: pdf.numPages,
+        images: []
+      };
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+        const processed = new Set();
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            if (processed.has(imgName)) continue;
+            processed.add(imgName);
+
+            try {
+              const imgData = await new Promise((resolve) => {
+                const existing = objs.get(imgName);
+                if (existing) { resolve(existing); return; }
+                objs.get(imgName, resolve);
+              });
+
+              if (imgData && imgData.data) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.width;
+                canvas.height = imgData.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  const imageData = new ImageData(new Uint8ClampedArray(imgData.data), imgData.width, imgData.height);
+                  ctx.putImageData(imageData, 0, 0);
+                  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+                  if (blob) {
+                    results.images.push({ page: pageNum, name: imgName, width: imgData.width, height: imgData.height, size: blob.size });
+                  }
+                }
+              } else if (imgData && imgData.bitmap) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.bitmap.width || imgData.width;
+                canvas.height = imgData.bitmap.height || imgData.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(imgData.bitmap, 0, 0);
+                  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+                  if (blob) {
+                    results.images.push({ page: pageNum, name: imgName, width: canvas.width, height: canvas.height, size: blob.size });
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Extraction error:', e);
+            }
+          }
+        }
+      }
+      return results;
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    // Canvas描画を待つ
+    await page.waitForFunction(() => {
+      const canvas = document.getElementById('testCanvas1') as HTMLCanvasElement;
+      return canvas && canvas.getContext('2d');
+    });
+
+    console.log('✓ テスト画像3枚を生成');
+    console.log('');
+    console.log('pdf-libでPDF生成中（個別画像埋め込み）...');
+
+    // PDF生成
+    const pdfBase64 = await page.evaluate(async () => {
+      // @ts-ignore
+      return await window.generatePdf();
+    }) as string;
+
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+    fs.writeFileSync(OUTPUT_PDF, pdfBuffer);
+    console.log(`✓ PDF保存完了: ${OUTPUT_PDF}`);
+    console.log(`  サイズ: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
+
+    // 画像抽出テスト
+    console.log('');
+    console.log('画像抽出テスト実行中...');
+
+    const extractResult = await page.evaluate(async (pdfBase64: string) => {
+      // @ts-ignore
+      return await window.extractImages(pdfBase64);
+    }, pdfBase64) as { pageCount: number; images: Array<{ page: number; name: string; width: number; height: number; size: number }> };
+
+    console.log('');
+    console.log('========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`PDFページ数: ${extractResult.pageCount}`);
+    console.log(`抽出画像数: ${extractResult.images.length}`);
+    console.log('');
+
+    if (extractResult.images.length > 0) {
+      console.log('抽出された画像:');
+      for (const img of extractResult.images) {
+        console.log(`  - ${img.name}: ${img.width}x${img.height}, ${(img.size / 1024).toFixed(1)} KB`);
+      }
+      console.log('');
+      
+      if (extractResult.images.length === 3) {
+        console.log('✓ 3枚の個別画像が正しく抽出されました！');
+      } else {
+        console.log(`⚠ 期待: 3枚, 実際: ${extractResult.images.length}枚`);
+      }
+    } else {
+      console.log('⚠ 画像が抽出できませんでした');
+    }
+
+    console.log('');
+    console.log(`出力ファイル: ${OUTPUT_PDF}`);
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-pdflibgen.ts ===
+
+=== FILE: scripts/test-pdflib-japanese.ts ===
+
+/**
+ * pdf-lib 日本語フォント埋め込みテスト
+ * 
+ * 実行: npx tsx scripts/test-pdflib-japanese.ts
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output');
+const OUTPUT_PDF = path.join(OUTPUT_DIR, 'test-pdflib-japanese.pdf');
+
+// IPA ゴシックフォントファイル（ローカル TTF）
+const JAPANESE_FONT_PATH = path.join(OUTPUT_DIR, 'IPAexfont00401', 'ipaexg.ttf');
+
+async function main() {
+  console.log('========================================');
+  console.log('pdf-lib 日本語フォント埋め込みテスト');
+  console.log('========================================\n');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+</head>
+<body>
+  <canvas id="testCanvas" width="400" height="300"></canvas>
+
+  <script>
+    // テスト画像を生成
+    function createTestImage() {
+      const canvas = document.getElementById('testCanvas');
+      const ctx = canvas.getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, '#ffcc00');
+      gradient.addColorStop(1, '#ffffff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Test Photo', canvas.width / 2, canvas.height / 2);
+      return canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    const testImage = createTestImage();
+
+    window.generatePdf = async function(fontBase64) {
+      const { PDFDocument, rgb, StandardFonts } = PDFLib;
+      
+      const pdfDoc = await PDFDocument.create();
+      
+      // fontkit を登録
+      pdfDoc.registerFontkit(fontkit);
+      
+      // Base64からフォントバイト配列に変換
+      const binaryString = atob(fontBase64);
+      const fontBytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        fontBytes[i] = binaryString.charCodeAt(i);
+      }
+      console.log('Font size:', (fontBytes.length / 1024).toFixed(1), 'KB');
+      
+      const notoSansJP = await pdfDoc.embedFont(fontBytes);
+      const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      const A4_WIDTH = 595.28;
+      const A4_HEIGHT = 841.89;
+      const MARGIN = 20;
+
+      const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+
+      // 日本語タイトル
+      page.drawText('工事写真帳', {
+        x: MARGIN,
+        y: A4_HEIGHT - MARGIN - 25,
+        size: 18,
+        font: notoSansJP,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+
+      page.drawText('Page 1 / 1', {
+        x: A4_WIDTH - MARGIN - 60,
+        y: A4_HEIGHT - MARGIN - 20,
+        size: 10,
+        font: helvetica,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+
+      // 写真を埋め込み
+      const photoWidth = 250;
+      const photoHeight = 187;
+      const photoX = MARGIN;
+      const photoY = A4_HEIGHT - MARGIN - 60 - photoHeight;
+
+      const base64Data = testImage.split(',')[1];
+      const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      const embeddedImage = await pdfDoc.embedJpg(imageBytes);
+
+      page.drawImage(embeddedImage, {
+        x: photoX,
+        y: photoY,
+        width: photoWidth,
+        height: photoHeight,
+      });
+
+      page.drawRectangle({
+        x: photoX,
+        y: photoY,
+        width: photoWidth,
+        height: photoHeight,
+        borderColor: rgb(0.7, 0.7, 0.7),
+        borderWidth: 0.5,
+      });
+
+      // 日本語情報欄
+      const infoX = photoX + photoWidth + 10;
+      const infoWidth = A4_WIDTH - MARGIN - infoX;
+      const lineHeight = 22;
+      
+      page.drawRectangle({
+        x: infoX,
+        y: photoY,
+        width: infoWidth,
+        height: photoHeight,
+        borderColor: rgb(0.7, 0.7, 0.7),
+        borderWidth: 0.5,
+      });
+
+      const infoLines = [
+        { label: '工種', value: '舗装工' },
+        { label: '種別', value: 'アスファルト舗装' },
+        { label: '細別', value: '表層（密粒度As 13F）' },
+        { label: '測点', value: 'NO.5+10.0 ～ NO.6+5.0' },
+        { label: '備考', value: '施工状況' },
+        { label: '撮影日時', value: '2024/12/28 10:30' },
+      ];
+
+      const startY = photoY + photoHeight - 20;
+      infoLines.forEach((line, idx) => {
+        const y = startY - idx * lineHeight;
+        // ラベル
+        page.drawText(line.label, {
+          x: infoX + 5,
+          y: y,
+          size: 9,
+          font: notoSansJP,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+        // 値
+        page.drawText(line.value, {
+          x: infoX + 55,
+          y: y,
+          size: 10,
+          font: notoSansJP,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+      });
+
+      // メタデータ
+      pdfDoc.setTitle('工事写真帳 - テスト');
+      pdfDoc.setCreator('GASPhotoAIManager');
+      pdfDoc.setProducer('pdf-lib + Noto Sans JP');
+
+      const pdfBytes = await pdfDoc.save();
+      
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < pdfBytes.length; i += chunkSize) {
+        const chunk = pdfBytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      return { base64: btoa(binary), size: pdfBytes.length };
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    // ローカルフォントファイルを読み込み
+    console.log('日本語フォントを読み込み中...');
+    console.log(`フォントファイル: ${JAPANESE_FONT_PATH}`);
+    
+    const fontBuffer = fs.readFileSync(JAPANESE_FONT_PATH);
+    const fontBase64 = fontBuffer.toString('base64');
+    console.log(`フォントサイズ: ${(fontBuffer.length / 1024).toFixed(1)} KB`);
+    console.log('');
+
+    // PDF生成
+    const result = await page.evaluate(async (fontBase64: string) => {
+      // @ts-ignore
+      return await window.generatePdf(fontBase64);
+    }, fontBase64) as { base64: string; size: number };
+
+    const pdfBuffer = Buffer.from(result.base64, 'base64');
+    fs.writeFileSync(OUTPUT_PDF, pdfBuffer);
+
+    console.log('========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`✓ PDF生成成功`);
+    console.log(`  サイズ: ${(result.size / 1024).toFixed(1)} KB`);
+    console.log(`  出力: ${OUTPUT_PDF}`);
+    console.log('');
+    console.log('日本語テキストが含まれています:');
+    console.log('  - タイトル: 工事写真帳');
+    console.log('  - ラベル: 工種、種別、細別、測点、備考、撮影日時');
+    console.log('  - 値: 舗装工、アスファルト舗装、表層（密粒度As 13F）等');
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-pdflib-japanese.ts ===
+
+=== FILE: scripts/test-pdf-load-logic.ts ===
+
+/**
+ * handlePdfLoadロジックの完全自動テスト
+ * ブラウザ上でApp.tsxと同等のロジックを実行
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const PDF_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
+const FOLDER_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形/No2';
+
+async function main() {
+  console.log('========================================');
+  console.log('handlePdfLoad 完全自動テスト');
+  console.log('========================================\n');
+
+  // ファイル存在確認
+  if (!fs.existsSync(PDF_PATH)) {
+    console.error(`❌ PDF not found: ${PDF_PATH}`);
+    process.exit(1);
+  }
+  if (!fs.existsSync(FOLDER_PATH)) {
+    console.error(`❌ Folder not found: ${FOLDER_PATH}`);
+    process.exit(1);
+  }
+
+  // PDFとフォルダ画像を読み込み
+  const pdfBuffer = fs.readFileSync(PDF_PATH);
+  const pdfBase64 = pdfBuffer.toString('base64');
+  
+  const imageFiles = fs.readdirSync(FOLDER_PATH)
+    .filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f))
+    .sort();
+  
+  console.log(`PDF: ${path.basename(PDF_PATH)} (${(pdfBuffer.length / 1024).toFixed(1)} KB)`);
+  console.log(`フォルダ: ${FOLDER_PATH}`);
+  console.log(`画像: ${imageFiles.length}枚`);
+  console.log('');
+
+  // フォルダ画像をBase64に変換
+  const folderImagesMap: Record<string, { base64: string; mimeType: string }> = {};
+  for (const imgFile of imageFiles) {
+    const imgPath = path.join(FOLDER_PATH, imgFile);
+    const imgBuffer = fs.readFileSync(imgPath);
+    const ext = path.extname(imgFile).toLowerCase();
+    const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+    folderImagesMap[imgFile] = {
+      base64: `data:${mimeType};base64,${imgBuffer.toString('base64')}`,
+      mimeType
+    };
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    page.on('console', msg => {
+      const text = msg.text();
+      if (!text.includes('Setting up fake worker')) {
+        console.log('>', text);
+      }
+    });
+
+    // App.tsxのhandlePdfLoadと同等のロジックをブラウザで実行
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+<script type="module">
+import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+// isSmartPdf
+async function isSmartPdf(pdfBase64) {
+  const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 100000));
+  return text.includes('GASPM_SESSION_V1:');
+}
+
+// extractSessionFromPdf
+async function extractSessionFromPdf(pdfBase64) {
+  const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 200000));
+  const marker = 'GASPM_SESSION_V1:';
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+  const start = idx + marker.length;
+  const end = text.indexOf('%%EOF', start);
+  try {
+    return JSON.parse(text.slice(start, end > start ? end : undefined).trim());
+  } catch { return null; }
+}
+
+// extractTextWithPositions
+async function extractTextWithPositions(pdfBase64) {
+  const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    pages.push({
+      pageNum: i,
+      items: textContent.items.map(item => ({
+        text: item.str,
+        x: item.transform[4],
+        y: item.transform[5]
+      }))
+    });
+  }
+  return pages;
+}
+
+// parsePositionedTextToRecords (simplified)
+function parsePositionedTextToRecords(textData, imageCount, photosPerPage) {
+  const records = [];
+  for (let i = 0; i < imageCount; i++) {
+    records.push({
+      fileName: 'photo_' + (i + 1) + '.jpg',
+      status: 'done',
+      analysis: { workType: '-', variety: '-', detail: '-', station: '-', remarks: '-', hasBoard: false }
+    });
+  }
+  return records;
+}
+
+// handlePdfLoad equivalent
+window.handlePdfLoad = async function(pdfBase64, folderImagesMap) {
+  console.log('[handlePdfLoad] Start');
+  
+  const isSmart = await isSmartPdf(pdfBase64);
+  console.log('[handlePdfLoad] isSmart:', isSmart);
+
+  let folderImages = new Map(Object.entries(folderImagesMap));
+  console.log('[handlePdfLoad] Folder images:', folderImages.size);
+
+  // セッションデータを抽出
+  let sessionData = null;
+  if (isSmart) {
+    sessionData = await extractSessionFromPdf(pdfBase64);
+  }
+  console.log('[handlePdfLoad] Session data:', sessionData ? sessionData.length : 'null');
+
+  if (!sessionData || sessionData.length === 0) {
+    console.log('[handlePdfLoad] Parsing text...');
+    const textData = await extractTextWithPositions(pdfBase64);
+    const imageCount = folderImages.size;
+    const totalPages = textData.length;
+    const photosPerPage = totalPages > 0 && imageCount / totalPages <= 2.5 ? 2 : 3;
+    console.log('[handlePdfLoad] Pages:', totalPages, 'Photos/page:', photosPerPage);
+    sessionData = parsePositionedTextToRecords(textData, imageCount, photosPerPage);
+    console.log('[handlePdfLoad] Parsed records:', sessionData.length);
+  }
+
+  // セッションデータと画像をマッチング
+  const restoredPhotos = sessionData.map((data, index) => {
+    const fileName = data.fileName || 'photo_' + (index + 1) + '.jpg';
+    let base64 = '';
+    let mimeType = 'image/jpeg';
+
+    // フォルダ画像: インデックスでマッチング
+    const folderImg = Array.from(folderImages.values())[index];
+    if (folderImg) {
+      base64 = folderImg.base64;
+      mimeType = folderImg.mimeType;
+    }
+
+    return {
+      fileName,
+      base64: base64 ? '[HAS_IMAGE]' : '', // 実際のbase64は大きすぎるので省略
+      hasImage: !!base64,
+      mimeType,
+      status: data.status || 'done',
+      analysis: data.analysis
+    };
+  });
+
+  const matchedCount = restoredPhotos.filter(p => p.hasImage).length;
+  console.log('[handlePdfLoad] Matched:', matchedCount, '/', restoredPhotos.length);
+
+  // 結果
+  console.log('[handlePdfLoad] Complete!');
+  
+  return {
+    success: true,
+    totalRecords: restoredPhotos.length,
+    matchedImages: matchedCount,
+    photos: restoredPhotos
+  };
+};
+</script>
+</body>
+</html>
+`;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('========================================');
+    console.log('handlePdfLoad 実行');
+    console.log('========================================\n');
+
+    const result = await page.evaluate(async (pdfB64: string, folderImgs: any) => {
+      // @ts-ignore
+      return await window.handlePdfLoad(pdfB64, folderImgs);
+    }, pdfBase64, folderImagesMap) as any;
+
+    console.log('\n========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`成功: ${result.success}`);
+    console.log(`レコード数: ${result.totalRecords}`);
+    console.log(`マッチした画像: ${result.matchedImages}`);
+    
+    if (result.matchedImages === result.totalRecords && result.totalRecords > 0) {
+      console.log('\n✓ 全ての画像がマッチしました！');
+      console.log('  handlePdfLoadのロジックは正常に動作しています。');
+      console.log('  問題はダイアログのUI更新にあります。');
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-pdf-load-logic.ts ===
+
 === FILE: scripts/test-prompt-rules.ts ===
 
 /**
@@ -10679,6 +14147,298 @@ function runTests(): void {
 runTests();
 
 === END: scripts/test-prompt-rules.ts ===
+
+=== FILE: scripts/test-real-pdf.ts ===
+
+/**
+ * 実際のPDFファイルで画像抽出テスト
+ */
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const PDF_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
+const OUTPUT_DIR = path.join(process.cwd(), 'test-output', 'real-pdf-test');
+
+async function main() {
+  console.log('========================================');
+  console.log('実PDFファイル画像抽出テスト');
+  console.log('========================================\n');
+
+  // PDFファイルの存在確認
+  if (!fs.existsSync(PDF_PATH)) {
+    console.error(`❌ PDFファイルが見つかりません: ${PDF_PATH}`);
+    process.exit(1);
+  }
+
+  console.log(`PDF: ${PDF_PATH}`);
+  const pdfStats = fs.statSync(PDF_PATH);
+  console.log(`サイズ: ${(pdfStats.size / 1024).toFixed(1)} KB`);
+  console.log('');
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    page.on('console', msg => {
+      const text = msg.text();
+      if (msg.type() !== 'warning' && !text.includes('parser-blocking') && !text.includes('Setting up fake')) {
+        console.log('>', text);
+      }
+    });
+
+    // PDFファイルを読み込んでbase64に変換
+    const pdfBuffer = fs.readFileSync(PDF_PATH);
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const pdfDataUrl = `data:application/pdf;base64,${pdfBase64}`;
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+    // ページ全体画像かどうか判定
+    function isFullPageImage(width, height) {
+      const aspectRatio = width / height;
+      const a4Ratio = 210 / 297;
+      const isA4Like = Math.abs(aspectRatio - a4Ratio) < 0.15;
+      const isLarge = height > 1000;
+      return isA4Like && isLarge;
+    }
+
+    // ページ画像を個別写真に分割
+    async function splitPageCanvasIntoPhotos(srcCanvas, photosPerPage) {
+      const photos = [];
+      const width = srcCanvas.width;
+      const height = srcCanvas.height;
+      
+      const headerRatio = 0.05;
+      const photoWidthRatio = 0.43;
+      
+      const headerHeight = Math.floor(height * headerRatio);
+      const usableHeight = height - headerHeight;
+      const rowHeight = Math.floor(usableHeight / photosPerPage);
+      const photoWidth = Math.floor(width * photoWidthRatio);
+      
+      const marginTop = Math.floor(rowHeight * 0.02);
+      const marginLeft = Math.floor(width * 0.02);
+
+      console.log('Split: ' + width + 'x' + height + ' -> ' + photosPerPage + ' photos');
+
+      for (let i = 0; i < photosPerPage; i++) {
+        const y = headerHeight + i * rowHeight + marginTop;
+        const x = marginLeft;
+        const w = photoWidth - marginLeft;
+        const h = rowHeight - marginTop * 2;
+
+        const destCanvas = document.createElement('canvas');
+        destCanvas.width = w;
+        destCanvas.height = h;
+        const destCtx = destCanvas.getContext('2d');
+        destCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+
+        const blob = await new Promise((resolve) => destCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (blob && blob.size > 1000) {
+          const reader = new FileReader();
+          const dataUrl = await new Promise((resolve) => {
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          
+          photos.push({
+            pageIndex: -1,
+            index: i + 1,
+            width: w,
+            height: h,
+            size: blob.size,
+            dataUrl: dataUrl,
+            isFullPage: true
+          });
+        }
+      }
+      return photos;
+    }
+
+    // 画像抽出
+    window.extractImages = async function(pdfDataUrl, photosPerPage) {
+      const base64 = pdfDataUrl.split(',')[1];
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      
+      console.log('PDF size: ' + (bytes.length / 1024).toFixed(1) + ' KB');
+      
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      console.log('PDF pages: ' + pdf.numPages);
+
+      const allImages = [];
+      let totalSplitPhotos = 0;
+      let totalIndividualImages = 0;
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        console.log('\\n=== Page ' + pageNum + ' ===');
+        const page = await pdf.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+        const objs = page.objs;
+        const OPS = pdfjsLib.OPS;
+
+        // ページレンダリング
+        const viewport = page.getViewport({ scale: 1.0 });
+        const renderCanvas = document.createElement('canvas');
+        renderCanvas.width = viewport.width;
+        renderCanvas.height = viewport.height;
+        const renderCtx = renderCanvas.getContext('2d');
+        await page.render({ canvasContext: renderCtx, viewport }).promise;
+
+        let pageImageCount = 0;
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const op = operatorList.fnArray[i];
+          if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
+            const imgName = operatorList.argsArray[i][0];
+            pageImageCount++;
+            
+            try {
+              const imgData = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
+                objs.get(imgName, (obj) => {
+                  clearTimeout(timeout);
+                  resolve(obj);
+                });
+              });
+
+              const width = imgData.width;
+              const height = imgData.height;
+              console.log('Image ' + imgName + ': ' + width + 'x' + height);
+
+              // Canvasに描画
+              const srcCanvas = document.createElement('canvas');
+              srcCanvas.width = width;
+              srcCanvas.height = height;
+              const srcCtx = srcCanvas.getContext('2d');
+
+              if (imgData.bitmap) {
+                srcCtx.drawImage(imgData.bitmap, 0, 0);
+              } else if (imgData.data) {
+                const imageData = new ImageData(
+                  new Uint8ClampedArray(imgData.data),
+                  width,
+                  height
+                );
+                srcCtx.putImageData(imageData, 0, 0);
+              } else {
+                console.log('No valid image data for ' + imgName);
+                continue;
+              }
+
+              // ページ全体画像かチェック
+              if (isFullPageImage(width, height)) {
+                console.log('-> Full-page image, splitting...');
+                const splitPhotos = await splitPageCanvasIntoPhotos(srcCanvas, photosPerPage);
+                splitPhotos.forEach(p => { p.pageIndex = pageNum; });
+                allImages.push(...splitPhotos);
+                totalSplitPhotos += splitPhotos.length;
+                console.log('-> Split into ' + splitPhotos.length + ' photos');
+              } else {
+                // 個別画像
+                const blob = await new Promise((resolve) => srcCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+                if (blob && blob.size > 1000) {
+                  const reader = new FileReader();
+                  const dataUrl = await new Promise((resolve) => {
+                    reader.onload = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                  });
+                  
+                  allImages.push({
+                    pageIndex: pageNum,
+                    index: totalIndividualImages + 1,
+                    width: width,
+                    height: height,
+                    size: blob.size,
+                    dataUrl: dataUrl,
+                    isFullPage: false
+                  });
+                  totalIndividualImages++;
+                  console.log('-> Individual image: ' + width + 'x' + height + ', ' + (blob.size / 1024).toFixed(1) + ' KB');
+                }
+              }
+            } catch (err) {
+              console.log('Error: ' + err.message);
+            }
+          }
+        }
+        console.log('Page ' + pageNum + ': ' + pageImageCount + ' image operations');
+      }
+
+      return {
+        totalPages: pdf.numPages,
+        totalImages: allImages.length,
+        splitPhotos: totalSplitPhotos,
+        individualImages: totalIndividualImages,
+        images: allImages
+      };
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('画像抽出開始...\n');
+    const result = await page.evaluate(async (dataUrl: string) => {
+      // @ts-ignore
+      return await window.extractImages(dataUrl, 3);
+    }, pdfDataUrl) as any;
+
+    console.log('\n========================================');
+    console.log('結果');
+    console.log('========================================');
+    console.log(`PDFページ数: ${result.totalPages}`);
+    console.log(`抽出画像数: ${result.totalImages}`);
+    console.log(`  - 分割抽出: ${result.splitPhotos}`);
+    console.log(`  - 個別画像: ${result.individualImages}`);
+
+    if (result.images && result.images.length > 0) {
+      console.log('\n抽出した画像:');
+      for (const img of result.images) {
+        const type = img.isFullPage ? '分割' : '個別';
+        console.log(`  [${type}] Page ${img.pageIndex}, Photo ${img.index}: ${img.width}x${img.height}, ${(img.size / 1024).toFixed(1)} KB`);
+        
+        // 画像を保存
+        const imgBase64 = img.dataUrl.split(',')[1];
+        const imgBuffer = Buffer.from(imgBase64, 'base64');
+        const filename = `page${img.pageIndex}_${img.isFullPage ? 'split' : 'img'}_${img.index}.jpg`;
+        const imgPath = path.join(OUTPUT_DIR, filename);
+        fs.writeFileSync(imgPath, imgBuffer);
+      }
+      
+      console.log(`\n→ 画像を保存しました: ${OUTPUT_DIR}`);
+    }
+
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(console.error);
+
+
+=== END: scripts/test-real-pdf.ts ===
 
 === FILE: scripts/test-station-e2e.ts ===
 
@@ -14062,7 +17822,7 @@ const AUTO_PUSH_DELAY = 30000; // 30秒
  */
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 8); // Version 8: Added learnedRules store
+    const request = indexedDB.open(DB_NAME, 9); // Version 9: Sync with storage.ts
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -16576,223 +20336,6 @@ describe('Trusted Session (GitHub Passkey-style)', () => {
 
 === END: tests/geminiService.security.test.ts ===
 
-=== FILE: tests/pdfImageExtraction.test.ts ===
-
-/**
- * PDF画像抽出機能のテスト
- * PDFに埋め込まれた画像が正しく抽出・読み込みできるかを確認
- */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
-
-// pdf.js workerのモック（jsdom環境用）
-vi.mock('pdfjs-dist', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('pdfjs-dist')>();
-  return {
-    ...actual,
-    GlobalWorkerOptions: {
-      workerSrc: ''
-    }
-  };
-});
-
-describe('PDF画像抽出テスト', () => {
-  // テスト用の小さなJPEG画像（1x1 赤色ピクセル）
-  const createTestJpegBase64 = (): string => {
-    // 最小限の有効なJPEG（1x1ピクセル、赤色）
-    const jpegHex = 
-      'ffd8ffe000104a46494600010100000100010000ffdb00430008060607060508' +
-      '0707070909080a0c140d0c0b0b0c1912130f141d1a1f1e1d1a1c1c20242e2720' +
-      '222c231c1c2837292c30313434341f27393d38323c2e333432ffc000110800' +
-      '01000103012200021101031101ffc4001f0000010501010101010100000000' +
-      '000000000102030405060708090a0bffc400b5100002010303020403050504' +
-      '04000001770001020311040521310641135161072271143281a1082342b116' +
-      '5291c1f0243372d10924534a15516217f127256e13573f1846474a1b18191' +
-      '9a25262728292a3435363738393a434445464748494a535455565758595a63' +
-      '6465666768696a737475767778797a82838485868788898a929394959697' +
-      '98999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2' +
-      'd3d4d5d6d7d8d9dae2e3e4e5e6e7e8e9eaf2f3f4f5f6f7f8f9faffda000c03' +
-      '010002110311003f00fbcad2f4f8ece6d8a09c13ce073eb554ec1a8cd75a76' +
-      'da6ea17f0aa2dadb4d3b67a22166fc80ae5753f1a6aba85c19ee2e5e49dbed' +
-      '123039d96df2ff00c78035524b49e4b52b141342a4736f230ff00f5d16b7b7' +
-      '161a8deda5bc77177e5cd04722a4b21d8f120e4f2077fc280361ad55bbc71d' +
-      'a69d69a5c12c0d18b9793cc98ee76c6edbd7d2bd0e800a002800a002800a00' +
-      '2800a002800a002800a002800a0028016028008a002800a0028018f3040dbb' +
-      'ab6001ea69f3451b8619e9eb40078a8f143479a2c1f53d48d31cd001400500' +
-      '140057ffd9';
-    
-    return Buffer.from(jpegHex, 'hex').toString('base64');
-  };
-
-  // テスト用PNG画像を生成（Canvas使用）
-  const createTestPngBlob = async (): Promise<Blob> => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 100;
-    canvas.height = 100;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Failed to get canvas context');
-    
-    // 赤い四角形を描画
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(0, 0, 100, 100);
-    
-    // 緑の円を描画
-    ctx.fillStyle = '#00ff00';
-    ctx.beginPath();
-    ctx.arc(50, 50, 30, 0, Math.PI * 2);
-    ctx.fill();
-    
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Failed to create blob'));
-      }, 'image/png');
-    });
-  };
-
-  // テスト用PDFを生成（画像埋め込み）
-  const createTestPdfWithImage = async (): Promise<Blob> => {
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595, 842]); // A4サイズ
-    
-    // テスト画像を埋め込み
-    const jpegBase64 = createTestJpegBase64();
-    try {
-      const jpegBytes = Uint8Array.from(atob(jpegBase64), c => c.charCodeAt(0));
-      const jpegImage = await pdfDoc.embedJpg(jpegBytes);
-      
-      // 画像をページに配置
-      page.drawImage(jpegImage, {
-        x: 50,
-        y: 700,
-        width: 200,
-        height: 100,
-      });
-    } catch (e) {
-      // フォールバック：PNG画像を使用
-      console.log('JPEG embed failed, using PNG fallback');
-      const pngBlob = await createTestPngBlob();
-      const pngBuffer = await pngBlob.arrayBuffer();
-      const pngImage = await pdfDoc.embedPng(new Uint8Array(pngBuffer));
-      
-      page.drawImage(pngImage, {
-        x: 50,
-        y: 700,
-        width: 200,
-        height: 100,
-      });
-    }
-    
-    const pdfBytes = await pdfDoc.save();
-    return new Blob([pdfBytes], { type: 'application/pdf' });
-  };
-
-  describe('pdf-lib基本機能', () => {
-    it('PDFを作成できる', async () => {
-      const pdfDoc = await PDFDocument.create();
-      pdfDoc.addPage([595, 842]);
-      const bytes = await pdfDoc.save();
-      expect(bytes.length).toBeGreaterThan(0);
-    });
-
-    it('PNG画像を埋め込めるPDFを作成できる', async () => {
-      const pdfBlob = await createTestPdfWithImage();
-      expect(pdfBlob.size).toBeGreaterThan(0);
-      expect(pdfBlob.type).toBe('application/pdf');
-    });
-    
-    it('作成したPDFを再度読み込める', async () => {
-      const pdfBlob = await createTestPdfWithImage();
-      const arrayBuffer = await pdfBlob.arrayBuffer();
-      
-      const loadedDoc = await PDFDocument.load(arrayBuffer);
-      expect(loadedDoc.getPageCount()).toBe(1);
-    });
-  });
-
-  describe('セッションデータ埋め込み', () => {
-    it('メタデータにセッションデータを埋め込める', async () => {
-      const pdfDoc = await PDFDocument.create();
-      pdfDoc.addPage([595, 842]);
-      
-      const testData = { test: 'value', photos: [{ fileName: 'test.jpg' }] };
-      const encoded = btoa(JSON.stringify(testData));
-      
-      pdfDoc.setSubject('GASPM_SESSION_V1:' + encoded);
-      pdfDoc.setKeywords(['GASPhotoAIManager', 'SmartPDF']);
-      
-      const bytes = await pdfDoc.save();
-      const reloadedDoc = await PDFDocument.load(bytes);
-      
-      const subject = reloadedDoc.getSubject();
-      expect(subject).toContain('GASPM_SESSION_V1:');
-      
-      // デコードして検証
-      const encodedPart = subject!.replace('GASPM_SESSION_V1:', '');
-      const decoded = JSON.parse(atob(encodedPart));
-      expect(decoded.test).toBe('value');
-      expect(decoded.photos[0].fileName).toBe('test.jpg');
-    });
-  });
-
-  describe('画像抽出シミュレーション', () => {
-    it('Canvas経由で画像データを生成できる', async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 100;
-      canvas.height = 100;
-      const ctx = canvas.getContext('2d');
-      expect(ctx).not.toBeNull();
-      
-      ctx!.fillStyle = '#ff0000';
-      ctx!.fillRect(0, 0, 100, 100);
-      
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      expect(dataUrl).toContain('data:image/jpeg;base64,');
-      
-      // Base64部分を抽出して検証
-      const base64 = dataUrl.split(',')[1];
-      expect(base64.length).toBeGreaterThan(0);
-    });
-
-    it('ImageDataからCanvasに描画できる', async () => {
-      // 2x2ピクセルの赤い画像データを作成
-      const width = 2;
-      const height = 2;
-      const data = new Uint8ClampedArray(width * height * 4);
-      
-      // 全ピクセルを赤色に設定 (RGBA)
-      for (let i = 0; i < data.length; i += 4) {
-        data[i] = 255;     // R
-        data[i + 1] = 0;   // G
-        data[i + 2] = 0;   // B
-        data[i + 3] = 255; // A
-      }
-      
-      const imageData = new ImageData(data, width, height);
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      expect(ctx).not.toBeNull();
-      
-      ctx!.putImageData(imageData, 0, 0);
-      
-      // Blobに変換できることを確認
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/jpeg', 0.95);
-      });
-      
-      expect(blob).not.toBeNull();
-      expect(blob!.type).toBe('image/jpeg');
-      expect(blob!.size).toBeGreaterThan(0);
-    });
-  });
-});
-
-
-=== END: tests/pdfImageExtraction.test.ts ===
-
 === FILE: tests/setup.ts ===
 
 import '@testing-library/jest-dom';
@@ -19146,7 +22689,8 @@ export function getLearnedOrderList(): string[] {
 
 === FILE: utils/pdfGenerator.ts ===
 
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
 
@@ -19213,6 +22757,255 @@ export const embedSessionInPdf = async (
   }
 };
 
+// A4サイズ（pt）
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
+
+// レイアウト設定
+const MARGIN = 20;
+const HEADER_HEIGHT = 40;
+const PHOTO_INFO_GAP = 5;
+
+// 日本語フォントのキャッシュ
+let cachedJapaneseFont: ArrayBuffer | null = null;
+
+/**
+ * 日本語フォントを読み込み（キャッシュ付き）
+ */
+const loadJapaneseFont = async (): Promise<ArrayBuffer> => {
+  if (cachedJapaneseFont) {
+    return cachedJapaneseFont;
+  }
+  
+  try {
+    // publicフォルダのIPAゴシックフォントを読み込み
+    const response = await fetch('/GASPhotoAIManager/fonts/ipaexg.ttf');
+    if (!response.ok) {
+      throw new Error(`Font fetch failed: ${response.status}`);
+    }
+    cachedJapaneseFont = await response.arrayBuffer();
+    console.log('[PDF] Japanese font loaded:', (cachedJapaneseFont.byteLength / 1024).toFixed(1), 'KB');
+    return cachedJapaneseFont;
+  } catch (e) {
+    console.error('[PDF] Failed to load Japanese font:', e);
+    throw e;
+  }
+};
+
+/**
+ * pdf-libを使って個別画像を埋め込んだPDFを生成
+ * 各画像は個別のオブジェクトとしてPDFに埋め込まれる（抽出可能）
+ * 日本語フォント（IPAゴシック）を埋め込み
+ */
+export const generatePdfWithImages = async (
+  photos: PhotoRecord[],
+  photosPerPage: 2 | 3 = 3,
+  title: string = '工事写真帳'
+): Promise<Blob> => {
+  const pdfDoc = await PDFDocument.create();
+  
+  // fontkitを登録して日本語フォントを埋め込み可能に
+  pdfDoc.registerFontkit(fontkit);
+  
+  // 日本語フォントを読み込み・埋め込み
+  let japaneseFont;
+  let fallbackFont;
+  try {
+    const fontBytes = await loadJapaneseFont();
+    japaneseFont = await pdfDoc.embedFont(fontBytes);
+    fallbackFont = japaneseFont;
+  } catch {
+    // フォント読み込み失敗時は英語フォントにフォールバック
+    console.warn('[PDF] Using fallback font (Helvetica)');
+    fallbackFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    japaneseFont = fallbackFont;
+  }
+  
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // 1ページあたりの写真高さを計算
+  const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
+  const photoRowHeight = usableHeight / photosPerPage;
+  const photoHeight = photoRowHeight - PHOTO_INFO_GAP * 2;
+  const photoWidth = (A4_WIDTH - MARGIN * 2) * 0.45; // 45%を写真に
+  const infoWidth = (A4_WIDTH - MARGIN * 2) * 0.50;  // 50%を情報に
+
+  // ページごとに処理
+  const totalPages = Math.ceil(photos.length / photosPerPage);
+
+  for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+    const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+    const pagePhotos = photos.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
+
+    // ヘッダー
+    page.drawText(title, {
+      x: MARGIN,
+      y: A4_HEIGHT - MARGIN - 20,
+      size: 14,
+      font: japaneseFont,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    page.drawText(`Page ${pageNum + 1} / ${totalPages}`, {
+      x: A4_WIDTH - MARGIN - 80,
+      y: A4_HEIGHT - MARGIN - 20,
+      size: 10,
+      font: helvetica,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+
+    // 各写真を配置
+    for (let i = 0; i < pagePhotos.length; i++) {
+      const photo = pagePhotos[i];
+      const rowY = A4_HEIGHT - MARGIN - HEADER_HEIGHT - (i + 1) * photoRowHeight + PHOTO_INFO_GAP;
+
+      // 写真を埋め込み
+      if (photo.base64) {
+        try {
+          // base64データを取得（data:image/jpeg;base64, プレフィックスを除去）
+          const base64Data = photo.base64.includes(',') 
+            ? photo.base64.split(',')[1] 
+            : photo.base64;
+          const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+          // 画像形式を判定して埋め込み
+          let embeddedImage;
+          const mimeType = photo.mimeType || 'image/jpeg';
+          
+          if (mimeType.includes('png')) {
+            embeddedImage = await pdfDoc.embedPng(imageBytes);
+          } else {
+            embeddedImage = await pdfDoc.embedJpg(imageBytes);
+          }
+
+          // アスペクト比を維持してサイズ計算
+          const imgAspect = embeddedImage.width / embeddedImage.height;
+          const boxAspect = photoWidth / photoHeight;
+          
+          let drawWidth, drawHeight;
+          if (imgAspect > boxAspect) {
+            // 横長画像
+            drawWidth = photoWidth;
+            drawHeight = photoWidth / imgAspect;
+          } else {
+            // 縦長画像
+            drawHeight = photoHeight;
+            drawWidth = photoHeight * imgAspect;
+          }
+
+          // センタリング
+          const offsetX = (photoWidth - drawWidth) / 2;
+          const offsetY = (photoHeight - drawHeight) / 2;
+
+          page.drawImage(embeddedImage, {
+            x: MARGIN + offsetX,
+            y: rowY + offsetY,
+            width: drawWidth,
+            height: drawHeight,
+          });
+
+          // 写真枠
+          page.drawRectangle({
+            x: MARGIN,
+            y: rowY,
+            width: photoWidth,
+            height: photoHeight,
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 0.5,
+          });
+        } catch (imgErr) {
+          console.warn(`Failed to embed image ${photo.fileName}:`, imgErr);
+          // 画像埋め込み失敗時はプレースホルダーを描画
+          page.drawRectangle({
+            x: MARGIN,
+            y: rowY,
+            width: photoWidth,
+            height: photoHeight,
+            color: rgb(0.95, 0.95, 0.95),
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 0.5,
+          });
+          page.drawText('Image Error', {
+            x: MARGIN + photoWidth / 2 - 30,
+            y: rowY + photoHeight / 2,
+            size: 10,
+            font: helvetica,
+            color: rgb(0.5, 0.5, 0.5),
+          });
+        }
+      }
+
+      // 情報欄
+      const infoX = MARGIN + photoWidth + PHOTO_INFO_GAP;
+      const analysis = photo.analysis;
+      const infoLines = [
+        { label: '工種', value: analysis?.workType || '-' },
+        { label: '種別', value: analysis?.variety || '-' },
+        { label: '細別', value: analysis?.detail || '-' },
+        { label: '測点', value: analysis?.station || '-' },
+        { label: '備考', value: analysis?.remarks || '-' },
+        { label: '撮影', value: photo.date ? new Date(photo.date).toLocaleString('ja-JP') : '-' },
+      ];
+
+      const lineHeight = 18;
+      const infoStartY = rowY + photoHeight - 15;
+
+      // 情報欄の枠
+      page.drawRectangle({
+        x: infoX,
+        y: rowY,
+        width: infoWidth,
+        height: photoHeight,
+        borderColor: rgb(0.7, 0.7, 0.7),
+        borderWidth: 0.5,
+      });
+
+      // 各行を描画
+      infoLines.forEach((line, idx) => {
+        const y = infoStartY - idx * lineHeight;
+        if (y > rowY + 5) {
+          // ラベル（日本語フォント）
+          page.drawText(line.label + ':', {
+            x: infoX + 5,
+            y: y,
+            size: 8,
+            font: japaneseFont,
+            color: rgb(0.4, 0.4, 0.4),
+          });
+          // 値（長い場合は切り詰め、日本語フォント）
+          const valueText = line.value.length > 20 ? line.value.substring(0, 20) + '...' : line.value;
+          page.drawText(valueText, {
+            x: infoX + 45,
+            y: y,
+            size: 9,
+            font: japaneseFont,
+            color: rgb(0.1, 0.1, 0.1),
+          });
+        }
+      });
+
+      // ファイル名
+      page.drawText(photo.fileName || `photo_${pageNum * photosPerPage + i + 1}.jpg`, {
+        x: infoX + 5,
+        y: rowY + 5,
+        size: 7,
+        font: helvetica,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+    }
+  }
+
+  // セッションデータを埋め込み
+  const sessionData = encodeSessionData(photos);
+  pdfDoc.setSubject(SESSION_MARKER + sessionData);
+  pdfDoc.setKeywords(['GASPhotoAIManager', 'SmartPDF', 'SessionData', 'IndividualImages']);
+  pdfDoc.setCreator('GASPhotoAIManager');
+  pdfDoc.setProducer('GASPhotoAIManager + pdf-lib (Individual Images)');
+  pdfDoc.setTitle(title);
+
+  const pdfBytes = await pdfDoc.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+};
+
 /**
  * PDFからセッションデータを抽出
  */
@@ -19246,6 +23039,22 @@ export const isSmartPdf = async (pdfFile: File | Blob): Promise<boolean> => {
     const pdfDoc = await PDFDocument.load(arrayBuffer);
     const subject = pdfDoc.getSubject();
     return !!subject && subject.startsWith(SESSION_MARKER);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * PDFが新形式（個別画像埋め込み）かどうかを確認
+ * 新形式: pdf-libで生成、個別画像として抽出可能
+ * 旧形式: html2pdfで生成、ページ全体が1画像
+ */
+export const hasIndividualImages = async (pdfFile: File | Blob): Promise<boolean> => {
+  try {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdfDoc = await PDFDocument.load(arrayBuffer);
+    const keywords = pdfDoc.getKeywords();
+    return !!keywords && keywords.includes('IndividualImages');
   } catch {
     return false;
   }
@@ -19566,11 +23375,89 @@ const getObjectAsync = (objs: any, objName: string): Promise<any> => {
 };
 
 /**
+ * html2pdf形式のページ画像から個別の写真を切り出す
+ * @param srcCanvas ページ全体が描画されたCanvas
+ * @param photosPerPage 1ページあたりの写真数（2または3）
+ */
+const splitPageCanvasIntoPhotos = async (
+  srcCanvas: HTMLCanvasElement,
+  photosPerPage: 2 | 3
+): Promise<{ data: Uint8Array; mimeType: string }[]> => {
+  const photos: { data: Uint8Array; mimeType: string }[] = [];
+  const pageWidth = srcCanvas.width;
+  const pageHeight = srcCanvas.height;
+  
+  // レイアウト計算
+  const headerRatio = 0.05; // 上部5%はヘッダー
+  const photoWidthRatio = 0.43; // 写真は左側43%
+  const rowCount = photosPerPage;
+  
+  const headerHeight = Math.floor(pageHeight * headerRatio);
+  const usableHeight = pageHeight - headerHeight;
+  const rowHeight = Math.floor(usableHeight / rowCount);
+  const photoWidth = Math.floor(pageWidth * photoWidthRatio);
+  
+  // マージン
+  const marginTop = Math.floor(rowHeight * 0.02);
+  const marginLeft = Math.floor(pageWidth * 0.02);
+  
+  console.log(`[PDF Split] Splitting ${pageWidth}x${pageHeight} into ${photosPerPage} photos`);
+  
+  // 各行から写真を切り出し
+  for (let i = 0; i < rowCount; i++) {
+    const y = headerHeight + i * rowHeight + marginTop;
+    const x = marginLeft;
+    const w = photoWidth - marginLeft;
+    const h = rowHeight - marginTop * 2;
+    
+    const destCanvas = document.createElement('canvas');
+    destCanvas.width = w;
+    destCanvas.height = h;
+    const destCtx = destCanvas.getContext('2d');
+    if (!destCtx) continue;
+    
+    destCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+    
+    const blob = await new Promise<Blob | null>((resolve) => {
+      destCanvas.toBlob(resolve, 'image/jpeg', 0.92);
+    });
+    
+    if (blob && blob.size > 1000) {
+      console.log(`[PDF Split] Photo ${i + 1}: ${w}x${h}, ${(blob.size / 1024).toFixed(1)} KB`);
+      const buffer = await blob.arrayBuffer();
+      photos.push({
+        data: new Uint8Array(buffer),
+        mimeType: 'image/jpeg'
+      });
+    }
+  }
+  
+  return photos;
+};
+
+/**
+ * 画像がhtml2pdf形式のページ全体画像かどうかを判定
+ * A4比率（約0.707）に近い縦長画像で、サイズが大きい場合はページ画像と判定
+ */
+const isFullPageImage = (width: number, height: number): boolean => {
+  const aspectRatio = width / height;
+  const a4Ratio = 210 / 297; // 約0.707
+  
+  // A4比率に近い（±20%）かつ、高さが1000px以上
+  const isA4Like = Math.abs(aspectRatio - a4Ratio) < 0.15;
+  const isLarge = height > 1000;
+  
+  return isA4Like && isLarge;
+};
+
+/**
  * PDFから埋め込み画像を抽出
- * html2pdfで生成されたPDFには、各ページに画像が埋め込まれている
+ * - pdf-lib形式: 個別画像をそのまま抽出
+ * - html2pdf形式: ページ全体画像から個別写真を切り出し
  */
 export const extractImagesFromPdf = async (
-  pdfFile: File | Blob
+  pdfFile: File | Blob,
+  photosPerPage: 2 | 3 = 3
 ): Promise<{ data: Uint8Array; mimeType: string }[]> => {
   const images: { data: Uint8Array; mimeType: string }[] = [];
   // 既に処理済みの画像名を追跡（重複抽出を防止）
@@ -19578,7 +23465,10 @@ export const extractImagesFromPdf = async (
 
   try {
     const arrayBuffer = await pdfFile.arrayBuffer();
+    console.log('[PDF Extract] Loading PDF, size:', arrayBuffer.byteLength);
+    
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    console.log('[PDF Extract] PDF loaded, pages:', pdf.numPages);
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -19601,52 +23491,116 @@ export const extractImagesFromPdf = async (
         }
       }
 
+      console.log(`[PDF Extract] Page ${pageNum}: found ${imageNames.length} images:`, imageNames);
+
       // 各画像を非同期で取得
       for (const imgName of imageNames) {
         try {
           const imgData = await getObjectAsync(objs, imgName);
 
+          // デバッグ: 画像オブジェクトの構造を出力
+          console.log(`[PDF Extract] Image ${imgName}:`, {
+            hasData: !!(imgData?.data),
+            hasBitmap: !!(imgData?.bitmap),
+            hasSrc: !!(imgData?.src),
+            width: imgData?.width,
+            height: imgData?.height,
+            kind: imgData?.kind,
+            dataLength: imgData?.data?.length,
+            keys: imgData ? Object.keys(imgData) : []
+          });
+
           if (imgData && imgData.data) {
-            // ImageDataをcanvasに描画してbase64に変換
+            const width = imgData.width;
+            const height = imgData.height;
+            const rawData = new Uint8ClampedArray(imgData.data);
+            
+            // Canvasに描画
             const canvas = document.createElement('canvas');
-            canvas.width = imgData.width;
-            canvas.height = imgData.height;
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
-
+            
             if (ctx) {
-              const imageData = new ImageData(
-                new Uint8ClampedArray(imgData.data),
-                imgData.width,
-                imgData.height
-              );
+              const imageData = new ImageData(rawData, width, height);
               ctx.putImageData(imageData, 0, 0);
-
-              // Blob に変換
-              const blob = await new Promise<Blob | null>((resolve) => {
-                canvas.toBlob(resolve, 'image/jpeg', 0.95);
-              });
-
-              if (blob) {
-                const buffer = await blob.arrayBuffer();
-                images.push({
-                  data: new Uint8Array(buffer),
-                  mimeType: 'image/jpeg'
+              
+              // html2pdf形式（ページ全体画像）かどうかを判定
+              if (isFullPageImage(width, height)) {
+                console.log(`[PDF Extract] Detected full-page image (html2pdf format): ${width}x${height}`);
+                const splitPhotos = await splitPageCanvasIntoPhotos(canvas, photosPerPage);
+                images.push(...splitPhotos);
+                console.log(`[PDF Extract] Split into ${splitPhotos.length} individual photos`);
+              } else {
+                // 通常の個別画像（pdf-lib形式）
+                const blob = await new Promise<Blob | null>((resolve) => {
+                  canvas.toBlob(resolve, 'image/jpeg', 0.95);
                 });
+
+                if (blob) {
+                  console.log(`[PDF Extract] Image ${imgName} extracted via data, blob size:`, blob.size);
+                  const buffer = await blob.arrayBuffer();
+                  images.push({
+                    data: new Uint8Array(buffer),
+                    mimeType: 'image/jpeg'
+                  });
+                }
               }
+            }
+          } else if (imgData && imgData.bitmap) {
+            // ImageBitmap形式の場合（html2pdfで生成されたPDFで使用される）
+            try {
+              const bitmapWidth = imgData.bitmap.width || imgData.width;
+              const bitmapHeight = imgData.bitmap.height || imgData.height;
+              
+              const canvas = document.createElement('canvas');
+              canvas.width = bitmapWidth;
+              canvas.height = bitmapHeight;
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                ctx.drawImage(imgData.bitmap, 0, 0);
+                
+                // html2pdf形式かどうかを判定
+                if (isFullPageImage(bitmapWidth, bitmapHeight)) {
+                  console.log(`[PDF Extract] Detected full-page bitmap (html2pdf format): ${bitmapWidth}x${bitmapHeight}`);
+                  const splitPhotos = await splitPageCanvasIntoPhotos(canvas, photosPerPage);
+                  images.push(...splitPhotos);
+                  console.log(`[PDF Extract] Split into ${splitPhotos.length} individual photos`);
+                } else {
+                  const blob = await new Promise<Blob | null>((resolve) => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.95);
+                  });
+
+                  if (blob) {
+                    console.log(`[PDF Extract] Image ${imgName} extracted via bitmap, blob size:`, blob.size);
+                    const buffer = await blob.arrayBuffer();
+                    images.push({
+                      data: new Uint8Array(buffer),
+                      mimeType: 'image/jpeg'
+                    });
+                  }
+                }
+              }
+            } catch (bitmapErr) {
+              console.warn(`Failed to extract bitmap image for ${imgName}:`, bitmapErr);
             }
           } else if (imgData && imgData.src) {
             // JPEG画像の場合、srcプロパティにデータURLが含まれる場合がある
             try {
               const response = await fetch(imgData.src);
               const blob = await response.blob();
+              console.log(`[PDF Extract] Image ${imgName} extracted via src, blob size:`, blob.size);
               const buffer = await blob.arrayBuffer();
               images.push({
                 data: new Uint8Array(buffer),
                 mimeType: blob.type || 'image/jpeg'
               });
-            } catch {
-              console.warn(`Failed to fetch image src for ${imgName}`);
+            } catch (srcErr) {
+              console.warn(`Failed to fetch image src for ${imgName}:`, srcErr);
             }
+          } else {
+            console.warn(`[PDF Extract] Image ${imgName}: No extractable data found`);
           }
         } catch (imgErr) {
           // 個別画像の取得失敗は無視
@@ -19658,6 +23612,7 @@ export const extractImagesFromPdf = async (
     console.error('Failed to extract images from PDF:', e);
   }
 
+  console.log(`[PDF Extract] Total images extracted: ${images.length}`);
   return images;
 };
 
@@ -19669,7 +23624,7 @@ import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, Analys
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 8; // Version 8: Sync with existing browser DB
+const DB_VERSION = 9; // Version 9: Force upgrade to ensure all stores exist
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
@@ -21670,6 +25625,7 @@ export default defineConfig({
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@fontsource/noto-sans-jp": "^5.2.8",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",

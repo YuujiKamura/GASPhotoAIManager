@@ -30,7 +30,7 @@ const AUTO_PUSH_DELAY = 30000; // 30秒
  */
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 8); // Version 8: Added learnedRules store
+    const request = indexedDB.open(DB_NAME, 9); // Version 9: Sync with storage.ts
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;

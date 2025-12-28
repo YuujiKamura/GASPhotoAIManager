@@ -1,4 +1,5 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
 
@@ -65,6 +66,255 @@ export const embedSessionInPdf = async (
   }
 };
 
+// A4サイズ（pt）
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
+
+// レイアウト設定
+const MARGIN = 20;
+const HEADER_HEIGHT = 40;
+const PHOTO_INFO_GAP = 5;
+
+// 日本語フォントのキャッシュ
+let cachedJapaneseFont: ArrayBuffer | null = null;
+
+/**
+ * 日本語フォントを読み込み（キャッシュ付き）
+ */
+const loadJapaneseFont = async (): Promise<ArrayBuffer> => {
+  if (cachedJapaneseFont) {
+    return cachedJapaneseFont;
+  }
+  
+  try {
+    // publicフォルダのIPAゴシックフォントを読み込み
+    const response = await fetch('/GASPhotoAIManager/fonts/ipaexg.ttf');
+    if (!response.ok) {
+      throw new Error(`Font fetch failed: ${response.status}`);
+    }
+    cachedJapaneseFont = await response.arrayBuffer();
+    console.log('[PDF] Japanese font loaded:', (cachedJapaneseFont.byteLength / 1024).toFixed(1), 'KB');
+    return cachedJapaneseFont;
+  } catch (e) {
+    console.error('[PDF] Failed to load Japanese font:', e);
+    throw e;
+  }
+};
+
+/**
+ * pdf-libを使って個別画像を埋め込んだPDFを生成
+ * 各画像は個別のオブジェクトとしてPDFに埋め込まれる（抽出可能）
+ * 日本語フォント（IPAゴシック）を埋め込み
+ */
+export const generatePdfWithImages = async (
+  photos: PhotoRecord[],
+  photosPerPage: 2 | 3 = 3,
+  title: string = '工事写真帳'
+): Promise<Blob> => {
+  const pdfDoc = await PDFDocument.create();
+  
+  // fontkitを登録して日本語フォントを埋め込み可能に
+  pdfDoc.registerFontkit(fontkit);
+  
+  // 日本語フォントを読み込み・埋め込み
+  let japaneseFont;
+  let fallbackFont;
+  try {
+    const fontBytes = await loadJapaneseFont();
+    japaneseFont = await pdfDoc.embedFont(fontBytes);
+    fallbackFont = japaneseFont;
+  } catch {
+    // フォント読み込み失敗時は英語フォントにフォールバック
+    console.warn('[PDF] Using fallback font (Helvetica)');
+    fallbackFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    japaneseFont = fallbackFont;
+  }
+  
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // 1ページあたりの写真高さを計算
+  const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
+  const photoRowHeight = usableHeight / photosPerPage;
+  const photoHeight = photoRowHeight - PHOTO_INFO_GAP * 2;
+  const photoWidth = (A4_WIDTH - MARGIN * 2) * 0.45; // 45%を写真に
+  const infoWidth = (A4_WIDTH - MARGIN * 2) * 0.50;  // 50%を情報に
+
+  // ページごとに処理
+  const totalPages = Math.ceil(photos.length / photosPerPage);
+
+  for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+    const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+    const pagePhotos = photos.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
+
+    // ヘッダー
+    page.drawText(title, {
+      x: MARGIN,
+      y: A4_HEIGHT - MARGIN - 20,
+      size: 14,
+      font: japaneseFont,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    page.drawText(`Page ${pageNum + 1} / ${totalPages}`, {
+      x: A4_WIDTH - MARGIN - 80,
+      y: A4_HEIGHT - MARGIN - 20,
+      size: 10,
+      font: helvetica,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+
+    // 各写真を配置
+    for (let i = 0; i < pagePhotos.length; i++) {
+      const photo = pagePhotos[i];
+      const rowY = A4_HEIGHT - MARGIN - HEADER_HEIGHT - (i + 1) * photoRowHeight + PHOTO_INFO_GAP;
+
+      // 写真を埋め込み
+      if (photo.base64) {
+        try {
+          // base64データを取得（data:image/jpeg;base64, プレフィックスを除去）
+          const base64Data = photo.base64.includes(',') 
+            ? photo.base64.split(',')[1] 
+            : photo.base64;
+          const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+          // 画像形式を判定して埋め込み
+          let embeddedImage;
+          const mimeType = photo.mimeType || 'image/jpeg';
+          
+          if (mimeType.includes('png')) {
+            embeddedImage = await pdfDoc.embedPng(imageBytes);
+          } else {
+            embeddedImage = await pdfDoc.embedJpg(imageBytes);
+          }
+
+          // アスペクト比を維持してサイズ計算
+          const imgAspect = embeddedImage.width / embeddedImage.height;
+          const boxAspect = photoWidth / photoHeight;
+          
+          let drawWidth, drawHeight;
+          if (imgAspect > boxAspect) {
+            // 横長画像
+            drawWidth = photoWidth;
+            drawHeight = photoWidth / imgAspect;
+          } else {
+            // 縦長画像
+            drawHeight = photoHeight;
+            drawWidth = photoHeight * imgAspect;
+          }
+
+          // センタリング
+          const offsetX = (photoWidth - drawWidth) / 2;
+          const offsetY = (photoHeight - drawHeight) / 2;
+
+          page.drawImage(embeddedImage, {
+            x: MARGIN + offsetX,
+            y: rowY + offsetY,
+            width: drawWidth,
+            height: drawHeight,
+          });
+
+          // 写真枠
+          page.drawRectangle({
+            x: MARGIN,
+            y: rowY,
+            width: photoWidth,
+            height: photoHeight,
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 0.5,
+          });
+        } catch (imgErr) {
+          console.warn(`Failed to embed image ${photo.fileName}:`, imgErr);
+          // 画像埋め込み失敗時はプレースホルダーを描画
+          page.drawRectangle({
+            x: MARGIN,
+            y: rowY,
+            width: photoWidth,
+            height: photoHeight,
+            color: rgb(0.95, 0.95, 0.95),
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 0.5,
+          });
+          page.drawText('Image Error', {
+            x: MARGIN + photoWidth / 2 - 30,
+            y: rowY + photoHeight / 2,
+            size: 10,
+            font: helvetica,
+            color: rgb(0.5, 0.5, 0.5),
+          });
+        }
+      }
+
+      // 情報欄
+      const infoX = MARGIN + photoWidth + PHOTO_INFO_GAP;
+      const analysis = photo.analysis;
+      const infoLines = [
+        { label: '工種', value: analysis?.workType || '-' },
+        { label: '種別', value: analysis?.variety || '-' },
+        { label: '細別', value: analysis?.detail || '-' },
+        { label: '測点', value: analysis?.station || '-' },
+        { label: '備考', value: analysis?.remarks || '-' },
+        { label: '撮影', value: photo.date ? new Date(photo.date).toLocaleString('ja-JP') : '-' },
+      ];
+
+      const lineHeight = 18;
+      const infoStartY = rowY + photoHeight - 15;
+
+      // 情報欄の枠
+      page.drawRectangle({
+        x: infoX,
+        y: rowY,
+        width: infoWidth,
+        height: photoHeight,
+        borderColor: rgb(0.7, 0.7, 0.7),
+        borderWidth: 0.5,
+      });
+
+      // 各行を描画
+      infoLines.forEach((line, idx) => {
+        const y = infoStartY - idx * lineHeight;
+        if (y > rowY + 5) {
+          // ラベル（日本語フォント）
+          page.drawText(line.label + ':', {
+            x: infoX + 5,
+            y: y,
+            size: 8,
+            font: japaneseFont,
+            color: rgb(0.4, 0.4, 0.4),
+          });
+          // 値（長い場合は切り詰め、日本語フォント）
+          const valueText = line.value.length > 20 ? line.value.substring(0, 20) + '...' : line.value;
+          page.drawText(valueText, {
+            x: infoX + 45,
+            y: y,
+            size: 9,
+            font: japaneseFont,
+            color: rgb(0.1, 0.1, 0.1),
+          });
+        }
+      });
+
+      // ファイル名
+      page.drawText(photo.fileName || `photo_${pageNum * photosPerPage + i + 1}.jpg`, {
+        x: infoX + 5,
+        y: rowY + 5,
+        size: 7,
+        font: helvetica,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+    }
+  }
+
+  // セッションデータを埋め込み
+  const sessionData = encodeSessionData(photos);
+  pdfDoc.setSubject(SESSION_MARKER + sessionData);
+  pdfDoc.setKeywords(['GASPhotoAIManager', 'SmartPDF', 'SessionData', 'IndividualImages']);
+  pdfDoc.setCreator('GASPhotoAIManager');
+  pdfDoc.setProducer('GASPhotoAIManager + pdf-lib (Individual Images)');
+  pdfDoc.setTitle(title);
+
+  const pdfBytes = await pdfDoc.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+};
+
 /**
  * PDFからセッションデータを抽出
  */
@@ -98,6 +348,22 @@ export const isSmartPdf = async (pdfFile: File | Blob): Promise<boolean> => {
     const pdfDoc = await PDFDocument.load(arrayBuffer);
     const subject = pdfDoc.getSubject();
     return !!subject && subject.startsWith(SESSION_MARKER);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * PDFが新形式（個別画像埋め込み）かどうかを確認
+ * 新形式: pdf-libで生成、個別画像として抽出可能
+ * 旧形式: html2pdfで生成、ページ全体が1画像
+ */
+export const hasIndividualImages = async (pdfFile: File | Blob): Promise<boolean> => {
+  try {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdfDoc = await PDFDocument.load(arrayBuffer);
+    const keywords = pdfDoc.getKeywords();
+    return !!keywords && keywords.includes('IndividualImages');
   } catch {
     return false;
   }
@@ -418,11 +684,89 @@ const getObjectAsync = (objs: any, objName: string): Promise<any> => {
 };
 
 /**
+ * html2pdf形式のページ画像から個別の写真を切り出す
+ * @param srcCanvas ページ全体が描画されたCanvas
+ * @param photosPerPage 1ページあたりの写真数（2または3）
+ */
+const splitPageCanvasIntoPhotos = async (
+  srcCanvas: HTMLCanvasElement,
+  photosPerPage: 2 | 3
+): Promise<{ data: Uint8Array; mimeType: string }[]> => {
+  const photos: { data: Uint8Array; mimeType: string }[] = [];
+  const pageWidth = srcCanvas.width;
+  const pageHeight = srcCanvas.height;
+  
+  // レイアウト計算
+  const headerRatio = 0.05; // 上部5%はヘッダー
+  const photoWidthRatio = 0.43; // 写真は左側43%
+  const rowCount = photosPerPage;
+  
+  const headerHeight = Math.floor(pageHeight * headerRatio);
+  const usableHeight = pageHeight - headerHeight;
+  const rowHeight = Math.floor(usableHeight / rowCount);
+  const photoWidth = Math.floor(pageWidth * photoWidthRatio);
+  
+  // マージン
+  const marginTop = Math.floor(rowHeight * 0.02);
+  const marginLeft = Math.floor(pageWidth * 0.02);
+  
+  console.log(`[PDF Split] Splitting ${pageWidth}x${pageHeight} into ${photosPerPage} photos`);
+  
+  // 各行から写真を切り出し
+  for (let i = 0; i < rowCount; i++) {
+    const y = headerHeight + i * rowHeight + marginTop;
+    const x = marginLeft;
+    const w = photoWidth - marginLeft;
+    const h = rowHeight - marginTop * 2;
+    
+    const destCanvas = document.createElement('canvas');
+    destCanvas.width = w;
+    destCanvas.height = h;
+    const destCtx = destCanvas.getContext('2d');
+    if (!destCtx) continue;
+    
+    destCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+    
+    const blob = await new Promise<Blob | null>((resolve) => {
+      destCanvas.toBlob(resolve, 'image/jpeg', 0.92);
+    });
+    
+    if (blob && blob.size > 1000) {
+      console.log(`[PDF Split] Photo ${i + 1}: ${w}x${h}, ${(blob.size / 1024).toFixed(1)} KB`);
+      const buffer = await blob.arrayBuffer();
+      photos.push({
+        data: new Uint8Array(buffer),
+        mimeType: 'image/jpeg'
+      });
+    }
+  }
+  
+  return photos;
+};
+
+/**
+ * 画像がhtml2pdf形式のページ全体画像かどうかを判定
+ * A4比率（約0.707）に近い縦長画像で、サイズが大きい場合はページ画像と判定
+ */
+const isFullPageImage = (width: number, height: number): boolean => {
+  const aspectRatio = width / height;
+  const a4Ratio = 210 / 297; // 約0.707
+  
+  // A4比率に近い（±20%）かつ、高さが1000px以上
+  const isA4Like = Math.abs(aspectRatio - a4Ratio) < 0.15;
+  const isLarge = height > 1000;
+  
+  return isA4Like && isLarge;
+};
+
+/**
  * PDFから埋め込み画像を抽出
- * html2pdfで生成されたPDFには、各ページに画像が埋め込まれている
+ * - pdf-lib形式: 個別画像をそのまま抽出
+ * - html2pdf形式: ページ全体画像から個別写真を切り出し
  */
 export const extractImagesFromPdf = async (
-  pdfFile: File | Blob
+  pdfFile: File | Blob,
+  photosPerPage: 2 | 3 = 3
 ): Promise<{ data: Uint8Array; mimeType: string }[]> => {
   const images: { data: Uint8Array; mimeType: string }[] = [];
   // 既に処理済みの画像名を追跡（重複抽出を防止）
@@ -430,7 +774,10 @@ export const extractImagesFromPdf = async (
 
   try {
     const arrayBuffer = await pdfFile.arrayBuffer();
+    console.log('[PDF Extract] Loading PDF, size:', arrayBuffer.byteLength);
+    
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    console.log('[PDF Extract] PDF loaded, pages:', pdf.numPages);
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -453,52 +800,116 @@ export const extractImagesFromPdf = async (
         }
       }
 
+      console.log(`[PDF Extract] Page ${pageNum}: found ${imageNames.length} images:`, imageNames);
+
       // 各画像を非同期で取得
       for (const imgName of imageNames) {
         try {
           const imgData = await getObjectAsync(objs, imgName);
 
+          // デバッグ: 画像オブジェクトの構造を出力
+          console.log(`[PDF Extract] Image ${imgName}:`, {
+            hasData: !!(imgData?.data),
+            hasBitmap: !!(imgData?.bitmap),
+            hasSrc: !!(imgData?.src),
+            width: imgData?.width,
+            height: imgData?.height,
+            kind: imgData?.kind,
+            dataLength: imgData?.data?.length,
+            keys: imgData ? Object.keys(imgData) : []
+          });
+
           if (imgData && imgData.data) {
-            // ImageDataをcanvasに描画してbase64に変換
+            const width = imgData.width;
+            const height = imgData.height;
+            const rawData = new Uint8ClampedArray(imgData.data);
+            
+            // Canvasに描画
             const canvas = document.createElement('canvas');
-            canvas.width = imgData.width;
-            canvas.height = imgData.height;
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
-
+            
             if (ctx) {
-              const imageData = new ImageData(
-                new Uint8ClampedArray(imgData.data),
-                imgData.width,
-                imgData.height
-              );
+              const imageData = new ImageData(rawData, width, height);
               ctx.putImageData(imageData, 0, 0);
-
-              // Blob に変換
-              const blob = await new Promise<Blob | null>((resolve) => {
-                canvas.toBlob(resolve, 'image/jpeg', 0.95);
-              });
-
-              if (blob) {
-                const buffer = await blob.arrayBuffer();
-                images.push({
-                  data: new Uint8Array(buffer),
-                  mimeType: 'image/jpeg'
+              
+              // html2pdf形式（ページ全体画像）かどうかを判定
+              if (isFullPageImage(width, height)) {
+                console.log(`[PDF Extract] Detected full-page image (html2pdf format): ${width}x${height}`);
+                const splitPhotos = await splitPageCanvasIntoPhotos(canvas, photosPerPage);
+                images.push(...splitPhotos);
+                console.log(`[PDF Extract] Split into ${splitPhotos.length} individual photos`);
+              } else {
+                // 通常の個別画像（pdf-lib形式）
+                const blob = await new Promise<Blob | null>((resolve) => {
+                  canvas.toBlob(resolve, 'image/jpeg', 0.95);
                 });
+
+                if (blob) {
+                  console.log(`[PDF Extract] Image ${imgName} extracted via data, blob size:`, blob.size);
+                  const buffer = await blob.arrayBuffer();
+                  images.push({
+                    data: new Uint8Array(buffer),
+                    mimeType: 'image/jpeg'
+                  });
+                }
               }
+            }
+          } else if (imgData && imgData.bitmap) {
+            // ImageBitmap形式の場合（html2pdfで生成されたPDFで使用される）
+            try {
+              const bitmapWidth = imgData.bitmap.width || imgData.width;
+              const bitmapHeight = imgData.bitmap.height || imgData.height;
+              
+              const canvas = document.createElement('canvas');
+              canvas.width = bitmapWidth;
+              canvas.height = bitmapHeight;
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                ctx.drawImage(imgData.bitmap, 0, 0);
+                
+                // html2pdf形式かどうかを判定
+                if (isFullPageImage(bitmapWidth, bitmapHeight)) {
+                  console.log(`[PDF Extract] Detected full-page bitmap (html2pdf format): ${bitmapWidth}x${bitmapHeight}`);
+                  const splitPhotos = await splitPageCanvasIntoPhotos(canvas, photosPerPage);
+                  images.push(...splitPhotos);
+                  console.log(`[PDF Extract] Split into ${splitPhotos.length} individual photos`);
+                } else {
+                  const blob = await new Promise<Blob | null>((resolve) => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.95);
+                  });
+
+                  if (blob) {
+                    console.log(`[PDF Extract] Image ${imgName} extracted via bitmap, blob size:`, blob.size);
+                    const buffer = await blob.arrayBuffer();
+                    images.push({
+                      data: new Uint8Array(buffer),
+                      mimeType: 'image/jpeg'
+                    });
+                  }
+                }
+              }
+            } catch (bitmapErr) {
+              console.warn(`Failed to extract bitmap image for ${imgName}:`, bitmapErr);
             }
           } else if (imgData && imgData.src) {
             // JPEG画像の場合、srcプロパティにデータURLが含まれる場合がある
             try {
               const response = await fetch(imgData.src);
               const blob = await response.blob();
+              console.log(`[PDF Extract] Image ${imgName} extracted via src, blob size:`, blob.size);
               const buffer = await blob.arrayBuffer();
               images.push({
                 data: new Uint8Array(buffer),
                 mimeType: blob.type || 'image/jpeg'
               });
-            } catch {
-              console.warn(`Failed to fetch image src for ${imgName}`);
+            } catch (srcErr) {
+              console.warn(`Failed to fetch image src for ${imgName}:`, srcErr);
             }
+          } else {
+            console.warn(`[PDF Extract] Image ${imgName}: No extractable data found`);
           }
         } catch (imgErr) {
           // 個別画像の取得失敗は無視
@@ -510,5 +921,6 @@ export const extractImagesFromPdf = async (
     console.error('Failed to extract images from PDF:', e);
   }
 
+  console.log(`[PDF Extract] Total images extracted: ${images.length}`);
   return images;
 };

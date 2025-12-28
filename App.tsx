@@ -5,7 +5,7 @@ import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, app
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
-import { extractSessionFromPdf, isSmartPdf, extractImagesFromPdf, extractTextWithPositions, parsePositionedTextToRecords } from './utils/pdfGenerator';
+import { extractSessionFromPdf, isSmartPdf, hasIndividualImages, extractImagesFromPdf } from './utils/pdfGenerator';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
@@ -28,6 +28,7 @@ import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
 import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
 import SessionHistoryPanel from './components/SessionHistoryPanel';
 import GitHubSyncPanel from './components/GitHubSyncPanel';
+import PdfLoadDialog from './components/PdfLoadDialog';
 import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
@@ -119,8 +120,10 @@ export default function App() {
   const [initialInstruction, setInitialInstruction] = useState<string>("");
   const [activeInstruction, setActiveInstruction] = useState<string>("");
 
-  // Language
-  const [lang, setLang] = useState<'en' | 'ja'>('en');
+  // Language - デフォルトは日本語、英語環境のみ英語に切り替え
+  const [lang, setLang] = useState<'en' | 'ja'>(() => {
+    return navigator.language.startsWith('en') ? 'en' : 'ja';
+  });
   const txt = TRANS[lang];
 
   // File System Cache
@@ -130,14 +133,8 @@ export default function App() {
   // Analysis Abort Control (useRef to avoid stale closure issues)
   const shouldAbortRef = useRef(false);
 
-  // PDF Import - フォルダ選択を先に行うための状態
-  const pdfInputRef = useRef<HTMLInputElement>(null);
-  const [pendingFolderImages, setPendingFolderImages] = useState<{ file: File; base64: string; mimeType: string }[]>([]);
-
-  // Detect Language
-  useEffect(() => {
-    if (navigator.language.startsWith('ja')) setLang('ja');
-  }, []);
+  // PDF Import
+  const [showPdfLoadDialog, setShowPdfLoadDialog] = useState(false);
 
   // Load data
   useEffect(() => {
@@ -1715,195 +1712,128 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  // PDFボタンクリック時 - フォルダ選択を先に行う（ユーザージェスチャー内で実行）
-  const handlePdfButtonClick = async () => {
-    // フォルダ選択を直接開始（confirm()を使うとユーザージェスチャーが失われる場合がある）
-    if ('showDirectoryPicker' in window) {
-      try {
-        // @ts-ignore - File System Access API（ユーザージェスチャー内で呼び出し）
-        const dirHandle = await window.showDirectoryPicker();
-        addLog('フォルダ選択: 画像を読み込み中...', 'info');
-
-        const folderImages: { file: File; base64: string; mimeType: string }[] = [];
-
-        // フォルダ内の画像ファイルを収集
-        for await (const entry of dirHandle.values()) {
-          if (entry.kind === 'file') {
-            const file = await entry.getFile();
-            if (file.type.startsWith('image/')) {
-              const { base64, mimeType } = await processImageForAI(file);
-              folderImages.push({ file, base64, mimeType });
-              addLog(`  ✓ ${file.name}`, 'success');
-            }
-          }
-        }
-
-        // ファイル名でソート
-        folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
-        addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
-
-        if (folderImages.length === 0) {
-          alert(lang === 'ja'
-            ? '選択したフォルダに画像がありませんでした。'
-            : 'No images found in the selected folder.');
-          return;
-        }
-
-        // フォルダ画像を状態に保存
-        setPendingFolderImages(folderImages);
-      } catch (folderErr: any) {
-        if (folderErr.name === 'AbortError') {
-          // ユーザーがキャンセル → フォルダなしでPDF選択に進む
-          setPendingFolderImages([]);
-        } else {
-          console.error('Folder selection error:', folderErr);
-          setErrorMsg('フォルダ選択エラー');
-          return;
-        }
-      }
-    }
-
-    // PDFファイル選択をトリガー
-    pdfInputRef.current?.click();
+  // PDFボタンクリック時 - ダイアログを開く
+  const handlePdfButtonClick = () => {
+    setShowPdfLoadDialog(true);
   };
 
-  // PDFからセッションデータを読み込み
-  const handleImportPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const pdfFile = e.target.files[0];
-
-    addLog(`PDF読み込み: ${pdfFile.name}`, 'info');
+  // PDFロードダイアログからの読み込み
+  const handlePdfLoad = async (
+    pdfFile: File,
+    imageFolder: FileSystemDirectoryHandle | null,
+    pushLog?: (msg: string) => void
+  ) => {
+    console.log('[App.handlePdfLoad] Start', { pdfFile: pdfFile.name, hasFolder: !!imageFolder });
+    const log = (msg: string, level: 'info' | 'success' | 'error' = 'info') => {
+      addLog(msg, level);
+      if (pushLog) pushLog(msg);
+    };
+    log(`PDF読み込み: ${pdfFile.name}`);
 
     try {
-      // スマートPDFかどうかチェック
+      let images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
+      let captionData: Record<string, any> | null = null;
+
+      // PDF形式を判定
       const isSmart = await isSmartPdf(pdfFile);
+      const hasImages = await hasIndividualImages(pdfFile);
 
-      // PDFから埋め込み画像を抽出（先に実行）
-      addLog('PDFから画像を抽出中...', 'info');
-      const extractedImages = await extractImagesFromPdf(pdfFile);
-      addLog(`${extractedImages.length}枚の画像を抽出しました`, 'info');
+      if (hasImages && !imageFolder) {
+        // 新形式PDF: PDFから画像を抽出
+        log('新形式PDF: 画像を抽出中...');
+        const extractedImages = await extractImagesFromPdf(pdfFile);
+        log(`${extractedImages.length}枚の画像を抽出`, 'success');
 
-      let sessionData: Partial<PhotoRecord>[] | null = null;
-
-      if (isSmart) {
-        // セッションデータを抽出
-        sessionData = await extractSessionFromPdf(pdfFile);
-      }
-
-      // 事前に選択されたフォルダ画像を使用（handlePdfButtonClickで選択済み）
-      const folderImages = [...pendingFolderImages];
-      // 使用後はクリア
-      if (pendingFolderImages.length > 0) {
-        setPendingFolderImages([]);
-      }
-
-      // デバッグログ
-      console.log('[PDF Import Debug]', {
-        isSmart,
-        sessionDataLength: sessionData?.length ?? 'null',
-        extractedImagesLength: extractedImages.length,
-        folderImagesLength: folderImages.length
-      });
-
-      if (!sessionData || sessionData.length === 0) {
-        // 画像もフォルダ画像もない場合はエラー
-        if (extractedImages.length === 0 && folderImages.length === 0) {
-          alert(lang === 'ja'
-            ? 'このPDFから画像を抽出できませんでした。\nLoad PDFボタンをクリックして、画像フォルダを選択してください。'
-            : 'Could not extract images from this PDF.\nClick Load PDF button and select an image folder.');
-          return;
-        }
-
-        addLog('セッションデータなし - テキスト解析を試行...', 'info');
-
-        // ユーザーに確認
-        const imageCount = folderImages.length > 0 ? folderImages.length : extractedImages.length;
-        const shouldProceed = window.confirm(
-          lang === 'ja'
-            ? `このPDFにはセッションデータが含まれていません。\n${imageCount}枚の画像が見つかりました。\n\nテキストを解析して復元を試みますか？`
-            : `This PDF does not contain session data.\nFound ${imageCount} images.\n\nWould you like to try text analysis to restore?`
-        );
-
-        if (!shouldProceed) {
-          return;
-        }
-
-        // テキスト解析を実行
-        addLog('PDFテキストを解析中...', 'info');
-        const textData = await extractTextWithPositions(pdfFile);
-
-        // フォルダから読み込んだ画像があればそちらを使用
-        const actualImageCount = folderImages.length > 0 ? folderImages.length : extractedImages.length;
-
-        // ページ数から1ページあたりの写真数を推測
-        const totalPages = textData.length;
-        const photosPerPage: 2 | 3 = totalPages > 0 && actualImageCount / totalPages <= 2.5 ? 2 : 3;
-        addLog(`レイアウト推定: ${photosPerPage}枚/ページ`, 'info');
-
-        // テキストからセッションデータを生成
-        sessionData = parsePositionedTextToRecords(textData, actualImageCount, photosPerPage);
-        addLog(`テキスト解析完了: ${sessionData.length}件のレコードを生成`, 'info');
-      }
-
-      // セッションデータと画像をマッチング
-      let restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
-        // フォルダから読み込んだ画像があればそちらを優先
-        if (folderImages.length > 0 && folderImages[index]) {
-          const img = folderImages[index];
-          return {
-            fileName: img.file.name,
-            base64: img.base64,
-            mimeType: img.mimeType,
-            fileSize: img.file.size,
-            lastModified: img.file.lastModified,
-            status: (data.status as any) || 'done',
-            date: data.date,
-            analysis: data.analysis,
-            sceneId: data.sceneId,
-            phase: data.phase,
-            fromCache: false
-          };
-        }
-
-        const fileName = data.fileName || `photo_${index + 1}.jpg`;
-
-        // 抽出した画像があれば使用（データURL形式で設定）
-        let base64 = '';
-        if (extractedImages[index]) {
-          const bytes = extractedImages[index].data;
-          const mimeType = extractedImages[index].mimeType || 'image/jpeg';
-          // チャンク処理でパフォーマンス改善
+        // 抽出した画像をbase64に変換
+        images = extractedImages.map((img, index) => {
+          const mimeType = img.mimeType || 'image/jpeg';
           const chunkSize = 8192;
           let binary = '';
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            const chunk = bytes.subarray(i, i + chunkSize);
+          for (let i = 0; i < img.data.length; i += chunkSize) {
+            const chunk = img.data.subarray(i, i + chunkSize);
             binary += String.fromCharCode.apply(null, Array.from(chunk));
           }
-          base64 = `data:${mimeType};base64,${btoa(binary)}`;
-        }
+          const base64 = `data:${mimeType};base64,${btoa(binary)}`;
+          return {
+            fileName: `photo_${index + 1}.jpg`,
+            base64,
+            mimeType
+          };
+        });
 
+        // セッションデータからファイル名を復元
+        if (isSmart) {
+          const sessionData = await extractSessionFromPdf(pdfFile);
+          if (sessionData) {
+            captionData = {};
+            sessionData.forEach((item: any, index: number) => {
+              const fileName = item.fileName || `photo_${index + 1}.jpg`;
+              captionData![fileName] = item;
+              if (images[index]) {
+                images[index].fileName = fileName;
+              }
+            });
+            log(`${sessionData.length}件のキャプション情報を復元`, 'success');
+          }
+        }
+      } else if (imageFolder) {
+        // フォルダから画像を読み込み
+        log(`フォルダから画像を読み込み中: ${imageFolder.name}`);
+        const folderResult = await loadImagesFromFolder(imageFolder);
+        images = folderResult.images;
+        log(`${images.length}枚の画像をフォルダから読み込みました`, 'success');
+
+        // キャプション情報を取得（PDF優先、なければJSON）
+        if (isSmart) {
+          log('スマートPDF: キャプション情報を抽出中...');
+          const sessionData = await extractSessionFromPdf(pdfFile);
+          if (sessionData && sessionData.length > 0) {
+            captionData = {};
+            sessionData.forEach((item: any) => {
+              if (item.fileName) {
+                captionData![item.fileName] = item;
+              }
+            });
+            log(`${sessionData.length}件のキャプション情報を復元`, 'success');
+          }
+        } else if (folderResult.analysisData) {
+          captionData = folderResult.analysisData;
+          log(`JSONからキャプション情報を復元`, 'success');
+        }
+      } else {
+        log('画像フォルダが必要です', 'error');
+        throw new Error('画像フォルダを選択してください');
+      }
+
+      // レストア処理
+      const restoredPhotos: PhotoRecord[] = images.map((img) => {
+        const caption = captionData?.[img.fileName];
         return {
-          fileName,
-          base64,
-          mimeType: extractedImages[index]?.mimeType || data.mimeType || 'image/jpeg',
-          fileSize: extractedImages[index]?.data.length || 0,
+          fileName: img.fileName,
+          base64: img.base64,
+          mimeType: img.mimeType,
+          fileSize: 0,
           lastModified: 0,
-          status: (data.status as any) || 'done',
-          date: data.date,
-          analysis: data.analysis,
-          sceneId: data.sceneId,
-          phase: data.phase,
+          status: 'done' as const,
+          date: caption?.date || '',
+          analysis: caption?.analysis || {
+            workType: '',
+            variety: '',
+            detail: '',
+            station: '',
+            remarks: '',
+            description: ''
+          },
+          sceneId: caption?.sceneId,
+          phase: caption?.phase,
           fromCache: true
         };
       });
 
-      const matchedCount = restoredPhotos.filter(p => p.base64).length;
+      const withAnalysis = restoredPhotos.filter(p => p.analysis?.workType || p.analysis?.station || p.analysis?.remarks).length;
+      log(`${withAnalysis}/${restoredPhotos.length}枚にキャプション情報あり`);
 
-      // 不足画像がある場合はログに記録
-      const missingCount = restoredPhotos.length - matchedCount;
-      if (missingCount > 0) {
-        addLog(`${missingCount}枚の画像が不足しています。Load PDFで画像フォルダを選択してやり直してください。`, 'info');
-      }
+      const matchedCount = restoredPhotos.filter(p => p.base64).length;
 
       setPhotos(restoredPhotos);
       setStats({
@@ -1913,40 +1843,133 @@ export default function App() {
         failed: 0,
         cached: restoredPhotos.length
       });
-      setShowPreview(true);
+      // プレビュー遷移はダイアログが閉じた後に行う（ダイアログ側でonCloseが呼ばれる）
 
       if (matchedCount === restoredPhotos.length) {
-        addLog(`PDFから${restoredPhotos.length}枚を完全復元しました`, 'success');
+        log(`PDFから${restoredPhotos.length}枚を完全復元しました`, 'success');
         setSuccessMsg(`PDFから${restoredPhotos.length}枚を完全復元しました`);
-      } else if (matchedCount > 0) {
-        addLog(`PDFから${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`, 'success');
-        setSuccessMsg(`${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`);
       } else {
-        addLog(`PDFから${restoredPhotos.length}枚の解析データを復元しました（画像なし）`, 'info');
-        setSuccessMsg(`${restoredPhotos.length}枚の解析データを復元しました（画像なし）`);
+        log(`PDFから${restoredPhotos.length}枚中${matchedCount}枚の画像を復元`, 'success');
+        setSuccessMsg(`${matchedCount}/${restoredPhotos.length}枚の画像を復元`);
       }
+      
+      console.log('[App.handlePdfLoad] Complete!', { matchedCount, total: restoredPhotos.length });
 
     } catch (err: any) {
-      console.error('PDF import error:', err);
-      setErrorMsg(err.message || 'PDF読み込みエラー');
+      console.error('[App.handlePdfLoad] Error:', err);
+      const msg = err.message || 'PDF読み込みエラー';
+      setErrorMsg(msg);
       addLog('PDF読み込みエラー', 'error', err);
+      if (pushLog) pushLog(msg);
+      throw err; // ダイアログにエラーを伝える
     }
+  };
 
-    // Reset input
-    e.target.value = '';
+  // フォルダから画像とJSONを読み込む（ファイル名順にソート）
+  const loadImagesFromFolder = async (folder: FileSystemDirectoryHandle): Promise<{
+    images: Array<{ fileName: string; base64: string; mimeType: string }>;
+    analysisData: Record<string, any> | null;
+  }> => {
+    const images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
+    let analysisData: Record<string, any> | null = null;
+    console.log('[loadImagesFromFolder] Start:', folder.name);
+
+    const readDir = async (dir: FileSystemDirectoryHandle, depth = 0) => {
+      for await (const entry of dir.values()) {
+        if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          if (file.type.startsWith('image/')) {
+            const base64 = await fileToBase64(file);
+            images.push({ fileName: file.name, base64, mimeType: file.type });
+            console.log(`[loadImagesFromFolder] Added image: ${file.name}`);
+          } else if (file.name.endsWith('.json') && file.name !== 'desktop.ini') {
+            // JSONファイルからキャプション情報を読み込み
+            try {
+              const text = await file.text();
+              const json = JSON.parse(text);
+              analysisData = analysisData || {};
+
+              // 配列形式（analysis_result.json等）
+              if (Array.isArray(json)) {
+                json.forEach((item: any) => {
+                  if (item.fileName) {
+                    // フラット形式（workType直接）とネスト形式（analysis.workType）両対応
+                    analysisData![item.fileName] = {
+                      ...item,
+                      analysis: item.analysis || {
+                        workType: item.workType || '',
+                        variety: item.variety || '',
+                        detail: item.detail || '',
+                        station: item.station || '',
+                        remarks: item.remarks || '',
+                        description: item.description || '',
+                        measurements: item.measurements || ''
+                      }
+                    };
+                  }
+                });
+              } else if (json.photos && Array.isArray(json.photos)) {
+                json.photos.forEach((item: any) => {
+                  if (item.fileName) {
+                    analysisData![item.fileName] = {
+                      ...item,
+                      analysis: item.analysis || {
+                        workType: item.workType || '',
+                        variety: item.variety || '',
+                        detail: item.detail || '',
+                        station: item.station || '',
+                        remarks: item.remarks || '',
+                        description: item.description || '',
+                        measurements: item.measurements || ''
+                      }
+                    };
+                  }
+                });
+              }
+              console.log(`[loadImagesFromFolder] Loaded JSON: ${file.name}, keys:`, analysisData ? Object.keys(analysisData) : []);
+            } catch (e) {
+              console.warn(`[loadImagesFromFolder] Failed to parse JSON: ${file.name}`, e);
+            }
+          }
+        } else if (entry.kind === 'directory') {
+          await readDir(entry, depth + 1);
+        }
+      }
+    };
+
+    await readDir(folder);
+    // ファイル名順にソート
+    images.sort((a, b) => a.fileName.localeCompare(b.fileName, undefined, { numeric: true }));
+    console.log('[loadImagesFromFolder] Done, total images:', images.length, 'analysisData:', !!analysisData);
+    return { images, analysisData };
+  };
+
+  // FileをBase64に変換
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   // --- Render ---
 
   return (
     <>
-      {/* Hidden PDF file input for handlePdfButtonClick */}
-      <input
-        type="file"
-        ref={pdfInputRef}
-        onChange={handleImportPdf}
-        className="hidden"
-        accept=".pdf"
+      {/* PDF Load Dialog */}
+      <PdfLoadDialog
+        isOpen={showPdfLoadDialog}
+        onClose={() => {
+          setShowPdfLoadDialog(false);
+          // 写真がロードされていればプレビューに遷移
+          if (photos.length > 0) {
+            setShowPreview(true);
+          }
+        }}
+        onLoad={handlePdfLoad}
+        lang={lang}
       />
 
       {/* API Key Setup - Step 1: キー入力 */}
@@ -1954,9 +1977,9 @@ export default function App() {
         <ApiKeySetup
           onComplete={handleApiKeyInput}
           onCancel={() => setShowApiKeySetup(false)}
-          onImportPdf={(e) => {
+          onImportPdf={() => {
             setShowApiKeySetup(false);
-            handleImportPdf(e);
+            setShowPdfLoadDialog(true);
           }}
         />
       )}
@@ -2000,7 +2023,6 @@ export default function App() {
           onCloseProject={handleCloseProject}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
-          onImportPdf={handleImportPdf}
           onPdfButtonClick={handlePdfButtonClick}
           onClearCache={handleClearCache}
           onShowPreview={() => setShowPreview(true)}
