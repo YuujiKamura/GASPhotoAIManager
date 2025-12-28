@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-28T23:21:56.320Z",
-  "totalFiles": 92,
-  "totalLines": 30299,
+  "generatedAt": "2025-12-28T23:40:38.016Z",
+  "totalFiles": 96,
+  "totalLines": 30361,
   "largeFiles": [
     {
       "path": "App.tsx",
@@ -17,11 +17,6 @@
       "path": "utils/storage.ts",
       "lines": 1096,
       "size": 35658
-    },
-    {
-      "path": "services/gemini/analysis.ts",
-      "lines": 1088,
-      "size": 44897
     },
     {
       "path": "utils/pdfGenerator.ts",
@@ -52,6 +47,11 @@
       "path": "components/PreviewView.tsx",
       "lines": 642,
       "size": 28993
+    },
+    {
+      "path": "services/githubSync.ts",
+      "lines": 617,
+      "size": 17419
     }
   ],
   "components": {
@@ -86,15 +86,19 @@
     ]
   },
   "services": {
-    "count": 19,
+    "count": 23,
     "files": [
       "services/agentContext.ts (198行)",
       "services/aiAgentService.ts (589行)",
-      "services/gemini/analysis.ts (1088行)",
+      "services/gemini/analysis.ts (509行)",
       "services/gemini/apiKey.ts (170行)",
+      "services/gemini/helpers.ts (106行)",
       "services/gemini/index.ts (88行)",
+      "services/gemini/interactiveAnalysis.ts (156行)",
       "services/gemini/models.ts (150行)",
       "services/gemini/normalization.ts (445行)",
+      "services/gemini/systemPrompts.ts (260行)",
+      "services/gemini/workTypeSelector.ts (119行)",
       "services/geminiService.ts (12行)",
       "services/githubSync.ts (617行)",
       "services/learningService.ts (462行)",
@@ -167,15 +171,6 @@
       "priority": "medium",
       "status": "todo",
       "estimatedLines": 596
-    },
-    {
-      "id": "split-services-gemini-analysis-ts",
-      "title": "services/gemini/analysis.ts を分割",
-      "description": "1088行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出",
-      "file": "services/gemini/analysis.ts",
-      "priority": "medium",
-      "status": "todo",
-      "estimatedLines": 588
     },
     {
       "id": "refactor-utils-pdfGenerator-ts",
@@ -293,6 +288,15 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 213
+    },
+    {
+      "id": "refactor-services-gemini-analysis-ts",
+      "title": "services/gemini/analysis.ts をリファクタ",
+      "description": "509行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "services/gemini/analysis.ts",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 209
     },
     {
       "id": "apply-hooks",
