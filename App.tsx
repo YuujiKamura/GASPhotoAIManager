@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection, getSelectedModel } from './services/geminiService';
@@ -14,7 +14,7 @@ import { applyAliasesToRecords, loadAliasSettings, hasAliases } from './utils/wo
 import { recordManualEdit, initLearningService } from './services/learningService';
 import { runAIAgent } from './services/aiAgentService';
 
-// Components
+// Core components (always loaded)
 import UploadView from './components/UploadView';
 import PreviewView from './components/PreviewView';
 import LimitModal from './components/LimitModal';
@@ -22,17 +22,29 @@ import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
 import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
-import ManualPairingModal from './components/ManualPairingModal';
-import MasterEditorModal from './components/MasterEditorModal';
-import StationReplaceModal from './components/StationReplaceModal';
 import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
-import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
-import SessionHistoryPanel from './components/SessionHistoryPanel';
-import GitHubSyncPanel from './components/GitHubSyncPanel';
 import PdfLoadDialog from './components/PdfLoadDialog';
-import CodebaseHealthDashboard from './components/CodebaseHealthDashboard';
-import { InteractiveAnalysisDialog } from './components/InteractiveAnalysisDialog';
+
+// Lazy-loaded components (loaded on demand to reduce bundle size)
+const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
+const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
+const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
+const NormalizationPreviewModal = lazy(() => import('./components/NormalizationPreviewModal'));
+const SessionHistoryPanel = lazy(() => import('./components/SessionHistoryPanel'));
+const GitHubSyncPanel = lazy(() => import('./components/GitHubSyncPanel'));
+const CodebaseHealthDashboard = lazy(() => import('./components/CodebaseHealthDashboard'));
+const InteractiveAnalysisDialog = lazy(() => import('./components/InteractiveAnalysisDialog').then(m => ({ default: m.InteractiveAnalysisDialog })));
+
+// Import types
+import type { OriginalData } from './components/NormalizationPreviewModal';
 import { AnalysisHistoryEntry } from './types';
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center p-8">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+  </div>
+);
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -1993,27 +2005,31 @@ export default function App() {
       )}
 
       {showHealthDashboard ? (
-        <CodebaseHealthDashboard
-          lang={lang}
-          onClose={() => setShowHealthDashboard(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <CodebaseHealthDashboard
+            lang={lang}
+            onClose={() => setShowHealthDashboard(false)}
+          />
+        </Suspense>
       ) : showMasterEditor ? (
-        <MasterEditorModal
-          lang={lang}
-          onClose={() => setShowMasterEditor(false)}
-          onApplyAliasesToSession={() => {
-            const settings = loadAliasSettings();
-            if (!settings.enabled || !hasAliases(settings)) {
-              return { modifiedCount: 0 };
-            }
-            const { modifiedCount, records } = applyAliasesToRecords(photos, settings);
-            if (modifiedCount > 0) {
-              setPhotos(records);
-              addLog(`エイリアス適用: ${modifiedCount}件のデータを変換しました`, 'success');
-            }
-            return { modifiedCount };
-          }}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <MasterEditorModal
+            lang={lang}
+            onClose={() => setShowMasterEditor(false)}
+            onApplyAliasesToSession={() => {
+              const settings = loadAliasSettings();
+              if (!settings.enabled || !hasAliases(settings)) {
+                return { modifiedCount: 0 };
+              }
+              const { modifiedCount, records } = applyAliasesToRecords(photos, settings);
+              if (modifiedCount > 0) {
+                setPhotos(records);
+                addLog(`エイリアス適用: ${modifiedCount}件のデータを変換しました`, 'success');
+              }
+              return { modifiedCount };
+            }}
+          />
+        </Suspense>
       ) : !showPreview ? (
         <UploadView
           lang={lang}
@@ -2121,45 +2137,55 @@ export default function App() {
       )}
 
       {showManualPairing && (
-        <ManualPairingModal
-          photos={manualPairingPhotos}
-          lang={lang}
-          onComplete={handleManualPairingComplete}
-          onCancel={() => setShowManualPairing(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <ManualPairingModal
+            photos={manualPairingPhotos}
+            lang={lang}
+            onComplete={handleManualPairingComplete}
+            onCancel={() => setShowManualPairing(false)}
+          />
+        </Suspense>
       )}
 
       {showStationReplace && (
-        <StationReplaceModal
-          photos={photos}
-          lang={lang}
-          onClose={() => setShowStationReplace(false)}
-          onReplace={handleStationReplace}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <StationReplaceModal
+            photos={photos}
+            lang={lang}
+            onClose={() => setShowStationReplace(false)}
+            onReplace={handleStationReplace}
+          />
+        </Suspense>
       )}
 
       {showNormalizationModal && (
-        <NormalizationPreviewModal
-          corrections={normalizationProposals}
-          originalData={normalizationOriginals}
-          onApprove={handleNormalizationApprove}
-          onReject={handleNormalizationReject}
-          onRetry={handleNormalizationRetry}
-          lang={lang}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <NormalizationPreviewModal
+            corrections={normalizationProposals}
+            originalData={normalizationOriginals}
+            onApprove={handleNormalizationApprove}
+            onReject={handleNormalizationReject}
+            onRetry={handleNormalizationRetry}
+            lang={lang}
+          />
+        </Suspense>
       )}
 
       {showHistory && (
-        <SessionHistoryPanel
-          onLoad={handleLoadHistory}
-          onClose={() => setShowHistory(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <SessionHistoryPanel
+            onLoad={handleLoadHistory}
+            onClose={() => setShowHistory(false)}
+          />
+        </Suspense>
       )}
 
       {showGitHubSync && (
-        <GitHubSyncPanel
-          onClose={() => setShowGitHubSync(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <GitHubSyncPanel
+            onClose={() => setShowGitHubSync(false)}
+          />
+        </Suspense>
       )}
 
       {showWorkTypeConfirm && (
@@ -2172,13 +2198,15 @@ export default function App() {
       )}
 
       {/* 対話型解析ダイアログ */}
-      <InteractiveAnalysisDialog
-        photo={interactiveAnalysisTarget}
-        apiKey={apiKey || ''}
-        lang={lang}
-        onConfirm={handleInteractiveAnalysisConfirm}
-        onClose={() => setInteractiveAnalysisTarget(null)}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <InteractiveAnalysisDialog
+          photo={interactiveAnalysisTarget}
+          apiKey={apiKey || ''}
+          lang={lang}
+          onConfirm={handleInteractiveAnalysisConfirm}
+          onClose={() => setInteractiveAnalysisTarget(null)}
+        />
+      </Suspense>
     </>
   );
 }
