@@ -324,3 +324,138 @@ export const initLearningService = async (): Promise<void> => {
     console.warn('[Learning] Failed to initialize:', e);
   }
 };
+
+/**
+ * AIにルールの最適化を提案させる
+ * 蓄積された修正パターンを分析し、より汎用的なルールを生成
+ */
+export const suggestOptimizedRules = async (
+  apiKey: string,
+  onLog?: (msg: string) => void
+): Promise<{ suggestedRules: LearnedRule[]; suggestedAliases: LearnedAlias[] }> => {
+  const { GoogleGenAI } = await import("@google/genai");
+  const settings = await getLearnedSettings();
+
+  if (settings.rules.length < 3 && settings.aliases.length < 3) {
+    onLog?.('[AI提案] 十分なデータがありません（最低3件必要）');
+    return { suggestedRules: [], suggestedAliases: [] };
+  }
+
+  const genAI = new GoogleGenAI({ apiKey });
+
+  const prompt = `
+あなたは工事写真管理システムの学習データを最適化するエキスパートです。
+
+以下は、ユーザーが手動で修正した履歴です。これらのパターンを分析し、
+より汎用的で効果的なルールを提案してください。
+
+## 現在のルール（${settings.rules.length}件）:
+${JSON.stringify(settings.rules, null, 2)}
+
+## 現在のエイリアス（${settings.aliases.length}件）:
+${JSON.stringify(settings.aliases, null, 2)}
+
+## タスク:
+1. 重複や類似のルールを統合してください
+2. より汎用的なパターンを抽出してください
+3. 不要なルール（一回限りの修正など）を除外してください
+4. 新しいエイリアスを提案してください（よくある表記揺れ）
+
+## 出力形式（JSON）:
+{
+  "optimizedRules": [
+    {
+      "description": "ルールの説明",
+      "condition": { "workType": "...", "remarks": "..." },
+      "correction": { "remarks": "..." },
+      "reason": "このルールが必要な理由"
+    }
+  ],
+  "optimizedAliases": [
+    {
+      "from": "誤った表現",
+      "to": "正しい表現",
+      "context": "適用コンテキスト（省略可）",
+      "reason": "この変換が必要な理由"
+    }
+  ],
+  "removedRules": ["削除を推奨するルールID"],
+  "summary": "最適化の概要"
+}
+`;
+
+  try {
+    onLog?.('[AI提案] ルール最適化を分析中...');
+
+    const result = await genAI.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const text = result.text || '{}';
+    const json = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+
+    const now = new Date().toISOString();
+
+    // 提案されたルールを変換
+    const suggestedRules: LearnedRule[] = (json.optimizedRules || []).map((r: any, i: number) => ({
+      id: `ai_rule_${Date.now()}_${i}`,
+      description: r.description || r.reason || '',
+      condition: r.condition || {},
+      correction: r.correction || {},
+      createdAt: now,
+      source: 'manual' as const // AIが提案したものも'manual'として記録
+    }));
+
+    const suggestedAliases: LearnedAlias[] = (json.optimizedAliases || []).map((a: any, i: number) => ({
+      id: `ai_alias_${Date.now()}_${i}`,
+      from: a.from,
+      to: a.to,
+      context: a.context,
+      createdAt: now
+    }));
+
+    onLog?.(`[AI提案] ${suggestedRules.length}件のルール、${suggestedAliases.length}件のエイリアスを提案`);
+    if (json.summary) {
+      onLog?.(`[AI提案] ${json.summary}`);
+    }
+
+    return { suggestedRules, suggestedAliases };
+
+  } catch (e: any) {
+    onLog?.(`[AI提案] エラー: ${e.message}`);
+    return { suggestedRules: [], suggestedAliases: [] };
+  }
+};
+
+/**
+ * 提案されたルールを適用
+ */
+export const applyOptimizedRules = async (
+  rules: LearnedRule[],
+  aliases: LearnedAlias[],
+  replaceExisting: boolean = false
+): Promise<void> => {
+  const settings = await getLearnedSettings();
+
+  if (replaceExisting) {
+    // 既存のルールを置き換え
+    settings.rules = rules;
+    settings.aliases = aliases;
+  } else {
+    // 既存に追加
+    settings.rules = [...settings.rules, ...rules];
+    settings.aliases = [...settings.aliases, ...aliases];
+  }
+
+  settings.version++;
+  settings.updatedAt = new Date().toISOString();
+
+  cachedSettings = settings;
+  await saveSettingsLocally(settings);
+  pendingChanges = true;
+  scheduleAutoPush();
+};
