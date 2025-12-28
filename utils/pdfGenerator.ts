@@ -104,6 +104,302 @@ export const isSmartPdf = async (pdfFile: File | Blob): Promise<boolean> => {
 };
 
 /**
+ * PDFからテキストを抽出（ページごと）
+ */
+export const extractTextFromPdf = async (
+  pdfFile: File | Blob
+): Promise<{ pageNum: number; texts: string[] }[]> => {
+  const results: { pageNum: number; texts: string[] }[] = [];
+
+  try {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+
+      const pageTexts: string[] = [];
+      for (const item of textContent.items) {
+        if ('str' in item && item.str.trim()) {
+          pageTexts.push(item.str.trim());
+        }
+      }
+
+      results.push({ pageNum, texts: pageTexts });
+    }
+  } catch (e) {
+    console.error('Failed to extract text from PDF:', e);
+  }
+
+  return results;
+};
+
+/**
+ * 抽出したテキストからPhotoRecord形式に変換
+ * PDFの写真帳レイアウトから工種、細別、測点、備考などを解析
+ */
+export const parseTextToPhotoRecords = (
+  pageTexts: { pageNum: number; texts: string[] }[],
+  imageCount: number,
+  photosPerPage: 2 | 3 = 3
+): Partial<PhotoRecord>[] => {
+  const records: Partial<PhotoRecord>[] = [];
+
+  // 写真帳のフィールドラベル（日本語・英語）
+  const fieldPatterns = {
+    workType: /^(工種|Work\s*Type)$/i,
+    variety: /^(種別|Variety)$/i,
+    detail: /^(細別|Detail)$/i,
+    station: /^(測点|Station)$/i,
+    remarks: /^(備考|Remarks)$/i,
+    date: /^(撮影日時|Date)$/i,
+    measurements: /^(寸法|Measurements?)$/i,
+    description: /^(記事|説明|Description)$/i
+  };
+
+  // ページタイトルのパターン
+  const pageTitlePattern = /^(工事写真帳|Photo\s*Album)$/i;
+  const pageNumPattern = /^Page\s*\d+$/i;
+
+  for (const page of pageTexts) {
+    // テキストをフィルタリング（ページタイトル、ページ番号を除外）
+    const filteredTexts = page.texts.filter(t =>
+      !pageTitlePattern.test(t) && !pageNumPattern.test(t)
+    );
+
+    // 1ページあたりの写真数に基づいてグループ化を試みる
+    // テキストはラベルと値のペアになっていることが多い
+
+    // ラベルを検出して、その次のテキストを値として取得
+    let currentPhotoData: Partial<PhotoRecord['analysis']> = {};
+    let photoCount = 0;
+
+    for (let i = 0; i < filteredTexts.length; i++) {
+      const text = filteredTexts[i];
+      const nextText = filteredTexts[i + 1] || '';
+
+      // ラベルかどうかチェック
+      let isLabel = false;
+      for (const [key, pattern] of Object.entries(fieldPatterns)) {
+        if (pattern.test(text)) {
+          isLabel = true;
+          // 次のテキストが別のラベルでなければ値として使用
+          let isNextLabel = false;
+          for (const p of Object.values(fieldPatterns)) {
+            if (p.test(nextText)) {
+              isNextLabel = true;
+              break;
+            }
+          }
+
+          if (!isNextLabel && nextText) {
+            (currentPhotoData as any)[key] = nextText;
+            i++; // 値を消費
+          }
+          break;
+        }
+      }
+
+      // 撮影日時パターンの直接検出
+      const dateMatch = text.match(/^(\d{4}[\/\-]\d{2}[\/\-]\d{2})\s*(\d{2}:\d{2})?/);
+      if (dateMatch && !isLabel) {
+        // 日時形式のテキストを検出
+        currentPhotoData.date = text;
+      }
+    }
+
+    // このページの写真データがあれば追加
+    if (Object.keys(currentPhotoData).length > 0) {
+      // ページあたりphotosPerPage枚の写真を想定
+      for (let slot = 0; slot < photosPerPage; slot++) {
+        const recordIndex = (page.pageNum - 1) * photosPerPage + slot;
+        if (recordIndex < imageCount) {
+          if (records[recordIndex]) {
+            // 既存のデータとマージ
+            records[recordIndex].analysis = {
+              ...records[recordIndex].analysis,
+              ...currentPhotoData
+            } as any;
+          } else {
+            records[recordIndex] = {
+              fileName: `photo_${recordIndex + 1}.jpg`,
+              status: 'done',
+              analysis: currentPhotoData as any
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // 画像数に合わせてレコードを調整
+  const finalRecords: Partial<PhotoRecord>[] = [];
+  for (let i = 0; i < imageCount; i++) {
+    if (records[i]) {
+      finalRecords.push(records[i]);
+    } else {
+      finalRecords.push({
+        fileName: `photo_${i + 1}.jpg`,
+        status: 'done',
+        analysis: {
+          workType: '',
+          variety: '',
+          detail: '',
+          station: '',
+          remarks: '',
+          description: ''
+        }
+      });
+    }
+  }
+
+  return finalRecords;
+};
+
+/**
+ * より高精度なテキスト解析（位置情報付き）
+ * テキストのY座標を使って、どの写真に対応するかを判定
+ */
+export const extractTextWithPositions = async (
+  pdfFile: File | Blob
+): Promise<{ pageNum: number; items: Array<{ text: string; y: number; x: number }> }[]> => {
+  const results: { pageNum: number; items: Array<{ text: string; y: number; x: number }> }[] = [];
+
+  try {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const viewport = page.getViewport({ scale: 1 });
+
+      const items: Array<{ text: string; y: number; x: number }> = [];
+      for (const item of textContent.items) {
+        if ('str' in item && 'transform' in item && item.str.trim()) {
+          // transform[4] = x, transform[5] = y (PDF座標系)
+          const y = viewport.height - item.transform[5]; // 上からの距離に変換
+          const x = item.transform[4];
+          items.push({ text: item.str.trim(), y, x });
+        }
+      }
+
+      // Y座標でソート
+      items.sort((a, b) => a.y - b.y);
+      results.push({ pageNum, items });
+    }
+  } catch (e) {
+    console.error('Failed to extract text with positions:', e);
+  }
+
+  return results;
+};
+
+/**
+ * 位置情報付きテキストから写真ごとのデータを抽出
+ */
+export const parsePositionedTextToRecords = (
+  pageData: { pageNum: number; items: Array<{ text: string; y: number; x: number }> }[],
+  imageCount: number,
+  photosPerPage: 2 | 3 = 3
+): Partial<PhotoRecord>[] => {
+  const records: Partial<PhotoRecord>[] = [];
+
+  // フィールドラベルパターン
+  const fieldPatterns: { [key: string]: RegExp } = {
+    workType: /^工種$/,
+    variety: /^種別$/,
+    detail: /^細別$/,
+    station: /^測点$/,
+    remarks: /^備考$/,
+    date: /^撮影日時$/,
+    measurements: /^寸法$/,
+    description: /^(記事|説明)$/
+  };
+
+  for (const page of pageData) {
+    // ページ高さを推定（A4: 297mm ≈ 842pt）
+    const pageHeight = 842;
+    const slotHeight = pageHeight / photosPerPage;
+
+    // 各スロットのテキストを収集
+    for (let slot = 0; slot < photosPerPage; slot++) {
+      const slotTop = slot * slotHeight + 50; // ヘッダー分のオフセット
+      const slotBottom = (slot + 1) * slotHeight + 50;
+
+      const slotItems = page.items.filter(item =>
+        item.y >= slotTop && item.y < slotBottom
+      );
+
+      if (slotItems.length === 0) continue;
+
+      const recordIndex = (page.pageNum - 1) * photosPerPage + slot;
+      if (recordIndex >= imageCount) continue;
+
+      const analysis: Partial<PhotoRecord['analysis']> = {
+        workType: '',
+        variety: '',
+        detail: '',
+        station: '',
+        remarks: '',
+        description: ''
+      };
+
+      // ラベルと値のペアを解析
+      for (let i = 0; i < slotItems.length; i++) {
+        const item = slotItems[i];
+
+        for (const [field, pattern] of Object.entries(fieldPatterns)) {
+          if (pattern.test(item.text)) {
+            // 同じ行（y座標が近い）で、x座標が大きいものを値として探す
+            const valueItem = slotItems.find((other, j) =>
+              j > i &&
+              Math.abs(other.y - item.y) < 10 &&
+              other.x > item.x
+            );
+
+            if (valueItem) {
+              (analysis as any)[field] = valueItem.text;
+            }
+            break;
+          }
+        }
+      }
+
+      records[recordIndex] = {
+        fileName: `photo_${recordIndex + 1}.jpg`,
+        status: 'done',
+        analysis: analysis as any
+      };
+    }
+  }
+
+  // 欠落しているレコードを埋める
+  const finalRecords: Partial<PhotoRecord>[] = [];
+  for (let i = 0; i < imageCount; i++) {
+    if (records[i]) {
+      finalRecords.push(records[i]);
+    } else {
+      finalRecords.push({
+        fileName: `photo_${i + 1}.jpg`,
+        status: 'done',
+        analysis: {
+          workType: '',
+          variety: '',
+          detail: '',
+          station: '',
+          remarks: '',
+          description: ''
+        }
+      });
+    }
+  }
+
+  return finalRecords;
+};
+
+/**
  * PDFから埋め込み画像を抽出
  * html2pdfで生成されたPDFには、各ページに画像が埋め込まれている
  */
