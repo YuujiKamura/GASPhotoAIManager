@@ -130,6 +130,10 @@ export default function App() {
   // Analysis Abort Control (useRef to avoid stale closure issues)
   const shouldAbortRef = useRef(false);
 
+  // PDF Import - フォルダ選択を先に行うための状態
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFolderImages, setPendingFolderImages] = useState<{ file: File; base64: string; mimeType: string }[]>([]);
+
   // Detect Language
   useEffect(() => {
     if (navigator.language.startsWith('ja')) setLang('ja');
@@ -1711,6 +1715,67 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // PDFボタンクリック時 - フォルダ選択を先に行う（ユーザージェスチャー内で実行）
+  const handlePdfButtonClick = async () => {
+    // フォルダを選択するか確認（ユーザージェスチャーのコンテキスト内）
+    if ('showDirectoryPicker' in window) {
+      const shouldSelectFolder = window.confirm(
+        lang === 'ja'
+          ? '画像フォルダを先に選択しますか？\n（PDFに画像が埋め込まれていない場合に必要）\n\n「OK」→ フォルダを選択してからPDFを選択\n「キャンセル」→ PDFのみ選択'
+          : 'Select image folder first?\n(Required if PDF does not contain embedded images)\n\n"OK" → Select folder then PDF\n"Cancel" → PDF only'
+      );
+
+      if (shouldSelectFolder) {
+        try {
+          // @ts-ignore - File System Access API（ユーザージェスチャー内で呼び出し）
+          const dirHandle = await window.showDirectoryPicker();
+          addLog('フォルダ選択: 画像を読み込み中...', 'info');
+
+          const folderImages: { file: File; base64: string; mimeType: string }[] = [];
+
+          // フォルダ内の画像ファイルを収集
+          for await (const entry of dirHandle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              if (file.type.startsWith('image/')) {
+                const { base64, mimeType } = await processImageForAI(file);
+                folderImages.push({ file, base64, mimeType });
+                addLog(`  ✓ ${file.name}`, 'success');
+              }
+            }
+          }
+
+          // ファイル名でソート
+          folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
+          addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
+
+          if (folderImages.length === 0) {
+            alert(lang === 'ja'
+              ? '選択したフォルダに画像がありませんでした。'
+              : 'No images found in the selected folder.');
+            return;
+          }
+
+          // フォルダ画像を状態に保存
+          setPendingFolderImages(folderImages);
+        } catch (folderErr: any) {
+          if (folderErr.name === 'AbortError') {
+            return; // ユーザーがキャンセル
+          }
+          console.error('Folder selection error:', folderErr);
+          setErrorMsg('フォルダ選択エラー');
+          return;
+        }
+      } else {
+        // フォルダ選択しない場合はクリア
+        setPendingFolderImages([]);
+      }
+    }
+
+    // PDFファイル選択をトリガー
+    pdfInputRef.current?.click();
+  };
+
   // PDFからセッションデータを読み込み
   const handleImportPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -1734,73 +1799,28 @@ export default function App() {
         sessionData = await extractSessionFromPdf(pdfFile);
       }
 
-      // セッションデータがない場合、テキスト解析を試みる
-      // 画像が抽出できなかった場合はフォルダ選択を提案
-      let folderImages: { file: File; base64: string; mimeType: string }[] = [];
+      // 事前に選択されたフォルダ画像を使用（handlePdfButtonClickで選択済み）
+      const folderImages = [...pendingFolderImages];
+      // 使用後はクリア
+      if (pendingFolderImages.length > 0) {
+        setPendingFolderImages([]);
+      }
 
       // デバッグログ
       console.log('[PDF Import Debug]', {
         isSmart,
         sessionDataLength: sessionData?.length ?? 'null',
         extractedImagesLength: extractedImages.length,
-        showDirectoryPickerAvailable: 'showDirectoryPicker' in window
+        folderImagesLength: folderImages.length
       });
 
       if (!sessionData || sessionData.length === 0) {
-        if (extractedImages.length === 0) {
-          // 画像がPDFに埋め込まれていない場合、フォルダ選択を提案
-          if ('showDirectoryPicker' in window) {
-            const shouldSelectFolder = window.confirm(
-              lang === 'ja'
-                ? 'このPDFから画像を抽出できませんでした。\n画像フォルダを選択して読み込みますか？'
-                : 'Could not extract images from this PDF.\nWould you like to select an image folder?'
-            );
-
-            if (shouldSelectFolder) {
-              try {
-                // @ts-ignore - File System Access API
-                const dirHandle = await window.showDirectoryPicker();
-                addLog('フォルダ選択: 画像を読み込み中...', 'info');
-
-                // フォルダ内の画像ファイルを収集
-                for await (const entry of dirHandle.values()) {
-                  if (entry.kind === 'file') {
-                    const file = await entry.getFile();
-                    if (file.type.startsWith('image/')) {
-                      const { base64, mimeType } = await processImageForAI(file);
-                      folderImages.push({ file, base64, mimeType });
-                      addLog(`  ✓ ${file.name}`, 'success');
-                    }
-                  }
-                }
-
-                // ファイル名でソート
-                folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
-                addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
-
-                if (folderImages.length === 0) {
-                  alert(lang === 'ja'
-                    ? '選択したフォルダに画像がありませんでした。'
-                    : 'No images found in the selected folder.');
-                  return;
-                }
-              } catch (folderErr: any) {
-                if (folderErr.name === 'AbortError') {
-                  return; // ユーザーがキャンセル
-                }
-                console.error('Folder selection error:', folderErr);
-                setErrorMsg('フォルダ選択エラー');
-                return;
-              }
-            } else {
-              return; // ユーザーがキャンセル
-            }
-          } else {
-            alert(lang === 'ja'
-              ? 'このPDFから画像を抽出できませんでした。'
-              : 'Could not extract images from this PDF.');
-            return;
-          }
+        // 画像もフォルダ画像もない場合はエラー
+        if (extractedImages.length === 0 && folderImages.length === 0) {
+          alert(lang === 'ja'
+            ? 'このPDFから画像を抽出できませんでした。\nLoad PDFボタンをクリックして、画像フォルダを選択してください。'
+            : 'Could not extract images from this PDF.\nClick Load PDF button and select an image folder.');
+          return;
         }
 
         addLog('セッションデータなし - テキスト解析を試行...', 'info');
@@ -1886,46 +1906,12 @@ export default function App() {
         };
       });
 
-      let matchedCount = restoredPhotos.filter(p => p.base64).length;
+      const matchedCount = restoredPhotos.filter(p => p.base64).length;
 
-      // PDFから画像が取得できなかった場合、フォルダ選択を提案
+      // 不足画像がある場合はログに記録
       const missingCount = restoredPhotos.length - matchedCount;
-      if (missingCount > 0 && 'showDirectoryPicker' in window) {
-        const shouldSelectFolder = window.confirm(
-          lang === 'ja'
-            ? `${missingCount}枚の画像がPDFから抽出できませんでした。\n元の画像フォルダを選択して復元しますか？`
-            : `${missingCount} images could not be extracted from PDF.\nSelect the original image folder to restore?`
-        );
-
-        if (shouldSelectFolder) {
-          try {
-            // @ts-ignore - File System Access API
-            const dirHandle = await window.showDirectoryPicker();
-            addLog('フォルダ選択: 画像を検索中...', 'info');
-
-            // フォルダ内のファイルを検索
-            for await (const entry of dirHandle.values()) {
-              if (entry.kind === 'file') {
-                const missingPhoto = restoredPhotos.find(p => p.fileName === entry.name && !p.base64);
-                if (missingPhoto) {
-                  const file = await entry.getFile();
-                  const { base64, mimeType } = await processImageForAI(file);
-                  missingPhoto.base64 = base64;
-                  missingPhoto.mimeType = mimeType;
-                  missingPhoto.fileSize = file.size;
-                  missingPhoto.lastModified = file.lastModified;
-                  matchedCount++;
-                  addLog(`  ✓ ${entry.name}`, 'success');
-                }
-              }
-            }
-          } catch (folderErr: any) {
-            if (folderErr.name !== 'AbortError') {
-              console.error('Folder selection error:', folderErr);
-              addLog('フォルダ選択エラー', 'error');
-            }
-          }
-        }
+      if (missingCount > 0) {
+        addLog(`${missingCount}枚の画像が不足しています。Load PDFで画像フォルダを選択してやり直してください。`, 'info');
       }
 
       setPhotos(restoredPhotos);
@@ -1963,6 +1949,15 @@ export default function App() {
 
   return (
     <>
+      {/* Hidden PDF file input for handlePdfButtonClick */}
+      <input
+        type="file"
+        ref={pdfInputRef}
+        onChange={handleImportPdf}
+        className="hidden"
+        accept=".pdf"
+      />
+
       {/* API Key Setup - Step 1: キー入力 */}
       {showApiKeySetup && (
         <ApiKeySetup
@@ -2015,6 +2010,7 @@ export default function App() {
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onImportPdf={handleImportPdf}
+          onPdfButtonClick={handlePdfButtonClick}
           onClearCache={handleClearCache}
           onShowPreview={() => setShowPreview(true)}
           onOpenSettings={() => setShowApiKeySetup(true)}
