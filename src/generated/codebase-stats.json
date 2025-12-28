@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-28T23:40:38.016Z",
-  "totalFiles": 96,
-  "totalLines": 30361,
+  "generatedAt": "2025-12-28T23:41:23.801Z",
+  "totalFiles": 107,
+  "totalLines": 30415,
   "largeFiles": [
     {
       "path": "App.tsx",
@@ -12,11 +12,6 @@
       "path": "components/MasterEditorModal.tsx",
       "lines": 1105,
       "size": 41701
-    },
-    {
-      "path": "utils/storage.ts",
-      "lines": 1096,
-      "size": 35658
     },
     {
       "path": "utils/pdfGenerator.ts",
@@ -52,6 +47,11 @@
       "path": "services/githubSync.ts",
       "lines": 617,
       "size": 17419
+    },
+    {
+      "path": "services/aiAgentService.ts",
+      "lines": 589,
+      "size": 17175
     }
   ],
   "components": {
@@ -125,7 +125,7 @@
     ]
   },
   "utils": {
-    "count": 15,
+    "count": 26,
     "files": [
       "utils/analysisRules.ts (330行)",
       "utils/constructionMaster.ts (818行)",
@@ -136,7 +136,18 @@
       "utils/layoutConfig.ts (119行)",
       "utils/learnedSortOrder.ts (89行)",
       "utils/pdfGenerator.ts (927行)",
-      "utils/storage.ts (1096行)",
+      "utils/storage/analysisCache.ts (103行)",
+      "utils/storage/dbCore.ts (68行)",
+      "utils/storage/examples.ts (185行)",
+      "utils/storage/exportImport.ts (40行)",
+      "utils/storage/history.ts (257行)",
+      "utils/storage/index.ts (82行)",
+      "utils/storage/issues.ts (132行)",
+      "utils/storage/projectData.ts (40行)",
+      "utils/storage/rules.ts (44行)",
+      "utils/storage/sessions.ts (145行)",
+      "utils/storage/stationHistory.ts (49行)",
+      "utils/storage.ts (5行)",
       "utils/translations.ts (210行)",
       "utils/userPresets.ts (161行)",
       "utils/workTypeAliases.ts (325行)",
@@ -162,15 +173,6 @@
       "priority": "medium",
       "status": "todo",
       "estimatedLines": 605
-    },
-    {
-      "id": "split-utils-storage-ts",
-      "title": "utils/storage.ts を分割",
-      "description": "1096行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出",
-      "file": "utils/storage.ts",
-      "priority": "medium",
-      "status": "todo",
-      "estimatedLines": 596
     },
     {
       "id": "refactor-utils-pdfGenerator-ts",
