@@ -620,6 +620,11 @@ export const identifyTargetPhotos = async (
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
   shouldAbort?: AbortChecker
 ): Promise<string[]> => {
+  // Early validation: Check API key before proceeding
+  if (!apiKey || !hasApiKey()) {
+    throw new Error('APIキーが設定されていません。設定画面からAPIキーを入力してください。');
+  }
+
   checkAbort(shouldAbort, 'identifyTargetPhotos開始前');
 
   const startTime = performance.now();
@@ -1058,6 +1063,11 @@ export const analyzePhotoBatch = async (
   onReasoningStream?: (text: string) => void,
   ruleSettings?: RuleSettings
 ): Promise<AIAnalysisResult[]> => {
+  // Early validation: Check API key before proceeding
+  if (!apiKey || !hasApiKey()) {
+    throw new Error('APIキーが設定されていません。設定画面からAPIキーを入力してください。');
+  }
+
   const batchStartTime = performance.now();
   const genAI = new GoogleGenAI({ apiKey });
 
