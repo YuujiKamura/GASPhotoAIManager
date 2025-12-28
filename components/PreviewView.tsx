@@ -305,11 +305,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
            <div className="flex gap-2 text-xs md:text-sm bg-slate-700 px-2 py-1 rounded-lg flex-shrink 0 whitespace-nowrap items-center">
               <span className="text-slate-300">{txt.total}: {stats.total}</span>
               <span className="text-green-400">{txt.done}: {stats.success}</span>
-              {stats.cached > 0 && (
-                 <span className="text-green-300 flex items-center gap-1 border-l border-slate-600 pl-2 font-bold animate-in fade-in">
-                    <Database className="w-3 h-3" /> Cached: {stats.cached}
-                 </span>
-              )}
               {isProcessing && (
                 <>
                   <span className="text-amber-300 animate-pulse flex items-center gap-1 border-l border-slate-600 pl-2">

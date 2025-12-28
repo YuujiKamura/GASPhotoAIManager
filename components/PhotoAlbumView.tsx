@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { Database, Trash2, Wand2, Star } from 'lucide-react';
+import { Trash2, Wand2, Star } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 import { saveExample } from '../utils/storage';
 
@@ -264,13 +264,6 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                   {/* Image Section */}
                   <div className={imageContainerClass}>
                     <img src={record.base64} alt={record.fileName} className="max-w-full max-h-full object-contain" />
-
-                    {record.fromCache && (
-                      <div className="absolute top-2 left-2 bg-green-100/90 text-green-800 px-2 py-1 rounded shadow-sm border border-green-300 flex items-center gap-1.5 z-10 pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity">
-                        <Database className="w-4 h-4" />
-                        <span className="text-xs font-bold font-sans">Cached</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Info Section */}
@@ -286,12 +279,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                         val = record.analysis ? (record.analysis[field.key as keyof AIAnalysisResult] as string || "") : "";
                       }
 
-                      // Extra UI (Date Cache icon) - Only shows in 3-up since date is hidden in 2-up
-                      const extraUI = (!isTwoUp && field.key === 'date' && record.fromCache) ? (
-                        <div className="flex items-center gap-1 text-[10px] text-green-600 font-bold bg-green-50 px-1 rounded border border-green-200" title="Restored from local cache">
-                          <Database className="w-3 h-3" />
-                        </div>
-                      ) : null;
+                      const extraUI = null;
 
                       // Determine height class dynamically
                       let dynamicHeightClass = field.heightClass;
