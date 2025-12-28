@@ -69,7 +69,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
   const [dependencies, setDependencies] = useState<DependencyInfo[]>([]);
   const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
   const [wasteItems, setWasteItems] = useState<WasteItem[]>([]);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['waste', 'bundle']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks', 'waste']));
   const [isLoading, setIsLoading] = useState(true);
 
   const txt = lang === 'ja' ? {
@@ -470,6 +470,86 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+
+            {/* === TASK BOARD (タスクボード) === */}
+            <section className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200 overflow-hidden">
+              <button
+                onClick={() => toggleSection('tasks')}
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-blue-100/50 transition-colors"
+              >
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    {expandedSections.has('tasks') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                    📋 {lang === 'ja' ? 'タスクボード' : 'Task Board'}
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1 ml-7">
+                    {lang === 'ja' ? 'Claudeが並列で作業可能なタスク一覧' : 'Tasks that can be worked on in parallel'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                    {codebaseStats.tasks?.filter((t: any) => t.priority === 'high' && t.status === 'todo').length || 0} High
+                  </span>
+                  <span className="bg-yellow-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                    {codebaseStats.tasks?.filter((t: any) => t.priority === 'medium' && t.status === 'todo').length || 0} Med
+                  </span>
+                </div>
+              </button>
+
+              {expandedSections.has('tasks') && (
+                <div className="p-5 pt-0 space-y-3">
+                  {codebaseStats.tasks?.filter((t: any) => t.status === 'todo').map((task: any) => (
+                    <div
+                      key={task.id}
+                      className={`rounded-xl border-2 p-4 ${
+                        task.priority === 'high' ? 'border-red-300 bg-red-50' :
+                        task.priority === 'medium' ? 'border-yellow-300 bg-yellow-50' :
+                        'border-blue-200 bg-blue-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                              task.priority === 'high' ? 'bg-red-100 text-red-700 border-red-300' :
+                              task.priority === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                              'bg-blue-100 text-blue-700 border-blue-300'
+                            }`}>
+                              {task.priority.toUpperCase()}
+                            </span>
+                            <span className="font-mono text-sm bg-gray-200 px-2 py-0.5 rounded">
+                              {task.id}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-gray-900 font-semibold">{task.title}</p>
+                          <p className="mt-1 text-sm text-gray-600">{task.description}</p>
+                          {task.estimatedLines > 0 && (
+                            <p className="mt-2 text-xs text-green-700">
+                              💡 削減見込み: {task.estimatedLines.toLocaleString()}行
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `タスク: ${task.title}\nID: ${task.id}\n説明: ${task.description}\nファイル: ${task.file || 'なし'}`
+                            );
+                          }}
+                          className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {(!codebaseStats.tasks || codebaseStats.tasks.filter((t: any) => t.status === 'todo').length === 0) && (
+                    <p className="text-center text-gray-500 py-4">
+                      {lang === 'ja' ? '🎉 すべてのタスクが完了しています！' : '🎉 All tasks completed!'}
+                    </p>
+                  )}
                 </div>
               )}
             </section>

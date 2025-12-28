@@ -18,6 +18,17 @@ interface FileStats {
   size: number;
 }
 
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  file?: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'todo' | 'in_progress' | 'done';
+  assignee?: string;  // Claude instance ID or empty
+  estimatedLines?: number;  // 削減見込み行数
+}
+
 interface CodebaseStats {
   generatedAt: string;
   totalFiles: number;
@@ -27,6 +38,7 @@ interface CodebaseStats {
   services: { count: number; files: string[] };
   hooks: { count: number; files: string[] };
   utils: { count: number; files: string[] };
+  tasks: Task[];  // 自動生成タスク
 }
 
 const ROOT = path.resolve(__dirname, '..');
@@ -71,6 +83,96 @@ function walkDir(dir: string, ext: string[]): FileStats[] {
   return results;
 }
 
+// 既存のタスク状態を読み込む（status/assigneeを保持するため）
+function loadExistingTasks(): Map<string, Task> {
+  const existing = new Map<string, Task>();
+  try {
+    if (fs.existsSync(OUTPUT)) {
+      const data = JSON.parse(fs.readFileSync(OUTPUT, 'utf-8'));
+      if (data.tasks) {
+        for (const task of data.tasks) {
+          existing.set(task.id, task);
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return existing;
+}
+
+// タスクを生成（大きいファイルから自動生成）
+function generateTasks(largeFiles: FileStats[], hooks: FileStats[]): Task[] {
+  const existingTasks = loadExistingTasks();
+  const tasks: Task[] = [];
+  let taskNum = 1;
+
+  // 1000行以上のファイルは分割タスク
+  for (const file of largeFiles.filter(f => f.lines >= 1000)) {
+    const id = `split-${file.path.replace(/[\/\.]/g, '-')}`;
+    const existing = existingTasks.get(id);
+
+    tasks.push({
+      id,
+      title: `${file.path} を分割`,
+      description: `${file.lines}行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出`,
+      file: file.path,
+      priority: file.lines >= 2000 ? 'high' : 'medium',
+      status: existing?.status || 'todo',
+      assignee: existing?.assignee,
+      estimatedLines: Math.max(0, file.lines - 500)
+    });
+  }
+
+  // 500-999行のファイルはリファクタ候補
+  for (const file of largeFiles.filter(f => f.lines >= 500 && f.lines < 1000)) {
+    const id = `refactor-${file.path.replace(/[\/\.]/g, '-')}`;
+    const existing = existingTasks.get(id);
+
+    tasks.push({
+      id,
+      title: `${file.path} をリファクタ`,
+      description: `${file.lines}行。重複削除・ロジック整理で300行以下を目指す`,
+      file: file.path,
+      priority: 'low',
+      status: existing?.status || 'todo',
+      assignee: existing?.assignee,
+      estimatedLines: Math.max(0, file.lines - 300)
+    });
+  }
+
+  // hooks が作成済みなら適用タスク
+  if (hooks.length >= 5) {
+    const id = 'apply-hooks';
+    const existing = existingTasks.get(id);
+    tasks.push({
+      id,
+      title: 'カスタムフックをApp.tsxに適用',
+      description: `hooks/ の ${hooks.length} 個のフックをApp.tsxで使用して状態管理を整理`,
+      file: 'App.tsx',
+      priority: 'high',
+      status: existing?.status || 'todo',
+      assignee: existing?.assignee,
+      estimatedLines: 500
+    });
+  }
+
+  // バンドルサイズ改善タスク（固定）
+  const bundleTaskId = 'lazy-load-pdf';
+  const bundleExisting = existingTasks.get(bundleTaskId);
+  tasks.push({
+    id: bundleTaskId,
+    title: 'PDF機能を遅延読込',
+    description: 'pdfGenerator.ts, PdfLoadDialog.tsx を動的importに変更',
+    priority: 'medium',
+    status: bundleExisting?.status || 'todo',
+    assignee: bundleExisting?.assignee,
+    estimatedLines: 0
+  });
+
+  return tasks;
+}
+
 function analyzeCodebase(): CodebaseStats {
   console.log('🔍 Analyzing codebase...');
 
@@ -87,6 +189,9 @@ function analyzeCodebase(): CodebaseStats {
   const services = allFiles.filter(f => f.path.startsWith('services/'));
   const hooks = allFiles.filter(f => f.path.startsWith('hooks/'));
   const utils = allFiles.filter(f => f.path.startsWith('utils/'));
+
+  // タスク生成
+  const tasks = generateTasks(largeFiles, hooks);
 
   const stats: CodebaseStats = {
     generatedAt: new Date().toISOString(),
@@ -108,7 +213,8 @@ function analyzeCodebase(): CodebaseStats {
     utils: {
       count: utils.length,
       files: utils.map(f => `${f.path} (${f.lines}行)`)
-    }
+    },
+    tasks
   };
 
   return stats;
