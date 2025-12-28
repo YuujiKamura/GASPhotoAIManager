@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree } from 'lucide-react';
+import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, Bot, Loader2 } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -19,14 +19,15 @@ interface UploadViewProps {
   onCloseProject: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onImportPdf?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onPdfButtonClick?: () => void;  // フォルダ選択を先に行うためのハンドラ
+  onPdfButtonClick?: () => void;
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
   onManualPairing?: (files: File[], instruction: string) => void;
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
+  onAskAI?: (prompt: string) => Promise<string>;
+  isAskingAI?: boolean;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -43,19 +44,19 @@ const UploadView: React.FC<UploadViewProps> = ({
   onCloseProject,
   onExportJson,
   onImportJson,
-  onImportPdf,
   onPdfButtonClick,
   onClearCache,
   onShowPreview,
   onOpenSettings,
   onManualPairing,
   onShowHistory,
-  onOpenMasterEditor
+  onOpenMasterEditor,
+  onAskAI,
+  isAskingAI
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputImportRef = useRef<HTMLInputElement>(null);
-  const fileInputPdfRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [useCache, setUseCache] = useState(true); // Default to True
@@ -63,6 +64,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
   const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
 
   // ルール設定が変更されたらlocalStorageに保存
   const handleRuleSettingsChange = (newSettings: RuleSettings) => {
@@ -240,6 +242,57 @@ const UploadView: React.FC<UploadViewProps> = ({
                 className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm resize-none shadow-sm transition-shadow h-20"
               />
             </div>
+
+            {/* AIに聞くボタン */}
+            {onAskAI && instruction.trim() && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!instruction.trim() || isAskingAI) return;
+                  setAiResponse(null);
+                  try {
+                    const response = await onAskAI(instruction);
+                    setAiResponse(response);
+                  } catch (err: any) {
+                    setAiResponse(`エラー: ${err.message}`);
+                  }
+                }}
+                disabled={isAskingAI}
+                className="flex items-center justify-center gap-2 w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg"
+              >
+                {isAskingAI ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    AIが処理中...
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    AIに聞く（コード操作）
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* AIレスポンス表示 */}
+            {aiResponse && (
+              <div className="mt-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-gray-500 flex items-center gap-1">
+                    <Bot className="w-3 h-3" /> AIレスポンス
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAiResponse(null); }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
+                  {aiResponse}
+                </pre>
+              </div>
+            )}
           </div>
         )}
 
@@ -479,15 +532,9 @@ const UploadView: React.FC<UploadViewProps> = ({
           <button onClick={() => fileInputImportRef.current?.click()} className="hover:text-gray-800 transition-colors">
             Restore (JSON)
           </button>
-          {onImportPdf && (
+          {onPdfButtonClick && (
             <button
-              onClick={() => {
-                if (onPdfButtonClick) {
-                  onPdfButtonClick();
-                } else {
-                  fileInputPdfRef.current?.click();
-                }
-              }}
+              onClick={onPdfButtonClick}
               className="hover:text-red-600 transition-colors flex items-center gap-1"
               title="PDFからセッションを復元"
             >
@@ -503,7 +550,6 @@ const UploadView: React.FC<UploadViewProps> = ({
             </>
           )}
           <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
-          {onImportPdf && <input type="file" ref={fileInputPdfRef} onChange={onImportPdf} className="hidden" accept=".pdf" />}
         </div>
       </div>
 

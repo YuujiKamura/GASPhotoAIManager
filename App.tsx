@@ -12,6 +12,7 @@ import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaste
 import { learnFromOrder, getLearnedOrderValue } from './utils/learnedSortOrder';
 import { applyAliasesToRecords, loadAliasSettings, hasAliases } from './utils/workTypeAliases';
 import { recordManualEdit, initLearningService } from './services/learningService';
+import { runAIAgent } from './services/aiAgentService';
 
 // Components
 import UploadView from './components/UploadView';
@@ -100,6 +101,7 @@ export default function App() {
   const [showManualPairing, setShowManualPairing] = useState(false);
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
+  const [isAskingAI, setIsAskingAI] = useState(false);
   const [showStationReplace, setShowStationReplace] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showGitHubSync, setShowGitHubSync] = useState(false);
@@ -293,6 +295,22 @@ export default function App() {
       setFsCacheStats(stats);
       setSuccessMsg("File system cache cleared!");
       addLog("File system cache cleared", 'info');
+    }
+  };
+
+  // AIエージェントにリクエストを送信
+  const handleAskAI = async (prompt: string): Promise<string> => {
+    setIsAskingAI(true);
+    try {
+      addLog(`[AIエージェント] リクエスト: ${prompt.substring(0, 50)}...`, 'info');
+      const response = await runAIAgent(prompt, (log) => addLog(log, 'info'));
+      addLog('[AIエージェント] 完了', 'success');
+      return response;
+    } catch (err: any) {
+      addLog(`[AIエージェント] エラー: ${err.message}`, 'error');
+      throw err;
+    } finally {
+      setIsAskingAI(false);
     }
   };
 
@@ -2030,6 +2048,8 @@ export default function App() {
           onManualPairing={handleStartManualPairing}
           onShowHistory={() => setShowHistory(true)}
           onOpenMasterEditor={() => setShowMasterEditor(true)}
+          onAskAI={handleAskAI}
+          isAskingAI={isAskingAI}
         />
       ) : (
         <PreviewView
