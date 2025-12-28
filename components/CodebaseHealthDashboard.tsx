@@ -22,7 +22,9 @@ import {
   TrendingDown,
   FileWarning,
   PackageX,
-  Copy
+  Copy,
+  MoreVertical,
+  ExternalLink
 } from 'lucide-react';
 
 // ビルド時に生成された統計データ
@@ -71,6 +73,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
   const [wasteItems, setWasteItems] = useState<WasteItem[]>([]);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks', 'waste']));
   const [isLoading, setIsLoading] = useState(true);
+  const [showMenu, setShowMenu] = useState(false);
 
   const txt = lang === 'ja' ? {
     title: 'コードベース健全性ダッシュボード',
@@ -377,14 +380,57 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                 {txt.title}
               </h1>
             </div>
-            <button
-              onClick={analyzeCodebase}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              {txt.refresh}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={analyzeCodebase}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                {txt.refresh}
+              </button>
+
+              {/* Three-dot menu */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+
+                {showMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowMenu(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[200px]">
+                      <a
+                        href="https://github.com/YuujiKamura/GASPhotoAIManager/actions"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 transition-colors"
+                        onClick={() => setShowMenu(false)}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        {lang === 'ja' ? 'GitHub Actions' : 'GitHub Actions'}
+                      </a>
+                      <a
+                        href="https://github.com/YuujiKamura/GASPhotoAIManager"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 transition-colors"
+                        onClick={() => setShowMenu(false)}
+                      >
+                        <GitBranch className="w-4 h-4" />
+                        {lang === 'ja' ? 'リポジトリを開く' : 'Open Repository'}
+                      </a>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

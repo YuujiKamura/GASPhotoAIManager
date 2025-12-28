@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-28T23:15:53.333Z",
+  "generatedAt": "2025-12-28T23:21:56.320Z",
   "totalFiles": 92,
-  "totalLines": 30223,
+  "totalLines": 30299,
   "largeFiles": [
     {
       "path": "App.tsx",
@@ -34,14 +34,14 @@
       "size": 26474
     },
     {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 780,
+      "size": 33095
+    },
+    {
       "path": "components/PhotoAlbumView.tsx",
       "lines": 715,
       "size": 31320
-    },
-    {
-      "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 704,
-      "size": 29869
     },
     {
       "path": "scripts/test-pdf-image-extraction.ts",
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (704行)",
+      "components/CodebaseHealthDashboard.tsx (780行)",
       "components/ConsolePanel.tsx (171行)",
       "components/ExamplesModal.tsx (317行)",
       "components/GitHubSyncPanel.tsx (341行)",
@@ -196,6 +196,15 @@
       "estimatedLines": 518
     },
     {
+      "id": "refactor-components-CodebaseHealthDashboard-tsx",
+      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
+      "description": "780行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "components/CodebaseHealthDashboard.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 480
+    },
+    {
       "id": "refactor-components-PhotoAlbumView-tsx",
       "title": "components/PhotoAlbumView.tsx をリファクタ",
       "description": "715行。重複削除・ロジック整理で300行以下を目指す",
@@ -203,15 +212,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 415
-    },
-    {
-      "id": "refactor-components-CodebaseHealthDashboard-tsx",
-      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "704行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/CodebaseHealthDashboard.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 404
     },
     {
       "id": "refactor-scripts-test-pdf-image-extraction-ts",
