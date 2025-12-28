@@ -10,6 +10,31 @@ import { getGitHubToken } from './githubSync';
 
 // 利用可能なツールを定義（実装と連動）
 export const CODE_TOOLS: FunctionDeclaration[] = [
+  // === スキル系 ===
+  {
+    name: 'listSkills',
+    description: '.ai/skills/ にある利用可能なスキル一覧を取得する',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'loadSkill',
+    description: '指定したスキルの手順を読み込んで実行計画を立てる',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        skillName: {
+          type: Type.STRING,
+          description: 'スキル名（例: fix-bug, add-feature）'
+        }
+      },
+      required: ['skillName']
+    }
+  },
+  // === 調査系 ===
   {
     name: 'listDirectory',
     description: 'リポジトリのディレクトリ一覧を取得する',
@@ -193,6 +218,31 @@ export const executeToolCall = async (
   onLog?.(`[Tool] ${toolName} を実行中...`);
 
   switch (toolName) {
+    case 'listSkills': {
+      const { listDirectory } = await import('./githubSync');
+      const skills = await listDirectory(token, '.ai/skills');
+      if (!skills) return [];
+
+      return skills
+        .filter(s => s.name.endsWith('.md'))
+        .map(s => ({
+          name: s.name.replace('.md', ''),
+          path: s.path
+        }));
+    }
+
+    case 'loadSkill': {
+      const { fetchCodeFile } = await import('./githubSync');
+      const result = await fetchCodeFile(token, `.ai/skills/${args.skillName}.md`);
+      if (!result) {
+        return { error: `スキル "${args.skillName}" が見つかりません` };
+      }
+      return {
+        name: args.skillName,
+        content: result.content
+      };
+    }
+
     case 'listDirectory': {
       const { listDirectory } = await import('./githubSync');
       return await listDirectory(token, args.dirPath || '');
@@ -351,7 +401,21 @@ export const runAIAgent = async (
   const systemPrompt = `あなたはコード編集AIエージェントです。
 ユーザーの要求に応じて、ツールを使ってコードを調査・編集できます。
 
+## スキルシステム
+
+タスクを始める前に、まず listSkills で利用可能なスキルを確認してください。
+適切なスキルがあれば loadSkill で手順を読み込み、その手順に従って作業します。
+
+例:
+- バグ修正 → loadSkill("fix-bug")
+- 機能追加 → loadSkill("add-feature")
+- プロンプト改善 → loadSkill("update-prompt")
+
 ## 利用可能なツール
+
+### スキル系
+- listSkills: 利用可能なスキル一覧
+- loadSkill: スキルの手順を読み込む
 
 ### 調査系
 - listDirectory: ディレクトリ一覧
