@@ -398,58 +398,39 @@ export const runAIAgent = async (
   }
 
   const genAI = new GoogleGenAI({ apiKey });
+  const token = getGitHubToken();
+  const hasGitHub = !!token;
 
-  const systemPrompt = `あなたはコード編集AIエージェントです。
-ユーザーの要求に応じて、ツールを使ってコードを調査・編集できます。
+  // GitHub連携がある場合のみツール説明を追加
+  const toolsSection = hasGitHub ? `
 
-## スキルシステム
+## コード操作ツール（必要な場合のみ使用）
 
-タスクを始める前に、まず listSkills で利用可能なスキルを確認してください。
-適切なスキルがあれば loadSkill で手順を読み込み、その手順に従って作業します。
+以下のツールはGitHub連携済みなので、コード操作が必要な場合に使えます。
+ただし、普通の会話や質問には使わないでください。
 
-例:
-- バグ修正 → loadSkill("fix-bug")
-- 機能追加 → loadSkill("add-feature")
-- プロンプト改善 → loadSkill("update-prompt")
-
-## 利用可能なツール
-
-### スキル系
-- listSkills: 利用可能なスキル一覧
-- loadSkill: スキルの手順を読み込む
-
-### 調査系
 - listDirectory: ディレクトリ一覧
 - fetchCodeFile: ファイル内容を読む
 - searchCode: コード検索
-- getGitHistory: 変更履歴
-- getPackageInfo: 依存関係確認
-
-### 検証系
-- runLint: ESLintでコードスタイルチェック
-- runTypeCheck: TypeScript型チェック
-- validateCodeChange: ビルド検証
-- parseErrors: エラー解析
-
-### 編集系
-- getDiff: 変更差分を確認
 - pushCodeEdit: GitHubにプッシュ
 
-## 作業フロー
-1. getPackageInfo と listDirectory でプロジェクト構成を把握
-2. getGitHistory で最近の変更を確認
-3. searchCode と fetchCodeFile で関連コードを読む
-4. 変更案を作成し getDiff で確認
-5. validateCodeChange でビルド検証
-6. エラーがあれば parseErrors で分析し修正
-7. runLint と runTypeCheck で品質確認
-8. 問題なければ pushCodeEdit でプッシュ
+コード操作が必要と判断した場合のみツールを使ってください。` : '';
 
-## 注意
-- 変更前に必ず現在のコードを読むこと
-- ビルド検証なしでプッシュしないこと
-- エラーが出たら parseErrors で分析して修正を試みること
-- 小さな変更を積み重ねること`;
+  const systemPrompt = `あなたは工事写真管理アプリのAIアシスタントです。
+
+## 基本方針
+- まず普通に会話してください
+- 質問には直接答えてください
+- コード操作が明確に必要な場合のみツールを使ってください
+- 「ツールを使います」とか「listSkillsを呼び出してください」とか言わないでください
+
+## このアプリについて
+- 工事写真をAIで自動分類・整理するアプリです
+- Gemini APIを使って画像解析します
+- 工種、種別、細別、測点、備考などを自動判定します
+${toolsSection}
+
+ユーザーの質問や要望に、普通に日本語で答えてください。`;
 
   // 会話履歴を管理
   const conversationHistory: Array<{ role: 'user' | 'model', parts: any[] }> = [];
@@ -457,12 +438,15 @@ export const runAIAgent = async (
   // 初回リクエスト
   conversationHistory.push({ role: 'user', parts: [{ text: userRequest }] });
 
+  // GitHub連携がない場合はツールなしで会話
+  const toolsConfig = hasGitHub ? { tools: [{ functionDeclarations: CODE_TOOLS }] } : {};
+
   let response = await genAI.models.generateContent({
     model: 'gemini-2.0-flash',
     contents: conversationHistory,
     config: {
       systemInstruction: systemPrompt,
-      tools: [{ functionDeclarations: CODE_TOOLS }]
+      ...toolsConfig
     }
   });
 
@@ -477,6 +461,15 @@ export const runAIAgent = async (
 
     if (textPart && 'text' in textPart && !hasFunctionCall) {
       return textPart.text;
+    }
+
+    // GitHub連携がない場合、またはツール呼び出しがない場合は終了
+    if (!hasGitHub) {
+      // テキストがあればそれを返す
+      if (textPart && 'text' in textPart) {
+        return textPart.text;
+      }
+      break;
     }
 
     // ツール呼び出しを処理
@@ -527,7 +520,7 @@ export const runAIAgent = async (
       contents: conversationHistory,
       config: {
         systemInstruction: systemPrompt,
-        tools: [{ functionDeclarations: CODE_TOOLS }]
+        ...toolsConfig
       }
     });
   }
