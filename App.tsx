@@ -1585,7 +1585,10 @@ export default function App() {
     } catch (e: any) {
       console.error(e);
       setErrorMsg("Refine failed: " + e.message);
+    } finally {
       shouldAbortRef.current = false; // Reset abort flag
+      setIsProcessing(false);
+      setCurrentStep("");
     }
   };
 
