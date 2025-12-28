@@ -5,7 +5,7 @@ import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, app
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
-import { extractSessionFromPdf, isSmartPdf, extractImagesFromPdf } from './utils/pdfGenerator';
+import { extractSessionFromPdf, isSmartPdf, extractImagesFromPdf, extractTextWithPositions, parsePositionedTextToRecords } from './utils/pdfGenerator';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
@@ -1600,24 +1600,54 @@ export default function App() {
     try {
       // スマートPDFかどうかチェック
       const isSmart = await isSmartPdf(pdfFile);
-      if (!isSmart) {
-        alert(lang === 'ja'
-          ? 'このPDFにはセッションデータが含まれていません。\nGASPhotoAIManagerで作成したPDFのみ読み込み可能です。'
-          : 'This PDF does not contain session data.\nOnly PDFs created by GASPhotoAIManager can be imported.');
-        return;
-      }
 
-      // セッションデータを抽出
-      const sessionData = await extractSessionFromPdf(pdfFile);
-      if (!sessionData || sessionData.length === 0) {
-        alert(lang === 'ja' ? 'セッションデータの抽出に失敗しました' : 'Failed to extract session data');
-        return;
-      }
-
-      // PDFから埋め込み画像を抽出
+      // PDFから埋め込み画像を抽出（先に実行）
       addLog('PDFから画像を抽出中...', 'info');
       const extractedImages = await extractImagesFromPdf(pdfFile);
       addLog(`${extractedImages.length}枚の画像を抽出しました`, 'info');
+
+      let sessionData: Partial<PhotoRecord>[] | null = null;
+
+      if (isSmart) {
+        // セッションデータを抽出
+        sessionData = await extractSessionFromPdf(pdfFile);
+      }
+
+      // セッションデータがない場合、テキスト解析を試みる
+      if (!sessionData || sessionData.length === 0) {
+        if (extractedImages.length === 0) {
+          alert(lang === 'ja'
+            ? 'このPDFから画像を抽出できませんでした。'
+            : 'Could not extract images from this PDF.');
+          return;
+        }
+
+        addLog('セッションデータなし - テキスト解析を試行...', 'info');
+
+        // ユーザーに確認
+        const shouldProceed = window.confirm(
+          lang === 'ja'
+            ? `このPDFにはセッションデータが含まれていません。\n${extractedImages.length}枚の画像が見つかりました。\n\nテキストを解析して復元を試みますか？`
+            : `This PDF does not contain session data.\nFound ${extractedImages.length} images.\n\nWould you like to try text analysis to restore?`
+        );
+
+        if (!shouldProceed) {
+          return;
+        }
+
+        // テキスト解析を実行
+        addLog('PDFテキストを解析中...', 'info');
+        const textData = await extractTextWithPositions(pdfFile);
+
+        // ページ数から1ページあたりの写真数を推測
+        const totalPages = textData.length;
+        const photosPerPage: 2 | 3 = totalPages > 0 && extractedImages.length / totalPages <= 2.5 ? 2 : 3;
+        addLog(`レイアウト推定: ${photosPerPage}枚/ページ`, 'info');
+
+        // テキストからセッションデータを生成
+        sessionData = parsePositionedTextToRecords(textData, extractedImages.length, photosPerPage);
+        addLog(`テキスト解析完了: ${sessionData.length}件のレコードを生成`, 'info');
+      }
 
       // セッションデータと画像をマッチング
       let restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
