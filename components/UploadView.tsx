@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES, LogEntry } from '../types';
-import { Upload, FileUp, HardHat, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, MoreVertical } from 'lucide-react';
+import { Upload, FileUp, HardHat, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, MoreVertical, Activity } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -29,6 +29,7 @@ interface UploadViewProps {
   onManualPairing?: (files: File[], instruction: string) => void;
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
+  onOpenHealthDashboard?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
   onClearLogs?: () => void;
 }
@@ -56,6 +57,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   onManualPairing,
   onShowHistory,
   onOpenMasterEditor,
+  onOpenHealthDashboard,
   onAskAI,
   onClearLogs
 }) => {
@@ -198,6 +200,18 @@ const UploadView: React.FC<UploadViewProps> = ({
             >
               <FolderTree className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-medium">マスタ</span>
+            </button>
+          )}
+
+          {/* Health Dashboard Button */}
+          {onOpenHealthDashboard && (
+            <button
+              onClick={onOpenHealthDashboard}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm text-blue-600 transition-colors"
+              title="コードベース健全性ダッシュボード"
+            >
+              <Activity className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-medium">Health</span>
             </button>
           )}
 
