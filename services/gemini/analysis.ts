@@ -17,20 +17,36 @@ import { getRelevantExamples, getActiveSession } from "../../utils/storage";
 import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../../utils/analysisRules";
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
 import {
-  AbortChecker,
-  checkAbort,
   hasApiKey,
   isAutoApiEnabled,
+  sanitizeErrorMessage,
+} from './apiKey';
+import {
   getSelectedModel,
-} from "../geminiService";
+  PRIMARY_MODEL,
+  FALLBACK_MODEL,
+  SELECTOR_MODEL,
+} from './models';
+
+// ============================================
+// 中断処理の共通インターフェース
+// ============================================
+export type AbortChecker = () => boolean;
+
+/**
+ * 中断チェックを行い、中断が要求されている場合はエラーをスロー
+ */
+export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void => {
+  if (shouldAbort?.()) {
+    const msg = context ? `処理が中断されました: ${context}` : '処理が中断されました';
+    throw new Error(msg);
+  }
+};
 
 // ============================================
 // 定数
 // ============================================
-const PRIMARY_MODEL = 'gemini-3.0-flash';
 const COMPLEX_MODEL = 'gemini-3.0-flash';
-const FALLBACK_MODEL = 'gemini-2.5-flash';
-const SELECTOR_MODEL = 'gemini-2.5-flash';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;

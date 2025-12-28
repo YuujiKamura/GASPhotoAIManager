@@ -14,18 +14,14 @@ import { PhotoRecord } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { detectUnknownTerms } from "../../utils/constructionMaster";
 import { trackUsage } from "../usageTracker";
-import {
-  AbortChecker,
-  checkAbort,
-  isAutoApiEnabled,
-} from "../geminiService";
+import { AbortChecker, checkAbort } from './analysis';
+import { isAutoApiEnabled } from './apiKey';
+import { PRIMARY_MODEL, FALLBACK_MODEL } from './models';
 
 // ============================================
 // 定数
 // ============================================
-const PRIMARY_MODEL = 'gemini-3.0-flash';
 const COMPLEX_MODEL = 'gemini-3.0-flash';
-const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;

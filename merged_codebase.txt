@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 07:22:30
+生成日時: 2025-12-29 07:44:32
 ================================================================================
 
 === ファイル一覧 ===
@@ -36,6 +36,12 @@ components/StationReplaceModal.tsx
 components/UploadView.tsx
 components/UsagePanel.tsx
 components/WorkTypeConfirmModal.tsx
+hooks/index.ts
+hooks/useAppModals.ts
+hooks/useFsCache.ts
+hooks/useNormalizationFlow.ts
+hooks/usePendingState.ts
+hooks/useProcessingState.ts
 index.tsx
 scripts/analyze-folder.ts
 scripts/analyze-pdf.ts
@@ -57,6 +63,9 @@ scripts/test-station-e2e.ts
 scripts/test-station-replace.ts
 services/agentContext.ts
 services/aiAgentService.ts
+services/gemini/apiKey.ts
+services/gemini/index.ts
+services/gemini/models.ts
 services/geminiService.ts
 services/githubSync.ts
 services/learningService.ts
@@ -94,7 +103,7 @@ vitest.config.ts
 
 === FILE: App.tsx ===
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, AppMode, LogEntry, SortPolicy } from './types';
 import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, applyNormalizationCorrections, assignSceneIds, refinePairContext, getApiKey, setApiKey as saveApiKey, hasApiKey, NormalizationCorrection, getSelectedModel } from './services/geminiService';
@@ -110,7 +119,7 @@ import { applyAliasesToRecords, loadAliasSettings, hasAliases } from './utils/wo
 import { recordManualEdit, initLearningService } from './services/learningService';
 import { runAIAgent } from './services/aiAgentService';
 
-// Components
+// Core components (always loaded)
 import UploadView from './components/UploadView';
 import PreviewView from './components/PreviewView';
 import LimitModal from './components/LimitModal';
@@ -118,17 +127,29 @@ import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
 import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
-import ManualPairingModal from './components/ManualPairingModal';
-import MasterEditorModal from './components/MasterEditorModal';
-import StationReplaceModal from './components/StationReplaceModal';
 import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
-import NormalizationPreviewModal, { OriginalData } from './components/NormalizationPreviewModal';
-import SessionHistoryPanel from './components/SessionHistoryPanel';
-import GitHubSyncPanel from './components/GitHubSyncPanel';
 import PdfLoadDialog from './components/PdfLoadDialog';
-import CodebaseHealthDashboard from './components/CodebaseHealthDashboard';
-import { InteractiveAnalysisDialog } from './components/InteractiveAnalysisDialog';
+
+// Lazy-loaded components (loaded on demand to reduce bundle size)
+const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
+const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
+const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
+const NormalizationPreviewModal = lazy(() => import('./components/NormalizationPreviewModal'));
+const SessionHistoryPanel = lazy(() => import('./components/SessionHistoryPanel'));
+const GitHubSyncPanel = lazy(() => import('./components/GitHubSyncPanel'));
+const CodebaseHealthDashboard = lazy(() => import('./components/CodebaseHealthDashboard'));
+const InteractiveAnalysisDialog = lazy(() => import('./components/InteractiveAnalysisDialog').then(m => ({ default: m.InteractiveAnalysisDialog })));
+
+// Import types
+import type { OriginalData } from './components/NormalizationPreviewModal';
 import { AnalysisHistoryEntry } from './types';
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center p-8">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+  </div>
+);
 
 // Declare saveAs for export
 declare const saveAs: any;
@@ -2089,27 +2110,31 @@ export default function App() {
       )}
 
       {showHealthDashboard ? (
-        <CodebaseHealthDashboard
-          lang={lang}
-          onClose={() => setShowHealthDashboard(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <CodebaseHealthDashboard
+            lang={lang}
+            onClose={() => setShowHealthDashboard(false)}
+          />
+        </Suspense>
       ) : showMasterEditor ? (
-        <MasterEditorModal
-          lang={lang}
-          onClose={() => setShowMasterEditor(false)}
-          onApplyAliasesToSession={() => {
-            const settings = loadAliasSettings();
-            if (!settings.enabled || !hasAliases(settings)) {
-              return { modifiedCount: 0 };
-            }
-            const { modifiedCount, records } = applyAliasesToRecords(photos, settings);
-            if (modifiedCount > 0) {
-              setPhotos(records);
-              addLog(`エイリアス適用: ${modifiedCount}件のデータを変換しました`, 'success');
-            }
-            return { modifiedCount };
-          }}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <MasterEditorModal
+            lang={lang}
+            onClose={() => setShowMasterEditor(false)}
+            onApplyAliasesToSession={() => {
+              const settings = loadAliasSettings();
+              if (!settings.enabled || !hasAliases(settings)) {
+                return { modifiedCount: 0 };
+              }
+              const { modifiedCount, records } = applyAliasesToRecords(photos, settings);
+              if (modifiedCount > 0) {
+                setPhotos(records);
+                addLog(`エイリアス適用: ${modifiedCount}件のデータを変換しました`, 'success');
+              }
+              return { modifiedCount };
+            }}
+          />
+        </Suspense>
       ) : !showPreview ? (
         <UploadView
           lang={lang}
@@ -2217,45 +2242,55 @@ export default function App() {
       )}
 
       {showManualPairing && (
-        <ManualPairingModal
-          photos={manualPairingPhotos}
-          lang={lang}
-          onComplete={handleManualPairingComplete}
-          onCancel={() => setShowManualPairing(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <ManualPairingModal
+            photos={manualPairingPhotos}
+            lang={lang}
+            onComplete={handleManualPairingComplete}
+            onCancel={() => setShowManualPairing(false)}
+          />
+        </Suspense>
       )}
 
       {showStationReplace && (
-        <StationReplaceModal
-          photos={photos}
-          lang={lang}
-          onClose={() => setShowStationReplace(false)}
-          onReplace={handleStationReplace}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <StationReplaceModal
+            photos={photos}
+            lang={lang}
+            onClose={() => setShowStationReplace(false)}
+            onReplace={handleStationReplace}
+          />
+        </Suspense>
       )}
 
       {showNormalizationModal && (
-        <NormalizationPreviewModal
-          corrections={normalizationProposals}
-          originalData={normalizationOriginals}
-          onApprove={handleNormalizationApprove}
-          onReject={handleNormalizationReject}
-          onRetry={handleNormalizationRetry}
-          lang={lang}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <NormalizationPreviewModal
+            corrections={normalizationProposals}
+            originalData={normalizationOriginals}
+            onApprove={handleNormalizationApprove}
+            onReject={handleNormalizationReject}
+            onRetry={handleNormalizationRetry}
+            lang={lang}
+          />
+        </Suspense>
       )}
 
       {showHistory && (
-        <SessionHistoryPanel
-          onLoad={handleLoadHistory}
-          onClose={() => setShowHistory(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <SessionHistoryPanel
+            onLoad={handleLoadHistory}
+            onClose={() => setShowHistory(false)}
+          />
+        </Suspense>
       )}
 
       {showGitHubSync && (
-        <GitHubSyncPanel
-          onClose={() => setShowGitHubSync(false)}
-        />
+        <Suspense fallback={<LoadingFallback />}>
+          <GitHubSyncPanel
+            onClose={() => setShowGitHubSync(false)}
+          />
+        </Suspense>
       )}
 
       {showWorkTypeConfirm && (
@@ -2268,13 +2303,15 @@ export default function App() {
       )}
 
       {/* 対話型解析ダイアログ */}
-      <InteractiveAnalysisDialog
-        photo={interactiveAnalysisTarget}
-        apiKey={apiKey || ''}
-        lang={lang}
-        onConfirm={handleInteractiveAnalysisConfirm}
-        onClose={() => setInteractiveAnalysisTarget(null)}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <InteractiveAnalysisDialog
+          photo={interactiveAnalysisTarget}
+          apiKey={apiKey || ''}
+          lang={lang}
+          onConfirm={handleInteractiveAnalysisConfirm}
+          onClose={() => setInteractiveAnalysisTarget(null)}
+        />
+      </Suspense>
     </>
   );
 }
@@ -11723,6 +11760,409 @@ export default WorkTypeConfirmModal;
 
 === END: components/WorkTypeConfirmModal.tsx ===
 
+=== FILE: hooks/index.ts ===
+
+export { useAppModals } from './useAppModals';
+export { useProcessingState } from './useProcessingState';
+export { useNormalizationFlow } from './useNormalizationFlow';
+export { useFsCache } from './useFsCache';
+export { usePendingState } from './usePendingState';
+
+=== END: hooks/index.ts ===
+
+=== FILE: hooks/useAppModals.ts ===
+
+import { useState } from 'react';
+
+/**
+ * モーダル表示状態を一元管理するカスタムフック
+ * App.tsx の肥大化を防ぐため、モーダル関連の状態をここに集約
+ */
+export function useAppModals() {
+  const [showApiKeySetup, setShowApiKeySetup] = useState(false);
+  const [showModelValidation, setShowModelValidation] = useState(false);
+  const [showRefineModal, setShowRefineModal] = useState(false);
+  const [showManualPairing, setShowManualPairing] = useState(false);
+  const [showMasterEditor, setShowMasterEditor] = useState(false);
+  const [showStationReplace, setShowStationReplace] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showGitHubSync, setShowGitHubSync] = useState(false);
+  const [showWorkTypeConfirm, setShowWorkTypeConfirm] = useState(false);
+  const [showHealthDashboard, setShowHealthDashboard] = useState(false);
+  const [showNormalizationModal, setShowNormalizationModal] = useState(false);
+  const [showPdfLoadDialog, setShowPdfLoadDialog] = useState(false);
+
+  // 一括でモーダルを閉じる
+  const closeAllModals = () => {
+    setShowApiKeySetup(false);
+    setShowModelValidation(false);
+    setShowRefineModal(false);
+    setShowManualPairing(false);
+    setShowMasterEditor(false);
+    setShowStationReplace(false);
+    setShowHistory(false);
+    setShowGitHubSync(false);
+    setShowWorkTypeConfirm(false);
+    setShowHealthDashboard(false);
+    setShowNormalizationModal(false);
+    setShowPdfLoadDialog(false);
+  };
+
+  return {
+    // API Key Setup
+    showApiKeySetup,
+    setShowApiKeySetup,
+
+    // Model Validation
+    showModelValidation,
+    setShowModelValidation,
+
+    // Refine Modal
+    showRefineModal,
+    setShowRefineModal,
+
+    // Manual Pairing
+    showManualPairing,
+    setShowManualPairing,
+
+    // Master Editor
+    showMasterEditor,
+    setShowMasterEditor,
+
+    // Station Replace
+    showStationReplace,
+    setShowStationReplace,
+
+    // History
+    showHistory,
+    setShowHistory,
+
+    // GitHub Sync
+    showGitHubSync,
+    setShowGitHubSync,
+
+    // Work Type Confirm
+    showWorkTypeConfirm,
+    setShowWorkTypeConfirm,
+
+    // Health Dashboard
+    showHealthDashboard,
+    setShowHealthDashboard,
+
+    // Normalization Modal
+    showNormalizationModal,
+    setShowNormalizationModal,
+
+    // PDF Load Dialog
+    showPdfLoadDialog,
+    setShowPdfLoadDialog,
+
+    // Utility
+    closeAllModals,
+  };
+}
+
+=== END: hooks/useAppModals.ts ===
+
+=== FILE: hooks/useFsCache.ts ===
+
+import { useState, useEffect, useCallback } from 'react';
+import { fsCache } from '../utils/fileSystemCache';
+
+interface FsCacheStats {
+  totalFiles: number;
+  lastUpdated: string;
+}
+
+/**
+ * ファイルシステムキャッシュ管理のカスタムフック
+ */
+export function useFsCache(addLog?: (message: string, type?: 'info' | 'success' | 'error' | 'warning') => void) {
+  const [fsCacheEnabled, setFsCacheEnabled] = useState(false);
+  const [fsCacheStats, setFsCacheStats] = useState<FsCacheStats | null>(null);
+
+  // 初期化時にキャッシュを復元
+  useEffect(() => {
+    const restoreCache = async () => {
+      if (fsCache.isAvailable()) {
+        const restored = await fsCache.restoreHandle();
+        if (restored) {
+          setFsCacheEnabled(true);
+          const stats = fsCache.getStats();
+          setFsCacheStats(stats);
+          addLog?.("File system cache restored from previous session.", 'success');
+        }
+      }
+    };
+    restoreCache();
+  }, [addLog]);
+
+  // キャッシュを有効化
+  const enableCache = useCallback(async () => {
+    if (fsCache.isAvailable()) {
+      // This would trigger file picker - actual implementation depends on fsCache API
+      setFsCacheEnabled(true);
+      const stats = fsCache.getStats();
+      setFsCacheStats(stats);
+    }
+  }, []);
+
+  // キャッシュを無効化
+  const disableCache = useCallback(() => {
+    setFsCacheEnabled(false);
+    setFsCacheStats(null);
+  }, []);
+
+  // 統計を更新
+  const refreshStats = useCallback(() => {
+    if (fsCacheEnabled) {
+      const stats = fsCache.getStats();
+      setFsCacheStats(stats);
+    }
+  }, [fsCacheEnabled]);
+
+  return {
+    fsCacheEnabled,
+    setFsCacheEnabled,
+    fsCacheStats,
+    setFsCacheStats,
+    enableCache,
+    disableCache,
+    refreshStats,
+  };
+}
+
+=== END: hooks/useFsCache.ts ===
+
+=== FILE: hooks/useNormalizationFlow.ts ===
+
+import { useState, useCallback } from 'react';
+import { PhotoRecord } from '../types';
+import { NormalizationCorrection } from '../services/geminiService';
+import { OriginalData } from '../components/NormalizationPreviewModal';
+
+/**
+ * 正規化フロー管理のカスタムフック
+ */
+export function useNormalizationFlow() {
+  const [normalizationProposals, setNormalizationProposals] = useState<NormalizationCorrection[]>([]);
+  const [normalizationOriginals, setNormalizationOriginals] = useState<OriginalData[]>([]);
+  const [photosForNormalization, setPhotosForNormalization] = useState<PhotoRecord[]>([]);
+
+  // 正規化フローを開始
+  const startNormalization = useCallback((
+    photos: PhotoRecord[],
+    proposals: NormalizationCorrection[],
+    originals: OriginalData[]
+  ) => {
+    setPhotosForNormalization(photos);
+    setNormalizationProposals(proposals);
+    setNormalizationOriginals(originals);
+  }, []);
+
+  // 正規化フローをリセット
+  const resetNormalization = useCallback(() => {
+    setPhotosForNormalization([]);
+    setNormalizationProposals([]);
+    setNormalizationOriginals([]);
+  }, []);
+
+  return {
+    // 状態
+    normalizationProposals,
+    setNormalizationProposals,
+    normalizationOriginals,
+    setNormalizationOriginals,
+    photosForNormalization,
+    setPhotosForNormalization,
+
+    // ユーティリティ
+    startNormalization,
+    resetNormalization,
+  };
+}
+
+=== END: hooks/useNormalizationFlow.ts ===
+
+=== FILE: hooks/usePendingState.ts ===
+
+import { useState, useCallback } from 'react';
+import { PhotoRecord } from '../types';
+
+type PendingFile = { file: File; date: number };
+
+/**
+ * ペンディング状態（ファイル選択・指示など）を管理するカスタムフック
+ */
+export function usePendingState() {
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[] | null>(null);
+  const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
+  const [pendingInstruction, setPendingInstruction] = useState<string>("");
+  const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
+  const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);
+  const [selectionStart, setSelectionStart] = useState(1);
+  const [selectionCount, setSelectionCount] = useState(30); // MAX_PHOTOS
+
+  // 指示関連
+  const [initialInstruction, setInitialInstruction] = useState<string>("");
+  const [activeInstruction, setActiveInstruction] = useState<string>("");
+
+  // ペンディングファイルをクリア
+  const clearPendingFiles = useCallback(() => {
+    setPendingFiles(null);
+    setPendingAnalysisFiles(null);
+  }, []);
+
+  // ペンディング指示をクリア
+  const clearPendingInstruction = useCallback(() => {
+    setPendingInstruction("");
+    setPendingUseCache(true);
+  }, []);
+
+  // 全てのペンディング状態をリセット
+  const resetAllPending = useCallback(() => {
+    setPendingFiles(null);
+    setPendingAnalysisFiles(null);
+    setPendingInstruction("");
+    setPendingUseCache(true);
+    setManualPairingPhotos([]);
+    setInitialInstruction("");
+    setActiveInstruction("");
+  }, []);
+
+  return {
+    // ファイル関連
+    pendingFiles,
+    setPendingFiles,
+    pendingAnalysisFiles,
+    setPendingAnalysisFiles,
+    selectionStart,
+    setSelectionStart,
+    selectionCount,
+    setSelectionCount,
+
+    // 指示関連
+    pendingInstruction,
+    setPendingInstruction,
+    pendingUseCache,
+    setPendingUseCache,
+    initialInstruction,
+    setInitialInstruction,
+    activeInstruction,
+    setActiveInstruction,
+
+    // ペアリング関連
+    manualPairingPhotos,
+    setManualPairingPhotos,
+
+    // ユーティリティ
+    clearPendingFiles,
+    clearPendingInstruction,
+    resetAllPending,
+  };
+}
+
+=== END: hooks/usePendingState.ts ===
+
+=== FILE: hooks/useProcessingState.ts ===
+
+import { useState, useCallback } from 'react';
+import { ProcessingStats, LogEntry } from '../types';
+
+/**
+ * 処理状態とログ管理のカスタムフック
+ */
+export function useProcessingState() {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentStep, setCurrentStep] = useState<string>("");
+  const [stats, setStats] = useState<ProcessingStats>({
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    cached: 0
+  });
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isAskingAI, setIsAskingAI] = useState(false);
+
+  // ログ追加
+  const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, message, type }].slice(-100));
+    console.log(`[${type.toUpperCase()}] ${message}`);
+  }, []);
+
+  // ログクリア
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+  }, []);
+
+  // エラーメッセージクリア（自動消去用）
+  const showError = useCallback((message: string, duration = 5000) => {
+    setErrorMsg(message);
+    if (duration > 0) {
+      setTimeout(() => setErrorMsg(null), duration);
+    }
+  }, []);
+
+  // 成功メッセージ表示（自動消去用）
+  const showSuccess = useCallback((message: string, duration = 3000) => {
+    setSuccessMsg(message);
+    if (duration > 0) {
+      setTimeout(() => setSuccessMsg(null), duration);
+    }
+  }, []);
+
+  // 統計リセット
+  const resetStats = useCallback(() => {
+    setStats({ total: 0, processed: 0, success: 0, failed: 0, cached: 0 });
+  }, []);
+
+  // 処理開始
+  const startProcessing = useCallback((step?: string) => {
+    setIsProcessing(true);
+    if (step) setCurrentStep(step);
+    setErrorMsg(null);
+  }, []);
+
+  // 処理終了
+  const endProcessing = useCallback(() => {
+    setIsProcessing(false);
+    setCurrentStep("");
+  }, []);
+
+  return {
+    // 状態
+    isProcessing,
+    setIsProcessing,
+    currentStep,
+    setCurrentStep,
+    stats,
+    setStats,
+    errorMsg,
+    setErrorMsg,
+    successMsg,
+    setSuccessMsg,
+    logs,
+    setLogs,
+    isAskingAI,
+    setIsAskingAI,
+
+    // ユーティリティ
+    addLog,
+    clearLogs,
+    showError,
+    showSuccess,
+    resetStats,
+    startProcessing,
+    endProcessing,
+  };
+}
+
+=== END: hooks/useProcessingState.ts ===
+
 === FILE: index.tsx ===
 
 import React from 'react';
@@ -17924,43 +18364,33 @@ export const requestCodeEdit = async (
 
 === END: services/aiAgentService.ts ===
 
-=== FILE: services/geminiService.ts ===
-
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample, FieldChange, ChangeStage } from "../types";
-import { extractBase64Data } from "../utils/imageUtils";
-import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../utils/constructionMaster";
-import { trackUsage } from "./usageTracker";
-import { getRelevantExamples, getActiveSession } from "../utils/storage";
-import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../utils/analysisRules";
-import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "./learningService";
-
-// ============================================
-// 中断処理の共通インターフェース
-// ============================================
-export type AbortChecker = () => boolean;
+=== FILE: services/gemini/apiKey.ts ===
 
 /**
- * 中断チェックを行い、中断が要求されている場合はエラーをスロー
- * @param shouldAbort - 中断チェック関数
- * @param context - エラーメッセージに含めるコンテキスト
+ * APIキー管理モジュール
+ * - APIキーの保存・取得・暗号化
+ * - 信頼セッション管理
  */
-export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void => {
-  if (shouldAbort?.()) {
-    const msg = context ? `処理が中断されました: ${context}` : '処理が中断されました';
-    throw new Error(msg);
-  }
-};
 
-// API Key Management (暗号化対応)
-import { encrypt, decrypt } from '../utils/crypto';
+import { encrypt, decrypt } from '../../utils/crypto';
 
+// ============================================
+// ストレージキー定数
+// ============================================
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
 const ENCRYPTED_KEY_STORAGE = 'gaspm_encrypted_api_key';
 const MASTER_HASH_KEY = 'gaspm_master_hash';
+const TRUSTED_SESSION_KEY = 'construction_album_trusted_session';
+const AUTO_API_SETTINGS_KEY = 'construction_album_auto_api_settings';
 
-// メモリキャッシュ（同期アクセス用）
+// ============================================
+// メモリキャッシュ
+// ============================================
 let cachedApiKey: string | null = null;
+
+// ============================================
+// APIキー管理
+// ============================================
 
 export const getApiKey = (): string | null => {
   // メモリキャッシュがあればそれを返す
@@ -18023,8 +18453,11 @@ export const hasApiKey = (): boolean => {
   return !!key && key.startsWith('AIza');
 };
 
-// Sanitize error messages to prevent API key leakage in logs
-const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
+// ============================================
+// エラーメッセージのサニタイズ
+// ============================================
+
+export const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
   if (!message) return message;
   let sanitized = message;
   // Remove API key if present
@@ -18042,8 +18475,6 @@ const sanitizeErrorMessage = (message: string, apiKey?: string): string => {
 // - 「信頼する」を選択するとセッション中は自動許可
 // - ブラウザを閉じると信頼状態がリセット
 // ============================================
-const TRUSTED_SESSION_KEY = 'construction_album_trusted_session';
-const AUTO_API_SETTINGS_KEY = 'construction_album_auto_api_settings';
 
 export interface AutoApiSettings {
   autoValidateModels: boolean;     // モデル自動検証（APIキー入力時）
@@ -18095,45 +18526,6 @@ export const setAutoApiSettings = (settings: Partial<AutoApiSettings>): void => 
   localStorage.setItem(AUTO_API_SETTINGS_KEY, JSON.stringify(updated));
 };
 
-// ============================================
-// 変更履歴追跡ヘルパー
-// ============================================
-
-/**
- * フィールドの変更を記録する
- */
-const trackFieldChange = (
-  changeLog: FieldChange[],
-  field: string,
-  stage: ChangeStage,
-  before: string,
-  after: string,
-  reason?: string
-): void => {
-  if (before !== after) {
-    changeLog.push({ field, stage, before, after, reason });
-  }
-};
-
-/**
- * 複数フィールドの変更を一括追跡
- */
-const trackChanges = (
-  changeLog: FieldChange[],
-  stage: ChangeStage,
-  before: Record<string, string>,
-  after: Record<string, string>,
-  reason?: string
-): void => {
-  for (const field of Object.keys(before)) {
-    const beforeVal = before[field] || '';
-    const afterVal = after[field] || '';
-    if (beforeVal !== afterVal) {
-      changeLog.push({ field, stage, before: beforeVal, after: afterVal, reason });
-    }
-  }
-};
-
 // 信頼セッションの場合は全機能を自動許可、そうでなければ個別設定を参照
 export const isAutoApiEnabled = (feature: keyof AutoApiSettings): boolean => {
   // 信頼セッションなら全て許可
@@ -18144,8 +18536,74 @@ export const isAutoApiEnabled = (feature: keyof AutoApiSettings): boolean => {
   return getAutoApiSettings()[feature];
 };
 
-// Model Selection
+=== END: services/gemini/apiKey.ts ===
+
+=== FILE: services/gemini/index.ts ===
+
+/**
+ * Gemini サービスモジュール
+ * 各サブモジュールを再エクスポート
+ */
+
+// APIキー管理
+export {
+  getApiKey,
+  setApiKey,
+  setApiKeyEncrypted,
+  loadApiKeyEncrypted,
+  hasEncryptedApiKey,
+  hasMasterPassword,
+  clearApiKey,
+  hasApiKey,
+  sanitizeErrorMessage,
+  // 信頼セッション
+  isTrustedSession,
+  setTrustedSession,
+  revokeTrust,
+  getAutoApiSettings,
+  setAutoApiSettings,
+  isAutoApiEnabled,
+} from './apiKey';
+
+export type { AutoApiSettings } from './apiKey';
+
+// モデル管理
+export {
+  AVAILABLE_MODELS,
+  getSelectedModel,
+  setSelectedModel,
+  validateApiKey,
+  validateAllModels,
+  getBestAvailableModel,
+  getPrimaryModel,
+  PRIMARY_MODEL,
+  COMPLEX_MODEL,
+  FALLBACK_MODEL,
+  SELECTOR_MODEL,
+} from './models';
+
+export type { ModelType, ModelStatus, ModelAvailability } from './models';
+
+=== END: services/gemini/index.ts ===
+
+=== FILE: services/gemini/models.ts ===
+
+/**
+ * モデル選択・検証モジュール
+ * - 利用可能なモデルの定義
+ * - モデル選択・検証
+ * - モデル設定
+ */
+
+import { GoogleGenAI } from "@google/genai";
+import { sanitizeErrorMessage } from './apiKey';
+
+// ============================================
+// モデル定義
+// ============================================
+
 export type ModelType = 'gemini-3.0-flash' | 'gemini-3.0-pro' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash';
+
 const MODEL_STORAGE_KEY = 'construction_album_model';
 
 export const AVAILABLE_MODELS: { id: ModelType; name: string; description: string }[] = [
@@ -18155,6 +18613,10 @@ export const AVAILABLE_MODELS: { id: ModelType; name: string; description: strin
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: '高精度・高コスト' },
   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: '最速・最低コスト' },
 ];
+
+// ============================================
+// モデル選択
+// ============================================
 
 export const getSelectedModel = (): ModelType => {
   const saved = localStorage.getItem(MODEL_STORAGE_KEY);
@@ -18168,7 +18630,10 @@ export const setSelectedModel = (model: ModelType): void => {
   localStorage.setItem(MODEL_STORAGE_KEY, model);
 };
 
-// API Key Validation - Single Model
+// ============================================
+// モデル検証
+// ============================================
+
 export const validateApiKey = async (apiKey: string, model?: ModelType): Promise<{ valid: boolean; error?: string }> => {
   const testModel = model || 'gemini-2.0-flash';
   try {
@@ -18195,7 +18660,10 @@ export const validateApiKey = async (apiKey: string, model?: ModelType): Promise
   }
 };
 
-// Model Availability Status
+// ============================================
+// モデル可用性チェック
+// ============================================
+
 export type ModelStatus = 'available' | 'quota_exceeded' | 'unavailable' | 'checking' | 'unknown';
 
 export interface ModelAvailability {
@@ -18260,12 +18728,131 @@ export const getBestAvailableModel = (availabilities: ModelAvailability[]): Mode
   return null;
 };
 
-// Configuration - Use selected model dynamically
-const getPrimaryModel = () => getSelectedModel();
-const PRIMARY_MODEL = 'gemini-3.0-flash'; // Fallback, actual value comes from getPrimaryModel()
-const COMPLEX_MODEL = 'gemini-3.0-flash';
-const FALLBACK_MODEL = 'gemini-2.5-flash';
-const SELECTOR_MODEL = 'gemini-2.5-flash';
+// ============================================
+// モデル設定定数
+// ============================================
+
+export const getPrimaryModel = () => getSelectedModel();
+export const PRIMARY_MODEL: ModelType = 'gemini-3.0-flash';
+export const COMPLEX_MODEL: ModelType = 'gemini-3.0-flash';
+export const FALLBACK_MODEL: ModelType = 'gemini-2.5-flash';
+export const SELECTOR_MODEL: ModelType = 'gemini-2.5-flash';
+
+=== END: services/gemini/models.ts ===
+
+=== FILE: services/geminiService.ts ===
+
+import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { PhotoRecord, AIAnalysisResult, AppMode, LogEntry, AnalysisExample, FieldChange, ChangeStage } from "../types";
+import { extractBase64Data } from "../utils/imageUtils";
+import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes, validateAgainstMaster, detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../utils/constructionMaster";
+import { trackUsage } from "./usageTracker";
+import { getRelevantExamples, getActiveSession } from "../utils/storage";
+import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../utils/analysisRules";
+import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "./learningService";
+
+// ============================================
+// APIキー・モデル管理（分離モジュールから再エクスポート）
+// ============================================
+export {
+  getApiKey,
+  setApiKey,
+  setApiKeyEncrypted,
+  loadApiKeyEncrypted,
+  hasEncryptedApiKey,
+  hasMasterPassword,
+  clearApiKey,
+  hasApiKey,
+  sanitizeErrorMessage,
+  isTrustedSession,
+  setTrustedSession,
+  revokeTrust,
+  getAutoApiSettings,
+  setAutoApiSettings,
+  isAutoApiEnabled,
+  AVAILABLE_MODELS,
+  getSelectedModel,
+  setSelectedModel,
+  validateApiKey,
+  validateAllModels,
+  getBestAvailableModel,
+} from './gemini';
+
+export type { AutoApiSettings, ModelType, ModelStatus, ModelAvailability } from './gemini';
+
+import {
+  getApiKey,
+  hasApiKey,
+  getSelectedModel,
+  sanitizeErrorMessage,
+  isAutoApiEnabled,
+  FALLBACK_MODEL,
+  PRIMARY_MODEL,
+  COMPLEX_MODEL,
+  SELECTOR_MODEL,
+  getPrimaryModel,
+} from './gemini';
+import type { ModelType, AutoApiSettings } from './gemini';
+
+// ============================================
+// 中断処理の共通インターフェース
+// ============================================
+export type AbortChecker = () => boolean;
+
+/**
+ * 中断チェックを行い、中断が要求されている場合はエラーをスロー
+ * @param shouldAbort - 中断チェック関数
+ * @param context - エラーメッセージに含めるコンテキスト
+ */
+export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void => {
+  if (shouldAbort?.()) {
+    const msg = context ? `処理が中断されました: ${context}` : '処理が中断されました';
+    throw new Error(msg);
+  }
+};
+
+// ============================================
+// 変更履歴追跡ヘルパー
+// ============================================
+
+/**
+ * フィールドの変更を記録する
+ */
+const trackFieldChange = (
+  changeLog: FieldChange[],
+  field: string,
+  stage: ChangeStage,
+  before: string,
+  after: string,
+  reason?: string
+): void => {
+  if (before !== after) {
+    changeLog.push({ field, stage, before, after, reason });
+  }
+};
+
+/**
+ * 複数フィールドの変更を一括追跡
+ */
+const trackChanges = (
+  changeLog: FieldChange[],
+  stage: ChangeStage,
+  before: Record<string, string>,
+  after: Record<string, string>,
+  reason?: string
+): void => {
+  for (const field of Object.keys(before)) {
+    const beforeVal = before[field] || '';
+    const afterVal = after[field] || '';
+    if (beforeVal !== afterVal) {
+      changeLog.push({ field, stage, before: beforeVal, after: afterVal, reason });
+    }
+  }
+};
+
+// ============================================
+// 定数
+// ============================================
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
@@ -29718,7 +30305,23 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              // PDF関連を別チャンクに分離
+              'pdf': ['pdfjs-dist', 'pdf-lib'],
+              // React関連をvendorチャンクに
+              'vendor': ['react', 'react-dom'],
+              // UI関連
+              'ui': ['lucide-react'],
+            },
+          },
+        },
+        // チャンクサイズ警告の閾値を上げる
+        chunkSizeWarningLimit: 600,
+      },
     };
 });
 
@@ -29845,7 +30448,23 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              // PDF関連を別チャンクに分離
+              'pdf': ['pdfjs-dist', 'pdf-lib'],
+              // React関連をvendorチャンクに
+              'vendor': ['react', 'react-dom'],
+              // UI関連
+              'ui': ['lucide-react'],
+            },
+          },
+        },
+        // チャンクサイズ警告の閾値を上げる
+        chunkSizeWarningLimit: 600,
+      },
     };
 });
 
