@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, Bot, Loader2 } from 'lucide-react';
+import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, Bot, Loader2, Activity } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
@@ -26,6 +26,7 @@ interface UploadViewProps {
   onManualPairing?: (files: File[], instruction: string) => void;
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
+  onOpenHealthDashboard?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
   isAskingAI?: boolean;
 }
@@ -51,6 +52,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   onManualPairing,
   onShowHistory,
   onOpenMasterEditor,
+  onOpenHealthDashboard,
   onAskAI,
   isAskingAI
 }) => {
@@ -508,16 +510,30 @@ const UploadView: React.FC<UploadViewProps> = ({
       {/* --- FOOTER (Data Management) --- */}
       <div className="absolute bottom-0 w-full p-6 flex justify-between items-end z-10 text-xs font-medium text-gray-400">
 
-        {/* Master Editor Button */}
-        {onOpenMasterEditor && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onOpenMasterEditor(); }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all text-xs"
-          >
-            <FolderTree className="w-3 h-3" />
-            <span>マスタ</span>
-          </button>
-        )}
+        {/* Left Footer Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Master Editor Button */}
+          {onOpenMasterEditor && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenMasterEditor(); }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all text-xs"
+            >
+              <FolderTree className="w-3 h-3" />
+              <span>マスタ</span>
+            </button>
+          )}
+          {/* Health Dashboard Button */}
+          {onOpenHealthDashboard && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenHealthDashboard(); }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-100 hover:bg-blue-200 rounded-lg text-blue-600 hover:text-blue-800 transition-all text-xs"
+              title="コードベース健全性ダッシュボード"
+            >
+              <Activity className="w-3 h-3" />
+              <span>Health</span>
+            </button>
+          )}
+        </div>
 
         <div className="flex gap-4 items-center">
           {photos.length > 0 && (
