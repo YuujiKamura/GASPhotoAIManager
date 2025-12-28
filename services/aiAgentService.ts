@@ -451,15 +451,21 @@ export const runAIAgent = async (
 - エラーが出たら parseErrors で分析して修正を試みること
 - 小さな変更を積み重ねること`;
 
-  const chat = genAI.chats.create({
+  // 会話履歴を管理
+  const conversationHistory: Array<{ role: 'user' | 'model', parts: any[] }> = [];
+
+  // 初回リクエスト
+  conversationHistory.push({ role: 'user', parts: [{ text: userRequest }] });
+
+  let response = await genAI.models.generateContent({
     model: 'gemini-2.0-flash',
+    contents: conversationHistory,
     config: {
       systemInstruction: systemPrompt,
       tools: [{ functionDeclarations: CODE_TOOLS }]
     }
   });
 
-  let response = await chat.sendMessage(userRequest);
   let iterations = 0;
 
   while (iterations < maxIterations) {
@@ -467,7 +473,9 @@ export const runAIAgent = async (
 
     // テキスト応答があれば完了
     const textPart = response.candidates?.[0]?.content?.parts?.find(p => 'text' in p);
-    if (textPart && 'text' in textPart && !response.candidates?.[0]?.content?.parts?.some(p => 'functionCall' in p)) {
+    const hasFunctionCall = response.candidates?.[0]?.content?.parts?.some(p => 'functionCall' in p);
+
+    if (textPart && 'text' in textPart && !hasFunctionCall) {
       return textPart.text;
     }
 
@@ -478,7 +486,11 @@ export const runAIAgent = async (
       break;
     }
 
-    const toolResults: any[] = [];
+    // モデルの応答を履歴に追加
+    const modelParts = response.candidates?.[0]?.content?.parts || [];
+    conversationHistory.push({ role: 'model', parts: modelParts });
+
+    const toolResultParts: any[] = [];
 
     for (const part of functionCalls) {
       if ('functionCall' in part) {
@@ -487,7 +499,7 @@ export const runAIAgent = async (
 
         try {
           const result = await executeToolCall(name, args || {}, onLog);
-          toolResults.push({
+          toolResultParts.push({
             functionResponse: {
               name,
               response: { result: JSON.stringify(result) }
@@ -495,7 +507,7 @@ export const runAIAgent = async (
           });
           onLog?.(`[Agent] ${name} 完了`);
         } catch (error: any) {
-          toolResults.push({
+          toolResultParts.push({
             functionResponse: {
               name,
               response: { error: error.message }
@@ -506,8 +518,18 @@ export const runAIAgent = async (
       }
     }
 
-    // ツール結果を送信して次の応答を取得
-    response = await chat.sendMessage(toolResults);
+    // ツール結果を履歴に追加
+    conversationHistory.push({ role: 'user', parts: toolResultParts });
+
+    // 次の応答を取得
+    response = await genAI.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: conversationHistory,
+      config: {
+        systemInstruction: systemPrompt,
+        tools: [{ functionDeclarations: CODE_TOOLS }]
+      }
+    });
   }
 
   return '処理が完了しませんでした（最大反復回数に達しました）';
