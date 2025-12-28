@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, Bot, Loader2 } from 'lucide-react';
+import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES, LogEntry } from '../types';
+import { Upload, FileUp, HardHat, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, MoreVertical } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
+import ConsolePanel from './ConsolePanel';
 import { loadRuleSettings, saveRuleSettings, RuleSettings } from '../utils/analysisRules';
 
 interface UploadViewProps {
@@ -12,7 +13,9 @@ interface UploadViewProps {
   isProcessing: boolean;
   photos: PhotoRecord[];
   appMode: AppMode;
-  apiKey: string; // Only for checking availability
+  apiKey: string;
+  logs: LogEntry[];
+  isAskingAI?: boolean;
   setAppMode: (mode: AppMode) => void;
   onStartProcessing: (files: File[], instruction: string, useCache: boolean, sortPolicy: SortPolicy) => void;
   onResume: () => void;
@@ -27,7 +30,7 @@ interface UploadViewProps {
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
-  isAskingAI?: boolean;
+  onClearLogs?: () => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -38,6 +41,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   photos,
   appMode,
   apiKey,
+  logs,
+  isAskingAI,
   setAppMode,
   onStartProcessing,
   onResume,
@@ -52,33 +57,31 @@ const UploadView: React.FC<UploadViewProps> = ({
   onShowHistory,
   onOpenMasterEditor,
   onAskAI,
-  isAskingAI
+  onClearLogs
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputImportRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [instruction, setInstruction] = useState("");
-  const [useCache, setUseCache] = useState(true); // Default to True
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
+  const [useCache, setUseCache] = useState(true);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
   const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showConsole, setShowConsole] = useState(false);
 
-  // ルール設定が変更されたらlocalStorageに保存
   const handleRuleSettingsChange = (newSettings: RuleSettings) => {
     setRuleSettings(newSettings);
     saveRuleSettings(newSettings);
   };
 
-  // コスト見積もり
   const costEstimate = useMemo(() => {
     if (!pendingFiles || pendingFiles.length === 0) return null;
     return estimateQuickCost(pendingFiles.length);
   }, [pendingFiles]);
 
-  // Restore instruction from local storage on mount
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY_INSTRUCTION);
     if (saved) {
@@ -86,10 +89,18 @@ const UploadView: React.FC<UploadViewProps> = ({
     }
   }, []);
 
-  // Save instruction to local storage on change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_INSTRUCTION, instruction);
   }, [instruction]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setShowMenu(false);
+    if (showMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showMenu]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -107,30 +118,25 @@ const UploadView: React.FC<UploadViewProps> = ({
     if (isProcessing || !apiKey) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      // 確認画面を表示
       setPendingFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      // 確認画面を表示
       setPendingFiles(Array.from(e.target.files));
     }
-    // Reset input so the same file can be selected again if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // 解析を開始
   const handleConfirmStart = () => {
     if (pendingFiles && pendingFiles.length > 0) {
-      setSelectedModel(selectedModelLocal); // モデル設定を保存
+      setSelectedModel(selectedModelLocal);
       onStartProcessing(pendingFiles, instruction, useCache, sortPolicy);
       setPendingFiles(null);
     }
   };
 
-  // キャンセル
   const handleCancelPending = () => {
     setPendingFiles(null);
   };
@@ -143,34 +149,70 @@ const UploadView: React.FC<UploadViewProps> = ({
     }
   };
 
+  // AIターミナルからの指示を処理
+  const handleSendInstruction = async (prompt: string) => {
+    if (!onAskAI) return;
+    try {
+      await onAskAI(prompt);
+    } catch (err) {
+      console.error('AI request failed:', err);
+    }
+  };
+
   return (
     <div
       className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative
         ${isDragging ? 'bg-blue-50' : 'bg-white'}
+        ${showConsole ? 'pb-[25vh]' : ''}
       `}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* --- HEADER --- */}
-      <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
+      <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-10">
         <h1 className="text-gray-700 font-bold tracking-tight text-xl flex items-center gap-2">
           {appMode === 'construction' ? <HardHat className="w-6 h-6 text-amber-500" /> : <FileUp className="w-5 h-5" />}
           {txt.appTitle}
         </h1>
+
         {/* Header Buttons */}
         <div className="flex items-center gap-2">
+          {/* Resume Button */}
+          {photos.length > 0 && (
+            <button
+              onClick={onResume}
+              className="flex items-center gap-1.5 px-3 py-2 bg-green-100 hover:bg-green-200 rounded-lg text-sm text-green-700 transition-colors font-medium"
+            >
+              <span className="text-xs">📋</span>
+              {txt.resumeLabel}
+            </button>
+          )}
+
+          {/* Master Editor Button */}
+          {onOpenMasterEditor && (
+            <button
+              onClick={onOpenMasterEditor}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition-colors"
+              title="マスタ設定"
+            >
+              <FolderTree className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-medium">マスタ</span>
+            </button>
+          )}
+
           {/* History Button */}
           {onShowHistory && (
             <button
               onClick={onShowHistory}
-              className="flex items-center gap-2 px-3 py-2 bg-purple-100 hover:bg-purple-200 rounded-lg text-sm text-purple-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-100 hover:bg-purple-200 rounded-lg text-sm text-purple-600 transition-colors"
               title="解析履歴"
             >
               <History className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-medium">履歴</span>
             </button>
           )}
+
           {/* Settings Button */}
           <button
             onClick={onOpenSettings}
@@ -187,6 +229,52 @@ const UploadView: React.FC<UploadViewProps> = ({
               {apiKey ? getSelectedModel() : 'キー未設定'}
             </span>
           </button>
+
+          {/* 3-dot Menu */}
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+              className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors"
+              title="その他"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+
+            {/* Dropdown Menu */}
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <button
+                  onClick={() => { onExportJson(); setShowMenu(false); }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <span>💾</span> Backup (JSON)
+                </button>
+                <button
+                  onClick={() => { fileInputImportRef.current?.click(); setShowMenu(false); }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <span>📂</span> Restore (JSON)
+                </button>
+                {onPdfButtonClick && (
+                  <button
+                    onClick={() => { onPdfButtonClick(); setShowMenu(false); }}
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" /> Load PDF
+                  </button>
+                )}
+                <div className="border-t border-gray-100 my-1" />
+                {onClearCache && (
+                  <button
+                    onClick={() => { onClearCache(); setShowMenu(false); }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Clear Cache
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -224,77 +312,6 @@ const UploadView: React.FC<UploadViewProps> = ({
             accept="image/*"
           />
         </div>
-
-        {/* --- SETTINGS / INSTRUCTION INPUT --- */}
-        {apiKey && (
-          <div className="w-full max-w-md mt-6 z-20 animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-3">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 pt-3 pointer-events-none">
-                <MessageSquare className="h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-              </div>
-              <textarea
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                onClick={(e) => e.stopPropagation()} // Prevent triggering upload
-                placeholder={lang === 'ja'
-                  ? "AIへの指示（任意）: 例「工種は全て『舗装工』にして」「場所は東京駅」"
-                  : "Custom Instruction (Optional): e.g., 'Categorize all as Kitchen'"}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm resize-none shadow-sm transition-shadow h-20"
-              />
-            </div>
-
-            {/* AIに聞くボタン */}
-            {onAskAI && instruction.trim() && (
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (!instruction.trim() || isAskingAI) return;
-                  setAiResponse(null);
-                  try {
-                    const response = await onAskAI(instruction);
-                    setAiResponse(response);
-                  } catch (err: any) {
-                    setAiResponse(`エラー: ${err.message}`);
-                  }
-                }}
-                disabled={isAskingAI}
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg"
-              >
-                {isAskingAI ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    AIが処理中...
-                  </>
-                ) : (
-                  <>
-                    <Bot className="w-4 h-4" />
-                    AIに聞く（コード操作）
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* AIレスポンス表示 */}
-            {aiResponse && (
-              <div className="mt-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-500 flex items-center gap-1">
-                    <Bot className="w-3 h-3" /> AIレスポンス
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setAiResponse(null); }}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
-                  {aiResponse}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Processing Indicator */}
         {isProcessing && (
@@ -468,7 +485,6 @@ const UploadView: React.FC<UploadViewProps> = ({
                       if (pendingFiles && pendingFiles.length > 0) {
                         setSelectedModel(selectedModelLocal);
                         onStartProcessing([pendingFiles[0]], instruction, useCache, sortPolicy);
-                        // Keep pendingFiles for full run after test
                       }
                     }}
                     className="flex-1 px-4 py-2.5 border-2 border-green-500 text-green-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-green-50 transition-colors"
@@ -505,54 +521,18 @@ const UploadView: React.FC<UploadViewProps> = ({
 
       </div>
 
-      {/* --- FOOTER (Data Management) --- */}
-      <div className="absolute bottom-0 w-full p-6 flex justify-between items-end z-10 text-xs font-medium text-gray-400">
+      {/* Hidden file input for import */}
+      <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
 
-        {/* Master Editor Button */}
-        {onOpenMasterEditor && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onOpenMasterEditor(); }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all text-xs"
-          >
-            <FolderTree className="w-3 h-3" />
-            <span>マスタ</span>
-          </button>
-        )}
-
-        <div className="flex gap-4 items-center">
-          {photos.length > 0 && (
-            <button onClick={onResume} className="hover:text-gray-800 transition-colors border-b border-transparent hover:border-gray-800 pb-0.5">
-              {txt.resumeLabel}
-            </button>
-          )}
-          <span className="w-px bg-gray-300 mx-1 h-4"></span>
-          <button onClick={onExportJson} className="hover:text-gray-800 transition-colors">
-            Backup (JSON)
-          </button>
-          <button onClick={() => fileInputImportRef.current?.click()} className="hover:text-gray-800 transition-colors">
-            Restore (JSON)
-          </button>
-          {onPdfButtonClick && (
-            <button
-              onClick={onPdfButtonClick}
-              className="hover:text-red-600 transition-colors flex items-center gap-1"
-              title="PDFからセッションを復元"
-            >
-              <FileText className="w-3 h-3" /> Load PDF
-            </button>
-          )}
-          {onClearCache && (
-            <>
-              <span className="w-px bg-gray-300 mx-1 h-4"></span>
-              <button onClick={onClearCache} className="hover:text-red-600 transition-colors flex items-center gap-1" title="Delete stored AI analysis results">
-                <Trash2 className="w-3 h-3" /> Clear Cache
-              </button>
-            </>
-          )}
-          <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
-        </div>
-      </div>
-
+      {/* --- AI CONSOLE (Bottom) --- */}
+      <ConsolePanel
+        logs={logs}
+        isOpen={showConsole}
+        onToggle={() => setShowConsole(!showConsole)}
+        onClear={onClearLogs || (() => {})}
+        isProcessing={isAskingAI}
+        onSendInstruction={onAskAI ? handleSendInstruction : undefined}
+      />
     </div>
   );
 };

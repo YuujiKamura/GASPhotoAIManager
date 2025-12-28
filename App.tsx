@@ -2035,6 +2035,8 @@ export default function App() {
           photos={photos}
           appMode={appMode}
           apiKey={apiKey || ''}
+          logs={logs}
+          isAskingAI={isAskingAI}
           setAppMode={setAppMode}
           onStartProcessing={handleStartProcessing}
           onResume={handleResume}
@@ -2049,7 +2051,7 @@ export default function App() {
           onShowHistory={() => setShowHistory(true)}
           onOpenMasterEditor={() => setShowMasterEditor(true)}
           onAskAI={handleAskAI}
-          isAskingAI={isAskingAI}
+          onClearLogs={clearLogs}
         />
       ) : (
         <PreviewView
