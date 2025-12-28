@@ -41,7 +41,28 @@ export interface AIAnalysisResult {
   phase?: 'before' | 'after' | 'status' | 'unknown'; // The phase within that scene
   visualAnchors?: string; // NEW: Verbalized description of background landmarks (e.g., "White house left, Pole right")
   reasoning?: string; // NEW: AI's thought process explaining the classification
+
+  // Change tracking for transparency
+  changeLog?: FieldChange[]; // History of changes made during processing
 }
+
+// 各フィールドの変更履歴
+export interface FieldChange {
+  field: string;           // フィールド名（workType, remarks など）
+  stage: ChangeStage;      // どの段階で変更されたか
+  before: string;          // 変更前の値
+  after: string;           // 変更後の値
+  reason?: string;         // 変更理由
+}
+
+// 処理段階
+export type ChangeStage =
+  | 'ai_initial'           // AI初期解析
+  | 'context_relay'        // 前後写真からの継承
+  | 'master_validation'    // マスタデータ照合
+  | 'temperature_validation' // 温度バリデーション
+  | 'normalization'        // 正規化処理
+  | 'user_edit';           // ユーザー手動編集
 
 export interface PhotoRecord extends PhotoMetadata {
   analysis?: AIAnalysisResult;
@@ -82,6 +103,44 @@ export const SORT_POLICIES: { id: SortPolicy; name: string; description: string 
   { id: 'by_detail_safety_first', name: '細別順＋安全先頭', description: '安全管理を先頭に、残りは細別順' },
   { id: 'by_detail_safety_last', name: '細別順＋安全末尾', description: '細別順、安全管理を末尾に' },
 ];
+
+// 問題ケース（期待と異なる解析結果を検証用に保存）
+export interface AnalysisIssue {
+  id: string;                      // ユニークID
+  fileName: string;                // 元のファイル名
+  thumbnail: string;               // サムネイル画像（base64）
+  actualAnalysis: AIAnalysisResult; // 実際の解析結果
+  expectedValues?: {               // 期待していた値（ユーザー入力、任意）
+    workType?: string;
+    variety?: string;
+    detail?: string;
+    station?: string;
+    remarks?: string;
+    measurements?: string;
+  };
+  issueDescription: string;        // 問題の説明
+  issueType: IssueType;            // 問題の種類
+  status: IssueStatus;             // 対応状況
+  createdAt: number;               // 作成日時
+  resolvedAt?: number;             // 解決日時
+  notes?: string;                  // メモ
+}
+
+// 問題の種類
+export type IssueType =
+  | 'wrong_classification'   // 分類が間違い
+  | 'wrong_inheritance'      // 継承が不適切
+  | 'master_rejection'       // マスタ検証で消された
+  | 'temperature_error'      // 温度解析エラー
+  | 'ocr_error'              // OCR読み取りエラー
+  | 'other';                 // その他
+
+// 対応状況
+export type IssueStatus =
+  | 'open'                   // 未対応
+  | 'investigating'          // 調査中
+  | 'resolved'               // 解決済み
+  | 'wont_fix';              // 対応しない
 
 // お手本（Few-shot Example）として保存する解析例
 export interface AnalysisExample {

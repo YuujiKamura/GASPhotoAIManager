@@ -1,10 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
+import { PhotoRecord, AppMode, AIAnalysisResult, FieldChange, ChangeStage } from '../types';
 import { TRANS } from '../utils/translations';
-import { Trash2, Wand2, Star } from 'lucide-react';
+import { Trash2, Wand2, Star, Brain, X, AlertTriangle } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
-import { saveExample } from '../utils/storage';
+import { saveExample, saveAnalysisIssue } from '../utils/storage';
+import { IssueType } from '../types';
+
+// 変更段階の日本語表示
+const STAGE_LABELS: Record<ChangeStage, { ja: string; en: string; color: string }> = {
+  'ai_initial': { ja: 'AI初期解析', en: 'AI Initial', color: 'bg-blue-100 text-blue-700' },
+  'context_relay': { ja: '前後継承', en: 'Context Relay', color: 'bg-green-100 text-green-700' },
+  'master_validation': { ja: 'マスタ検証', en: 'Master Validation', color: 'bg-orange-100 text-orange-700' },
+  'temperature_validation': { ja: '温度検証', en: 'Temp Validation', color: 'bg-red-100 text-red-700' },
+  'normalization': { ja: '正規化', en: 'Normalization', color: 'bg-purple-100 text-purple-700' },
+  'user_edit': { ja: 'ユーザー編集', en: 'User Edit', color: 'bg-gray-100 text-gray-700' }
+};
+
+// フィールド名の日本語表示
+const FIELD_LABELS: Record<string, { ja: string; en: string }> = {
+  'workType': { ja: '工種', en: 'Work Type' },
+  'variety': { ja: '種別', en: 'Variety' },
+  'detail': { ja: '細別', en: 'Detail' },
+  'station': { ja: '測点', en: 'Station' },
+  'remarks': { ja: '備考', en: 'Remarks' },
+  'remarksCategory': { ja: '備考カテゴリ', en: 'Remarks Category' },
+  'measurements': { ja: '測定値', en: 'Measurements' },
+  'description': { ja: '記事', en: 'Description' }
+};
 
 interface Props {
   records: PhotoRecord[];
@@ -116,11 +139,26 @@ type ContextMenuState = {
   targetFileName: string;
 } | null;
 
+type ReasoningModalState = {
+  fileName: string;
+  reasoning: string;
+  analysis: AIAnalysisResult;
+} | null;
+
+type IssueModalState = {
+  record: PhotoRecord;
+} | null;
+
 const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [isSavingExample, setIsSavingExample] = useState(false);
+  const [reasoningModal, setReasoningModal] = useState<ReasoningModalState>(null);
+  const [issueModal, setIssueModal] = useState<IssueModalState>(null);
+  const [issueDescription, setIssueDescription] = useState('');
+  const [issueType, setIssueType] = useState<IssueType>('wrong_classification');
+  const [isSavingIssue, setIsSavingIssue] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -175,6 +213,68 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
     } finally {
       setIsSavingExample(false);
       setContextMenu(null);
+    }
+  };
+
+  const executeShowReasoning = () => {
+    if (!contextMenu) return;
+
+    const record = records.find(r => r.fileName === contextMenu.targetFileName);
+    if (!record?.analysis) {
+      alert(lang === 'ja' ? '解析結果がありません' : 'No analysis result');
+      setContextMenu(null);
+      return;
+    }
+
+    setReasoningModal({
+      fileName: record.fileName,
+      reasoning: record.analysis.reasoning || '',
+      analysis: record.analysis
+    });
+    setContextMenu(null);
+  };
+
+  const executeReportIssue = () => {
+    if (!contextMenu) return;
+
+    const record = records.find(r => r.fileName === contextMenu.targetFileName);
+    if (!record?.analysis) {
+      alert(lang === 'ja' ? '解析結果がありません' : 'No analysis result');
+      setContextMenu(null);
+      return;
+    }
+
+    // 変更履歴からデフォルトの問題種類を推測
+    const changeLog = record.analysis.changeLog || [];
+    let defaultType: IssueType = 'wrong_classification';
+    if (changeLog.some(c => c.stage === 'context_relay')) {
+      defaultType = 'wrong_inheritance';
+    } else if (changeLog.some(c => c.stage === 'master_validation')) {
+      defaultType = 'master_rejection';
+    } else if (changeLog.some(c => c.stage === 'temperature_validation')) {
+      defaultType = 'temperature_error';
+    }
+
+    setIssueType(defaultType);
+    setIssueDescription('');
+    setIssueModal({ record });
+    setContextMenu(null);
+  };
+
+  const handleSaveIssue = async () => {
+    if (!issueModal || !issueDescription.trim()) return;
+
+    setIsSavingIssue(true);
+    try {
+      await saveAnalysisIssue(issueModal.record, issueDescription, issueType);
+      alert(txt.issueSaved);
+      setIssueModal(null);
+      setIssueDescription('');
+    } catch (e) {
+      console.error('Failed to save issue:', e);
+      alert(lang === 'ja' ? '保存に失敗しました' : 'Failed to save');
+    } finally {
+      setIsSavingIssue(false);
     }
   };
 
@@ -340,6 +440,13 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
             {lang === 'ja' ? 'この画像を再解析' : 'Re-analyze Photo'}
           </button>
           <button
+            onClick={executeShowReasoning}
+            className="w-full text-left px-4 py-2 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-2"
+          >
+            <Brain className="w-4 h-4" />
+            {txt.showReasoning}
+          </button>
+          <button
             onClick={executeSaveAsExample}
             disabled={isSavingExample}
             className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2 disabled:opacity-50"
@@ -348,12 +455,255 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
             {lang === 'ja' ? 'お手本として保存' : 'Save as Example'}
           </button>
           <button
+            onClick={executeReportIssue}
+            className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            {txt.reportIssue}
+          </button>
+          <button
             onClick={executeDelete}
             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
             {lang === 'ja' ? '削除する' : 'Delete Photo'}
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Reasoning Modal */}
+      {reasoningModal && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
+          onClick={() => setReasoningModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Brain className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">{txt.reasoningTitle}</h3>
+                  <p className="text-sm text-gray-500">{reasoningModal.fileName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReasoningModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Analysis Summary */}
+            <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {reasoningModal.analysis.workType && (
+                  <div><span className="text-gray-500">{txt.labelWorkType}:</span> <span className="font-medium">{reasoningModal.analysis.workType}</span></div>
+                )}
+                {reasoningModal.analysis.variety && (
+                  <div><span className="text-gray-500">{txt.labelVariety}:</span> <span className="font-medium">{reasoningModal.analysis.variety}</span></div>
+                )}
+                {reasoningModal.analysis.detail && (
+                  <div><span className="text-gray-500">{txt.labelDetail}:</span> <span className="font-medium">{reasoningModal.analysis.detail}</span></div>
+                )}
+                {reasoningModal.analysis.remarks && (
+                  <div><span className="text-gray-500">{txt.labelRemarks}:</span> <span className="font-medium">{reasoningModal.analysis.remarks}</span></div>
+                )}
+                {reasoningModal.analysis.measurements && (
+                  <div><span className="text-gray-500">{txt.labelMeasurements}:</span> <span className="font-medium">{reasoningModal.analysis.measurements}</span></div>
+                )}
+                {reasoningModal.analysis.station && (
+                  <div><span className="text-gray-500">{txt.labelStation}:</span> <span className="font-medium">{reasoningModal.analysis.station}</span></div>
+                )}
+              </div>
+            </div>
+
+            {/* Reasoning Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* AI Reasoning */}
+              {reasoningModal.reasoning ? (
+                <div className="prose prose-sm max-w-none">
+                  <div className="whitespace-pre-wrap text-gray-700 leading-relaxed bg-gradient-to-br from-purple-50/50 to-indigo-50/50 p-4 rounded-lg border border-purple-100">
+                    {reasoningModal.reasoning}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="p-3 bg-gray-100 rounded-full w-fit mx-auto mb-3">
+                    <Brain className="w-6 h-6 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 text-sm">{txt.noReasoning}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {lang === 'ja'
+                      ? '再解析を行うと判断根拠が記録されます'
+                      : 'Re-analyze the photo to record AI reasoning'}
+                  </p>
+                </div>
+              )}
+
+              {/* Change History */}
+              <div className="border-t border-gray-200 pt-4">
+                <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <span className="w-5 h-5 bg-amber-100 rounded flex items-center justify-center text-amber-600 text-xs">📝</span>
+                  {txt.changeLogTitle}
+                </h4>
+                {reasoningModal.analysis.changeLog && reasoningModal.analysis.changeLog.length > 0 ? (
+                  <div className="space-y-2">
+                    {reasoningModal.analysis.changeLog.map((change, idx) => {
+                      const stageInfo = STAGE_LABELS[change.stage];
+                      const fieldInfo = FIELD_LABELS[change.field] || { ja: change.field, en: change.field };
+                      return (
+                        <div key={idx} className="bg-gray-50 rounded-lg p-3 text-sm border border-gray-100">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${stageInfo.color}`}>
+                              {lang === 'ja' ? stageInfo.ja : stageInfo.en}
+                            </span>
+                            <span className="font-medium text-gray-700">
+                              {lang === 'ja' ? fieldInfo.ja : fieldInfo.en}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-500">{txt.changedFrom}:</span>
+                            <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded line-through">
+                              {change.before || '(空)'}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded font-medium">
+                              {change.after || '(空)'}
+                            </span>
+                          </div>
+                          {change.reason && (
+                            <div className="text-xs text-gray-500 mt-1 italic">
+                              {change.reason}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-400 text-sm bg-gray-50 rounded-lg">
+                    {txt.noChanges}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setReasoningModal(null)}
+                className="w-full py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors font-medium"
+              >
+                {txt.closeBtn}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Issue Report Modal */}
+      {issueModal && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
+          onClick={() => setIssueModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-amber-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">{txt.issueTitle}</h3>
+                  <p className="text-sm text-gray-500">{issueModal.record.fileName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIssueModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Current Analysis Summary */}
+            <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+              <div className="text-xs text-gray-500 mb-2">{lang === 'ja' ? '現在の解析結果' : 'Current Analysis'}</div>
+              <div className="grid grid-cols-2 gap-1 text-sm">
+                {issueModal.record.analysis?.workType && (
+                  <div><span className="text-gray-500">{txt.labelWorkType}:</span> <span className="font-medium">{issueModal.record.analysis.workType}</span></div>
+                )}
+                {issueModal.record.analysis?.remarks && (
+                  <div><span className="text-gray-500">{txt.labelRemarks}:</span> <span className="font-medium">{issueModal.record.analysis.remarks}</span></div>
+                )}
+              </div>
+            </div>
+
+            {/* Issue Form */}
+            <div className="px-6 py-4 space-y-4">
+              {/* Issue Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {txt.issueTypeLabel}
+                </label>
+                <select
+                  value={issueType}
+                  onChange={(e) => setIssueType(e.target.value as IssueType)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="wrong_classification">{txt.issueTypes.wrong_classification}</option>
+                  <option value="wrong_inheritance">{txt.issueTypes.wrong_inheritance}</option>
+                  <option value="master_rejection">{txt.issueTypes.master_rejection}</option>
+                  <option value="temperature_error">{txt.issueTypes.temperature_error}</option>
+                  <option value="ocr_error">{txt.issueTypes.ocr_error}</option>
+                  <option value="other">{txt.issueTypes.other}</option>
+                </select>
+              </div>
+
+              {/* Issue Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {lang === 'ja' ? '問題の説明' : 'Description'}
+                </label>
+                <textarea
+                  value={issueDescription}
+                  onChange={(e) => setIssueDescription(e.target.value)}
+                  placeholder={txt.issueDescPlaceholder}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 h-24 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex gap-3">
+              <button
+                onClick={() => setIssueModal(null)}
+                className="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors font-medium"
+              >
+                {txt.closeBtn}
+              </button>
+              <button
+                onClick={handleSaveIssue}
+                disabled={isSavingIssue || !issueDescription.trim()}
+                className="flex-1 py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {txt.saveIssue}
+              </button>
+            </div>
+          </div>
         </div>,
         document.body
       )}
