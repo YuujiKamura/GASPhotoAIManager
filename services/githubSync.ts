@@ -12,6 +12,7 @@ const GITHUB_API = 'https://api.github.com';
 const OWNER = 'YuujiKamura';
 const REPO = 'GASPhotoAIManager';
 const DATA_BRANCH = 'data/learned-settings';
+const CODE_BRANCH = 'ai/code-edit'; // AIコード編集用ブランチ（CI検証後にmainへマージ）
 const DATA_PATH = 'src/data/learned-settings.json';
 
 // Token管理（sessionStorageに保存 - ブラウザ閉じたら消える）
@@ -449,14 +450,80 @@ export const listDirectory = async (
 /**
  * コードファイルをGitHubにプッシュ（更新または新規作成）
  */
+/**
+ * ai/code-editブランチが存在するか確認し、なければmainから作成
+ */
+const ensureCodeBranch = async (token: string): Promise<boolean> => {
+  try {
+    const branchResponse = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/branches/${CODE_BRANCH}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (branchResponse.ok) {
+      return true;
+    }
+
+    // mainブランチのSHAを取得して新規作成
+    const mainResponse = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs/heads/main`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (!mainResponse.ok) {
+      return false;
+    }
+
+    const mainData = await mainResponse.json();
+    const createResponse = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ref: `refs/heads/${CODE_BRANCH}`,
+          sha: mainData.object.sha
+        })
+      }
+    );
+
+    return createResponse.ok;
+  } catch (e) {
+    console.error('ensureCodeBranch error:', e);
+    return false;
+  }
+};
+
 export const pushCodeEdit = async (
   token: string,
   filePath: string,
   newContent: string,
   commitMessage: string,
-  branch: string = 'main'
+  branch: string = CODE_BRANCH // デフォルトはAI用ブランチ（CI検証される）
 ): Promise<{ success: boolean; commitUrl?: string; error?: string }> => {
   try {
+    // AI用ブランチの場合は存在確認/作成
+    if (branch === CODE_BRANCH) {
+      const branchReady = await ensureCodeBranch(token);
+      if (!branchReady) {
+        return { success: false, error: 'ai/code-editブランチの作成に失敗しました' };
+      }
+    }
+
     // 現在のファイルのSHAを取得（更新の場合に必要）
     let sha: string | undefined;
     const currentFile = await fetchCodeFile(token, filePath, branch);
