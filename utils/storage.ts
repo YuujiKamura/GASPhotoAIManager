@@ -11,6 +11,7 @@ const STORE_SESSIONS = 'analysisSessions'; // Store for saved sessions (お手�
 const STORE_HISTORY = 'analysisHistory'; // Store for analysis history (履歴)
 const KEY_SESSION = 'currentSession';
 const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
+const MAX_HISTORY_ENTRIES = 20; // 履歴の最大件数
 
 export interface AnalysisRule {
   id: string;
@@ -116,7 +117,7 @@ export const clearProjectData = async (): Promise<void> => {
  * Generates a unique key for the file based on its immutable properties.
  * Can handle a raw File object OR a PhotoRecord with metadata.
  */
-const getFileKey = (input: File | PhotoRecord): string => {
+export const getFileKey = (input: File | PhotoRecord): string => {
   let name = "";
   let size = 0;
   let modified = 0;
@@ -143,6 +144,29 @@ const getFileKey = (input: File | PhotoRecord): string => {
 
   // Composite key: Name + Size + ModifiedTime ensures uniqueness for specific file versions
   return `${name}_${size}_${modified}`;
+};
+
+/**
+ * 写真リストからセッションキーを生成
+ * ファイルキーをソートしてハッシュ化することで、同じ写真群は同じキーになる
+ */
+export const generateSessionKey = (photos: PhotoRecord[]): string => {
+  if (photos.length === 0) return '';
+
+  // ファイルキーを取得してソート（順序が違っても同じキーになるように）
+  const keys = photos.map(p => getFileKey(p)).sort();
+
+  // シンプルなハッシュ生成（djb2アルゴリズム）
+  const str = JSON.stringify(keys);
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    hash = hash & hash; // 32bit整数に変換
+  }
+
+  // 正の16進数に変換
+  const positiveHash = (hash >>> 0).toString(16);
+  return `sess_${positiveHash}`;
 };
 
 export const getCachedAnalysis = async (input: File | PhotoRecord): Promise<AIAnalysisResult | null> => {
@@ -657,11 +681,11 @@ export const importRulesFromJson = (jsonStr: string): AnalysisRule[] => {
 };
 
 // ============================================
-// 解析履歴 (Analysis History)
+// 解析履歴 (Analysis History) - 軽量版
 // ============================================
 
 /**
- * 解析結果を履歴として保存
+ * 解析結果を履歴として保存（軽量版: photoKeysのみ保存）
  */
 export const saveAnalysisHistory = async (
   photos: PhotoRecord[],
@@ -677,13 +701,18 @@ export const saveAnalysisHistory = async (
       .filter((w): w is string => !!w)
   )];
 
+  // セッションキーと写真キーを生成
+  const sessionKey = generateSessionKey(photos);
+  const photoKeys = photos.map(p => getFileKey(p));
+
   const entry: AnalysisHistoryEntry = {
     id: crypto.randomUUID(),
+    sessionKey,
     createdAt: Date.now(),
     photoCount: photos.length,
     instruction,
     workTypes,
-    photos,
+    photoKeys,
     modelUsed
   };
 
@@ -694,6 +723,50 @@ export const saveAnalysisHistory = async (
     request.onsuccess = () => resolve(entry);
     request.onerror = () => reject(request.error);
   });
+};
+
+/**
+ * 重複チェック付きで履歴に追加（起動時・PDF読み込み時用）
+ * 同じセッションキーが既にあれば追加しない
+ * 上限を超えた場合は古いものを削除
+ */
+export const addToHistoryIfNew = async (
+  photos: PhotoRecord[],
+  instruction: string = '',
+  modelUsed?: string
+): Promise<{ added: boolean; entry?: AnalysisHistoryEntry }> => {
+  if (photos.length === 0) {
+    return { added: false };
+  }
+
+  const sessionKey = generateSessionKey(photos);
+  if (!sessionKey) {
+    return { added: false };
+  }
+
+  // 既存履歴を取得
+  const existingHistory = await getAnalysisHistory();
+
+  // 同じセッションキーがあれば追加しない
+  if (existingHistory.some(h => h.sessionKey === sessionKey)) {
+    console.log('Session already exists in history:', sessionKey);
+    return { added: false };
+  }
+
+  // 新規追加
+  const entry = await saveAnalysisHistory(photos, instruction, modelUsed);
+
+  // 上限を超えた場合、古いものを削除
+  if (existingHistory.length >= MAX_HISTORY_ENTRIES) {
+    const toDelete = existingHistory.slice(MAX_HISTORY_ENTRIES - 1);
+    for (const old of toDelete) {
+      await deleteAnalysisHistory(old.id);
+    }
+    console.log(`Removed ${toDelete.length} old history entries`);
+  }
+
+  console.log('Added new session to history:', sessionKey);
+  return { added: true, entry };
 };
 
 /**

@@ -106,13 +106,14 @@ export interface AnalysisSession {
   updatedAt: number;               // 更新日時
 }
 
-// 解析履歴（セッション単位で保存）
+// 解析履歴（セッション単位で保存）- 軽量版
 export interface AnalysisHistoryEntry {
   id: string;                      // ユニークID (UUID)
+  sessionKey: string;              // セッション識別キー（重複チェック用）
   createdAt: number;               // 解析日時
   photoCount: number;              // 写真数
   instruction: string;             // 使用した指示文
   workTypes: string[];             // 含まれる工種（サマリー用）
-  photos: PhotoRecord[];           // 写真データ（base64含む）
+  photoKeys: string[];             // ファイルキーのリスト（軽量）
   modelUsed?: string;              // 使用モデル
 }
