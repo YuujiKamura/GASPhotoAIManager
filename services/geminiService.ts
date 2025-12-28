@@ -407,22 +407,18 @@ Traverse the hierarchy directly:
 *   **detail**: The key at Level 3 (e.g., "表層工").
 *   **remarks**: The key at Level 4 (e.g., "舗設状況", "着手前", "転圧状況").
 
-**STEP 3: Remarks (備考) - USE remarksCategory + remarksValue**
-Output remarks as TWO separate fields:
+**STEP 3: Remarks (備考) - remarksCategory のみ出力**
 *   **remarksCategory**: Select from the enum (e.g., "到着温度", "転圧状況", "着手前")
-*   **remarksValue**: The measurement value if applicable (e.g., "161.1℃", "t=50mm", or "" if none)
+*   **IMPORTANT**: 備考には測定値を含めない。測定値はすべて measurements フィールドに出力する。
 
 **Category-specific rules:**
-*   **着手前及び完成写真**: remarksCategory = "着手前" or "竣工", remarksValue = ""
-*   **施工状況写真**: remarksCategory = "転圧状況" etc., remarksValue = ""
+*   **着手前及び完成写真**: remarksCategory = "着手前" or "竣工"
+*   **施工状況写真**: remarksCategory = "転圧状況" etc.
 *   **品質管理写真 (温度管理)**:
     - remarksCategory = "到着温度" / "敷均し温度" / "初期締固め前温度" / "開放温度"
-    - remarksValue = the temperature value (e.g., "161.1℃")
     - **CRITICAL**: Each photo has a SPECIFIC temperature. Do NOT use generic "温度管理" or "温度測定".
-    - **NEVER use** "アスファルト混合物温度測定" alone without the actual value in remarksValue.
 *   **出来形管理写真**:
     - remarksCategory = "不陸整正出来形" etc. (MUST end with "出来形")
-    - remarksValue = measurement (e.g., "実測値+3mm", "t=150")
     - NEVER use "〜状況" for measurement photos - that implies ongoing work.
 
 **STEP 4: Description (記事) - 重要な情報を記録**
@@ -434,10 +430,12 @@ Output remarks as TWO separate fields:
 *   着手前・完成写真でも、黒板に工事名や日付があれば記載
 *   **空欄にしない**: 黒板や現場から何か読み取れる情報があれば必ず記載する
 
-**measurements (測定値)**: 出来形管理の数値データ（出来形管理写真のみ）
-*   出来形管理写真の場合、descriptionに加えてここにも測定値を記録
-*   フォーマット例: "設計値: 50mm / 実測値: 52mm / 差: +2mm" または "幅員 W=3.0m"
-*   測定値が見えない場合や出来形管理写真でない場合は空文字列 "" を返す
+**measurements (測定値)**: すべての測定値・数値データを記録
+*   温度測定: "161.1℃", "155.3℃" など
+*   出来形測定: "設計値: 50mm / 実測値: 52mm / 差: +2mm", "t=150mm", "幅員 W=3.0m" など
+*   密度測定: "密度 98.5%", "締固め度 96.2%" など
+*   測定値が見えない場合は空文字列 "" を返す
+*   **CRITICAL**: remarksCategory に該当する数値はすべてここに出力する
 
 **STEP 5: Station (測点) - FORMAT STANDARDIZATION**
 *   **Standard Format**: 「地名 No.整数」 (e.g., "小峯2丁目 No.4", "南区桜町 No.12")
@@ -459,8 +457,8 @@ Output remarks as TWO separate fields:
 
 **OUTPUT FORMAT**:
 JSON only.
-keys: workType, variety, detail, station, remarksCategory, remarksValue, description, hasBoard, detectedText.
-Note: remarksCategory is from the enum, remarksValue contains the measurement/value.
+keys: workType, variety, detail, station, remarksCategory, measurements, description, hasBoard, detectedText.
+Note: remarksCategory is from the enum, measurements contains all numerical values.
 
 ${(() => {
   const rules = ruleSettings || loadRuleSettings();
@@ -1126,11 +1124,11 @@ export const analyzePhotoBatch = async (
         remarksCategory: {
           type: Type.STRING,
           enum: REMARKS_CATEGORIES,
-          description: "備考の種類。温度管理なら「到着温度」「敷均し温度」等を選択"
+          description: "備考の種類。温度管理なら「到着温度」「敷均し温度」等を選択（測定値は含めない）"
         },
-        remarksValue: {
+        measurements: {
           type: Type.STRING,
-          description: "備考の値。温度なら「161.1℃」、厚さなら「t=50mm」等。値がない場合は空文字"
+          description: "測定値。温度なら「161.1℃」、厚さなら「t=50mm」、出来形なら「設計値:50mm/実測値:52mm」等。値がない場合は空文字"
         },
         description: { type: Type.STRING },
         hasBoard: { type: Type.BOOLEAN },
@@ -1226,14 +1224,10 @@ export const analyzePhotoBatch = async (
       }
 
       // Validate against schema-ish
-      // remarksCategory + remarksValue から remarks を生成
+      // remarksCategory は備考に、measurements は測定値に（分離済み）
       const validResults: AIAnalysisResult[] = parsed.map((item: any) => {
         const remarksCategory = item.remarksCategory || "";
-        const remarksValue = item.remarksValue || "";
-        // 値がある場合は「カテゴリ 値」形式、ない場合はカテゴリのみ
-        const remarks = remarksValue
-          ? `${remarksCategory} ${remarksValue}`.trim()
-          : remarksCategory;
+        const measurements = item.measurements || "";
 
         return {
           fileName: item.fileName || "unknown",
@@ -1241,11 +1235,11 @@ export const analyzePhotoBatch = async (
           variety: item.variety || "",
           detail: item.detail || "",
           station: item.station || "",
-          remarks: remarks,
-          remarksCategory: remarksCategory, // 分離したカテゴリも保持
-          remarksValue: remarksValue,       // 分離した値も保持
+          remarks: remarksCategory, // 備考はカテゴリのみ
+          remarksCategory: remarksCategory,
+          remarksValue: "", // 廃止（後方互換のため空文字）
           description: item.description || "",
-          measurements: item.measurements || "", // 出来形管理の測定値
+          measurements: measurements, // 測定値は別フィールド
           hasBoard: !!item.hasBoard,
           detectedText: item.detectedText || "",
           reasoning: item.reasoning || "" // Capture reasoning
@@ -1345,12 +1339,12 @@ export const analyzePhotoBatch = async (
         // 温度管理写真のバリデーション（remarksCategory/remarksValueがある場合）
         let finalRemarks = res.remarks;
         let finalRemarksCategory = res.remarksCategory;
-        let finalRemarksValue = res.remarksValue;
+        let finalMeasurements = res.measurements;
 
         if (res.remarksCategory && isQualityManagementPhoto(res.remarksCategory)) {
           const tempValidation = validateTemperatureRemarks(
             res.remarksCategory || '',
-            res.remarksValue || ''
+            res.measurements || ''
           );
 
           if (!tempValidation.isValid) {
@@ -1361,15 +1355,11 @@ export const analyzePhotoBatch = async (
             // 修正を適用
             if (tempValidation.correctedCategory) {
               finalRemarksCategory = tempValidation.correctedCategory;
+              finalRemarks = finalRemarksCategory; // 備考はカテゴリのみ
             }
             if (tempValidation.correctedValue) {
-              finalRemarksValue = tempValidation.correctedValue;
+              finalMeasurements = tempValidation.correctedValue;
             }
-
-            // remarks を再生成
-            finalRemarks = finalRemarksValue
-              ? `${finalRemarksCategory} ${finalRemarksValue}`.trim()
-              : finalRemarksCategory || '';
           }
         }
 
@@ -1380,7 +1370,7 @@ export const analyzePhotoBatch = async (
           detail: validatedDetail,
           remarks: finalRemarks,
           remarksCategory: finalRemarksCategory,
-          remarksValue: finalRemarksValue
+          measurements: finalMeasurements
         };
       });
 

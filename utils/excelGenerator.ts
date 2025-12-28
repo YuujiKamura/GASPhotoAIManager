@@ -200,14 +200,11 @@ export const generateExcel = async (
     // Iterate through Shared Layout Configuration
     // Filter fields based on layout mode (matching Web View behavior)
     const visibleFields = LAYOUT_FIELDS.filter((field) => {
-      // 2-up mode: only remarks and station (like PhotoAlbumView.tsx L.188-193)
+      // 2-up mode: only remarks and station (like PhotoAlbumView.tsx)
       if (isTwoUp) {
         return field.key === 'remarks' || field.key === 'station';
       }
-      // 3-up mode: filter measurements by data presence
-      if (field.key === 'measurements') {
-        return !!record.analysis?.measurements;
-      }
+      // 3-up mode: all fields including measurements (always shown)
       return true;
     });
 

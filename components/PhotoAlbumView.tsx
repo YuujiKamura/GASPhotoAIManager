@@ -11,7 +11,6 @@ interface Props {
   appMode: AppMode;
   lang: 'en' | 'ja';
   photosPerPage: 2 | 3;
-  showDescription?: boolean; // 記事欄の表示/非表示 (default: true in 3-up)
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto?: (fileName: string) => void;
   onReanalyzePhoto?: (fileName: string) => void;
@@ -117,7 +116,7 @@ type ContextMenuState = {
   targetFileName: string;
 } | null;
 
-const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, showDescription = true, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
+const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
@@ -182,9 +181,9 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
   const isTwoUp = photosPerPage === 2;
 
   // Fields Config
-  // 3-up: All Fields (measurements always shown if data exists, description based on toggle)
+  // 3-up: All Fields (measurements always shown for input)
   // 2-up: Only Remarks, Station (in that order)
-  const getVisibleFields = (record: PhotoRecord | undefined) => {
+  const getVisibleFields = () => {
     if (isTwoUp) {
       return [
         LAYOUT_FIELDS.find(f => f.key === 'remarks')!,
@@ -192,19 +191,8 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
       ].filter(Boolean);
     }
 
-    // 3-up mode: filter based on data and toggle
-    return LAYOUT_FIELDS.filter(f => {
-      // measurements: show only if has data
-      if (f.key === 'measurements') {
-        return !!record?.analysis?.measurements;
-      }
-      // description: follow the toggle
-      if (f.key === 'description') {
-        return showDescription;
-      }
-      // other fields: always show
-      return true;
-    });
+    // 3-up mode: all fields including measurements (always shown)
+    return LAYOUT_FIELDS;
   };
 
   return (
@@ -268,7 +256,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
 
                   {/* Info Section */}
                   <div className={infoContainerClass}>
-                    {getVisibleFields(record).map((field) => {
+                    {getVisibleFields().map((field) => {
                       // Resolve value
                       let val = "";
                       if (field.key === 'date') {
@@ -297,10 +285,8 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                         }
                       } else {
                         // 3-up Logic
-                        if (field.key === 'description') {
-                          dynamicHeightClass = 'min-h-0 border-b-0 flex-1'; // Fill remaining vertical space
-                        } else if (field.key === 'measurements') {
-                          dynamicHeightClass = `${field.heightClass} flex-shrink-0`; // Fixed height for measurements
+                        if (field.key === 'measurements') {
+                          dynamicHeightClass = 'min-h-0 border-b-0 flex-1'; // Fill remaining vertical space (was description's role)
                         } else {
                           dynamicHeightClass = `${field.heightClass} flex-shrink-0`;
                         }

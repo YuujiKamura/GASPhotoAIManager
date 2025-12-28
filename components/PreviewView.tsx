@@ -88,7 +88,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
   const [showConsole, setShowConsole] = useState(true); // Default to True
   const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
-  const [showDescription, setShowDescription] = useState(false); // Default to OFF
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [reorderType, setReorderType] = useState<'group' | 'single'>('group');
   const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
@@ -378,19 +377,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                 </>
               )}
 
-              {/* Description Toggle - only show in 3-up mode */}
-              {photosPerPage === 3 && (
-                <button
-                  onClick={() => setShowDescription(!showDescription)}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
-                    showDescription ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-slate-600"
-                  }`}
-                  title="記事欄の表示/非表示"
-                >
-                  <FileTextIcon className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">記事</span>
-                </button>
-              )}
             </div>
 
             {/* Export Buttons */}
@@ -632,7 +618,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                 appMode={appMode}
                 lang={lang}
                 photosPerPage={photosPerPage}
-                showDescription={showDescription}
                 onUpdatePhoto={onUpdatePhoto}
                 onDeletePhoto={onDeletePhoto}
                 onReanalyzePhoto={onReanalyzePhoto}
