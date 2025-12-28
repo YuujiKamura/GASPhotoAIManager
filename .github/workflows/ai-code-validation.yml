@@ -1,0 +1,71 @@
+name: AI Code Edit Validation
+
+on:
+  push:
+    branches:
+      - ai/code-edit
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  validate-and-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ai/code-edit branch
+        uses: actions/checkout@v4
+        with:
+          ref: ai/code-edit
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run build
+        id: build
+        run: npm run build
+        continue-on-error: true
+
+      - name: Build succeeded - merge to main
+        if: steps.build.outcome == 'success'
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git fetch origin main
+          git checkout main
+          git merge origin/ai/code-edit --no-edit -m "chore: merge AI code edit (build passed)"
+          git push origin main
+
+      - name: Build failed - revert and notify
+        if: steps.build.outcome == 'failure'
+        run: |
+          # 最新のコミットを取得
+          COMMIT_SHA=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+
+          # ブランチをリセット（前のコミットに戻す）
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git reset --hard HEAD~1
+          git push origin ai/code-edit --force
+
+          # Issue作成で通知
+          gh issue create \
+            --title "AI Code Edit Failed: Build Error" \
+            --body "## ビルド失敗によりrevertしました
+
+**コミット:** \`$COMMIT_SHA\`
+**メッセージ:** $COMMIT_MSG
+
+ビルドログを確認して、AIの編集内容を修正してください。
+
+[Actions Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "skills": [
+    {
+      "name": "fix-bug",
+      "category": "procedure",
+      "description": "バグを調査して修正する手順",
+      "keywords": ["バグ", "修正", "エラー", "問題", "fix", "bug"],
+      "priority": 10
+    },
+    {
+      "name": "add-feature",
+      "category": "procedure",
+      "description": "新機能を追加する手順",
+      "keywords": ["機能", "追加", "新規", "実装", "feature", "add"],
+      "priority": 10
+    },
+    {
+      "name": "update-prompt",
+      "category": "procedure",
+      "description": "AI解析プロンプトを改善する手順",
+      "keywords": ["プロンプト", "改善", "AI", "解析", "prompt"],
+      "priority": 10
+    }
+  ],
+  "categories": {
+    "procedure": {
+      "description": "作業手順を定義したスキル",
+      "loadStrategy": "on-demand"
+    }
+  },
+  "note": "ドメイン知識はスキルではなく、ユーザー定義プリセットとして管理する"
+}

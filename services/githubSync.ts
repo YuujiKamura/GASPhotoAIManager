@@ -12,6 +12,7 @@ const GITHUB_API = 'https://api.github.com';
 const OWNER = 'YuujiKamura';
 const REPO = 'GASPhotoAIManager';
 const DATA_BRANCH = 'data/learned-settings';
+const CODE_BRANCH = 'ai/code-edit'; // AIコード編集用ブランチ（CI検証後にmainへマージ）
 const DATA_PATH = 'src/data/learned-settings.json';
 
 // Token管理（sessionStorageに保存 - ブラウザ閉じたら消える）
@@ -369,4 +370,239 @@ export const getSyncStatus = async (token: string): Promise<SyncStatus> => {
     remoteVersion: remote?.version || 0,
     hasLocalChanges: local.version > (remote?.version || 0)
   };
+};
+
+// ============================================================
+// コード編集機能（AIによる自己書き換え用）
+// ============================================================
+
+/**
+ * GitHubからコードファイルを取得
+ */
+export const fetchCodeFile = async (
+  token: string,
+  filePath: string,
+  branch: string = 'main'
+): Promise<{ content: string; sha: string } | null> => {
+  try {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${filePath}?ref=${branch}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // ファイルが存在しない
+      }
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = decodeURIComponent(escape(atob(data.content)));
+    return { content, sha: data.sha };
+  } catch (e) {
+    console.error('fetchCodeFile error:', e);
+    return null;
+  }
+};
+
+/**
+ * リポジトリのディレクトリ一覧を取得
+ */
+export const listDirectory = async (
+  token: string,
+  dirPath: string = '',
+  branch: string = 'main'
+): Promise<Array<{ name: string; path: string; type: 'file' | 'dir' }> | null> => {
+  try {
+    const url = dirPath
+      ? `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${dirPath}?ref=${branch}`
+      : `${GITHUB_API}/repos/${OWNER}/${REPO}/contents?ref=${branch}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return data.map((item: any) => ({
+      name: item.name,
+      path: item.path,
+      type: item.type === 'dir' ? 'dir' : 'file'
+    }));
+  } catch (e) {
+    console.error('listDirectory error:', e);
+    return null;
+  }
+};
+
+/**
+ * コードファイルをGitHubにプッシュ（更新または新規作成）
+ */
+/**
+ * ai/code-editブランチが存在するか確認し、なければmainから作成
+ */
+const ensureCodeBranch = async (token: string): Promise<boolean> => {
+  try {
+    const branchResponse = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/branches/${CODE_BRANCH}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (branchResponse.ok) {
+      return true;
+    }
+
+    // mainブランチのSHAを取得して新規作成
+    const mainResponse = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs/heads/main`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (!mainResponse.ok) {
+      return false;
+    }
+
+    const mainData = await mainResponse.json();
+    const createResponse = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ref: `refs/heads/${CODE_BRANCH}`,
+          sha: mainData.object.sha
+        })
+      }
+    );
+
+    return createResponse.ok;
+  } catch (e) {
+    console.error('ensureCodeBranch error:', e);
+    return false;
+  }
+};
+
+export const pushCodeEdit = async (
+  token: string,
+  filePath: string,
+  newContent: string,
+  commitMessage: string,
+  branch: string = CODE_BRANCH // デフォルトはAI用ブランチ（CI検証される）
+): Promise<{ success: boolean; commitUrl?: string; error?: string }> => {
+  try {
+    // AI用ブランチの場合は存在確認/作成
+    if (branch === CODE_BRANCH) {
+      const branchReady = await ensureCodeBranch(token);
+      if (!branchReady) {
+        return { success: false, error: 'ai/code-editブランチの作成に失敗しました' };
+      }
+    }
+
+    // 現在のファイルのSHAを取得（更新の場合に必要）
+    let sha: string | undefined;
+    const currentFile = await fetchCodeFile(token, filePath, branch);
+    if (currentFile) {
+      sha = currentFile.sha;
+    }
+
+    // Base64エンコード（UTF-8対応）
+    const content = btoa(unescape(encodeURIComponent(newContent)));
+
+    // ファイルを更新/作成
+    const response = await fetch(
+      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${filePath}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: commitMessage,
+          content,
+          branch,
+          ...(sha && { sha })
+        })
+      }
+    );
+
+    if (response.ok) {
+      const result = await response.json();
+      return {
+        success: true,
+        commitUrl: result.commit.html_url
+      };
+    } else {
+      const error = await response.json();
+      return {
+        success: false,
+        error: error.message || `HTTP ${response.status}`
+      };
+    }
+  } catch (e: any) {
+    return {
+      success: false,
+      error: e.message || 'コードのプッシュに失敗しました'
+    };
+  }
+};
+
+/**
+ * ファイル検索（リポジトリ内のコードを検索）
+ */
+export const searchCode = async (
+  token: string,
+  query: string
+): Promise<Array<{ path: string; matchLines: string[] }> | null> => {
+  try {
+    const response = await fetch(
+      `${GITHUB_API}/search/code?q=${encodeURIComponent(query)}+repo:${OWNER}/${REPO}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return data.items.map((item: any) => ({
+      path: item.path,
+      matchLines: item.text_matches?.map((m: any) => m.fragment) || []
+    }));
+  } catch (e) {
+    console.error('searchCode error:', e);
+    return null;
+  }
 };
