@@ -150,25 +150,25 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
           type: 'bloated_file',
           severity: 'high',
           file: 'App.tsx',
-          lines: 2186,
+          lines: 2211,
           description: lang === 'ja'
-            ? 'App.tsx が2186行で肥大化。責務が集中しすぎ'
-            : 'App.tsx is bloated at 2186 lines. Too many responsibilities',
+            ? 'App.tsx が2211行で肥大化。責務が集中しすぎ'
+            : 'App.tsx is bloated at 2211 lines. Too many responsibilities',
           suggestion: lang === 'ja'
-            ? '状態管理をカスタムフックに分離、ビューロジックをコンポーネントに分割'
-            : 'Extract state management to custom hooks, split view logic into components',
+            ? 'hooks/にカスタムフック作成済み（未使用）。これらを適用して状態管理を分離'
+            : 'Custom hooks created in hooks/ (unused). Apply them to extract state management',
           impact: lang === 'ja'
             ? 'ビルド時間増加、Hot Reload遅延、保守性低下'
             : 'Slower builds, delayed Hot Reload, reduced maintainability'
         },
         {
           type: 'bloated_file',
-          severity: 'medium',
+          severity: 'high',
           file: 'geminiService.ts',
-          lines: 850,
+          lines: 1736,
           description: lang === 'ja'
-            ? 'geminiService.ts が850行。複数の機能が混在'
-            : 'geminiService.ts is 850 lines with mixed responsibilities',
+            ? 'geminiService.ts が1736行。複数の機能が混在'
+            : 'geminiService.ts is 1736 lines with mixed responsibilities',
           suggestion: lang === 'ja'
             ? 'API呼び出し、キャッシュ、変換処理を別モジュールに分離'
             : 'Separate API calls, caching, and transformation into modules',
@@ -180,10 +180,10 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
           type: 'bloated_file',
           severity: 'medium',
           file: 'UploadView.tsx',
-          lines: 570,
+          lines: 554,
           description: lang === 'ja'
-            ? 'UploadView.tsx が570行。UIとロジックが混在'
-            : 'UploadView.tsx is 570 lines mixing UI and logic',
+            ? 'UploadView.tsx が554行。UIとロジックが混在'
+            : 'UploadView.tsx is 554 lines mixing UI and logic',
           suggestion: lang === 'ja'
             ? 'フォームロジックをカスタムフックに、UIを小コンポーネントに分割'
             : 'Extract form logic to hooks, split UI into smaller components',
@@ -198,11 +198,11 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
           severity: 'high',
           file: 'index.js',
           description: lang === 'ja'
-            ? 'メインバンドルが2.4MB (gzip: 853KB)。500KB超過'
-            : 'Main bundle is 2.4MB (gzip: 853KB). Exceeds 500KB limit',
+            ? 'メインバンドルが1.43MB (gzip: 521KB)。React.lazy導入済みだが依然として大きい'
+            : 'Main bundle is 1.43MB (gzip: 521KB). React.lazy applied but still large',
           suggestion: lang === 'ja'
-            ? 'React.lazy()で動的インポート、重いライブラリを分割'
-            : 'Use React.lazy() for dynamic imports, split heavy libraries',
+            ? 'manualChunksでgeminiService等の重いモジュールを分割'
+            : 'Use manualChunks to split heavy modules like geminiService',
           impact: lang === 'ja'
             ? '初回ロード時間が長い（モバイルで特に顕著）'
             : 'Long initial load time (especially on mobile)'
@@ -210,16 +210,16 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
         {
           type: 'bundle_bloat',
           severity: 'medium',
-          file: 'pdf.worker.min.mjs',
+          file: 'pdf.js + pdf.worker',
           description: lang === 'ja'
-            ? 'PDF.js ワーカーが1.07MB。PDF機能未使用時も読込'
-            : 'PDF.js worker is 1.07MB. Loaded even when PDF unused',
+            ? 'PDF関連が合計1.95MB (877KB + 1.07MB)。PDF機能未使用時も一部読込'
+            : 'PDF total 1.95MB (877KB + 1.07MB). Partially loaded even when unused',
           suggestion: lang === 'ja'
             ? 'PDF機能を使用時のみ動的読込に変更'
             : 'Load PDF functionality dynamically on demand',
           impact: lang === 'ja'
-            ? 'PDF不要なユーザーにも1MB以上の負担'
-            : 'Over 1MB penalty for users not using PDF'
+            ? 'PDF不要なユーザーにも負担'
+            : 'Penalty for users not using PDF'
         },
 
         // 重複・類似機能
@@ -237,47 +237,33 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             : 'Increased bundle size, more maintenance burden'
         },
 
-        // 未使用コード候補
+        // 未使用フック
         {
           type: 'unused_code',
-          severity: 'low',
-          file: 'webContainerService.ts',
+          severity: 'medium',
+          file: 'hooks/*.ts',
           description: lang === 'ja'
-            ? 'webContainerService.ts が単独チャンク化。使用箇所が限定的'
-            : 'webContainerService.ts in separate chunk. Limited usage',
+            ? 'カスタムフック5個が作成済みだがApp.tsxで未使用'
+            : '5 custom hooks created but unused in App.tsx',
           suggestion: lang === 'ja'
-            ? '本当に必要か確認、不要なら削除'
-            : 'Verify if needed, remove if not',
+            ? 'useAppModals, useProcessingState等をApp.tsxに適用'
+            : 'Apply useAppModals, useProcessingState etc. to App.tsx',
           impact: lang === 'ja'
-            ? '14.6KBの追加読み込み'
-            : '14.6KB additional load'
-        },
-        {
-          type: 'unused_code',
-          severity: 'low',
-          file: 'embeddingService.ts',
-          description: lang === 'ja'
-            ? 'embeddingService が存在するが、使用箇所が不明'
-            : 'embeddingService exists but usage unclear',
-          suggestion: lang === 'ja'
-            ? '使用していなければ削除'
-            : 'Remove if not in use',
-          impact: lang === 'ja'
-            ? '不要コードによる保守負担'
-            : 'Maintenance burden from unused code'
+            ? 'App.tsxに40+のuseStateが残存、フックが無駄に'
+            : '40+ useState remain in App.tsx, hooks wasted'
         },
 
         // 複雑性
         {
           type: 'complexity',
-          severity: 'medium',
+          severity: 'high',
           file: 'App.tsx',
           description: lang === 'ja'
-            ? '30以上のuseState呼び出し。状態管理が複雑'
-            : 'Over 30 useState calls. State management is complex',
+            ? '40以上のuseState呼び出し。状態管理が複雑'
+            : 'Over 40 useState calls. State management is complex',
           suggestion: lang === 'ja'
-            ? 'useReducerまたはZustandで状態をグループ化'
-            : 'Group state with useReducer or Zustand',
+            ? '作成済みカスタムフック (hooks/) を適用して状態を整理'
+            : 'Apply existing custom hooks (hooks/) to organize state',
           impact: lang === 'ja'
             ? '再レンダリング最適化が困難、バグ発生リスク'
             : 'Hard to optimize re-renders, increased bug risk'
@@ -354,19 +340,19 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
           name: lang === 'ja' ? 'ビルド' : 'Build',
           status: 'warning',
           message: lang === 'ja' ? 'チャンクサイズ警告' : 'Chunk size warning',
-          details: lang === 'ja' ? '500KB超過のチャンクあり' : 'Chunks exceeding 500KB'
+          details: lang === 'ja' ? 'index.js 1.43MB (gzip: 521KB)' : 'index.js 1.43MB (gzip: 521KB)'
         },
         {
           name: lang === 'ja' ? 'コード分割' : 'Code Splitting',
-          status: 'error',
-          message: lang === 'ja' ? '未実装' : 'Not implemented',
-          details: lang === 'ja' ? 'React.lazy未使用' : 'No React.lazy usage'
+          status: 'warning',
+          message: lang === 'ja' ? '部分的に導入' : 'Partially implemented',
+          details: lang === 'ja' ? 'React.lazy導入済み（8コンポーネント）' : 'React.lazy applied (8 components)'
         },
         {
-          name: lang === 'ja' ? 'テスト' : 'Tests',
+          name: lang === 'ja' ? 'カスタムフック' : 'Custom Hooks',
           status: 'warning',
-          message: lang === 'ja' ? 'カバレッジ不明' : 'Coverage unknown',
-          details: lang === 'ja' ? 'Vitest設定済みだがテスト少' : 'Vitest configured but few tests'
+          message: lang === 'ja' ? '作成済み・未使用' : 'Created but unused',
+          details: lang === 'ja' ? 'hooks/に5個作成済み' : '5 hooks in hooks/'
         }
       ];
 
@@ -564,20 +550,22 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                   <div className="mb-6">
                     <div className="flex justify-between text-sm mb-2">
                       <span className="font-medium text-gray-700">{txt.bundleTotal}</span>
-                      <span className="font-bold text-red-600">3.55 MB (gzip: 870 KB)</span>
+                      <span className="font-bold text-orange-600">3.37 MB (gzip: 841 KB)</span>
                     </div>
                     <div className="h-8 bg-gray-100 rounded-lg overflow-hidden flex">
-                      <div className="bg-blue-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '67%' }}>
-                        index.js (2.4MB)
+                      <div className="bg-blue-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '42%' }}>
+                        index.js (1.43MB)
                       </div>
-                      <div className="bg-orange-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '30%' }}>
+                      <div className="bg-purple-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '26%' }}>
+                        pdf.js (877KB)
+                      </div>
+                      <div className="bg-orange-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '32%' }}>
                         pdf.worker (1.07MB)
                       </div>
-                      <div className="bg-gray-400 h-full" style={{ width: '3%' }} />
                     </div>
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
                       <span>0 MB</span>
-                      <span className="text-red-500 font-medium">⚠️ 500KB推奨ライン</span>
+                      <span className="text-yellow-600 font-medium">⚠️ 600KB推奨ライン</span>
                       <span>4 MB</span>
                     </div>
                   </div>
@@ -657,19 +645,19 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                 <div className="bg-white/20 rounded-lg p-4">
                   <div className="text-2xl mb-2">1️⃣</div>
                   <p className="font-medium">
-                    {lang === 'ja' ? 'App.tsx を分割' : 'Split App.tsx'}
+                    {lang === 'ja' ? 'カスタムフックを適用' : 'Apply Custom Hooks'}
                   </p>
                   <p className="text-sm text-white/80 mt-1">
-                    {lang === 'ja' ? '状態管理をカスタムフックに' : 'Extract state to custom hooks'}
+                    {lang === 'ja' ? 'hooks/の5個をApp.tsxで使用' : 'Use 5 hooks from hooks/ in App.tsx'}
                   </p>
                 </div>
                 <div className="bg-white/20 rounded-lg p-4">
                   <div className="text-2xl mb-2">2️⃣</div>
                   <p className="font-medium">
-                    {lang === 'ja' ? 'コード分割を導入' : 'Add Code Splitting'}
+                    {lang === 'ja' ? 'geminiServiceを分割' : 'Split geminiService'}
                   </p>
                   <p className="text-sm text-white/80 mt-1">
-                    {lang === 'ja' ? 'React.lazy + Suspense' : 'React.lazy + Suspense'}
+                    {lang === 'ja' ? '1736行を複数モジュールに' : '1736 lines into modules'}
                   </p>
                 </div>
                 <div className="bg-white/20 rounded-lg p-4">
@@ -678,7 +666,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                     {lang === 'ja' ? 'PDF機能を遅延読込' : 'Lazy Load PDF'}
                   </p>
                   <p className="text-sm text-white/80 mt-1">
-                    {lang === 'ja' ? '1MB以上の削減効果' : 'Save over 1MB'}
+                    {lang === 'ja' ? '約2MBの削減効果' : 'Save about 2MB'}
                   </p>
                 </div>
               </div>
