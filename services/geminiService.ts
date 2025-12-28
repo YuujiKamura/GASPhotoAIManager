@@ -24,19 +24,19 @@ export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void =
   }
 };
 
-// API Key Management (sessionStorage for security - cleared on browser close)
+// API Key Management (localStorage for persistence)
 const API_KEY_STORAGE_KEY = 'construction_album_api_key';
 
 export const getApiKey = (): string | null => {
-  return sessionStorage.getItem(API_KEY_STORAGE_KEY);
+  return localStorage.getItem(API_KEY_STORAGE_KEY);
 };
 
 export const setApiKey = (key: string): void => {
-  sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
+  localStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
 export const clearApiKey = (): void => {
-  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
 };
 
 export const hasApiKey = (): boolean => {
