@@ -1,17 +1,12 @@
 {
-  "generatedAt": "2025-12-28T23:15:53.333Z",
-  "totalFiles": 92,
-  "totalLines": 30223,
+  "generatedAt": "2025-12-28T23:28:46.732Z",
+  "totalFiles": 82,
+  "totalLines": 25973,
   "largeFiles": [
     {
       "path": "App.tsx",
       "lines": 2212,
       "size": 84723
-    },
-    {
-      "path": "components/MasterEditorModal.tsx",
-      "lines": 1105,
-      "size": 41701
     },
     {
       "path": "utils/storage.ts",
@@ -34,33 +29,39 @@
       "size": 26474
     },
     {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 734,
+      "size": 30959
+    },
+    {
       "path": "components/PhotoAlbumView.tsx",
       "lines": 715,
       "size": 31320
     },
     {
-      "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 704,
-      "size": 29869
-    },
-    {
-      "path": "scripts/test-pdf-image-extraction.ts",
-      "lines": 702,
-      "size": 23411
-    },
-    {
       "path": "components/PreviewView.tsx",
       "lines": 642,
       "size": 28993
+    },
+    {
+      "path": "services/githubSync.ts",
+      "lines": 617,
+      "size": 17419
+    },
+    {
+      "path": "services/aiAgentService.ts",
+      "lines": 589,
+      "size": 17175
     }
   ],
   "components": {
-    "count": 26,
+    "count": 27,
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (704行)",
+      "components/CodebaseHealthDashboard.tsx (734行)",
       "components/ConsolePanel.tsx (171行)",
+      "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
       "components/GitHubSyncPanel.tsx (341行)",
       "components/InteractiveAnalysisDialog/index.tsx (288行)",
@@ -68,7 +69,7 @@
       "components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts (228行)",
       "components/LimitModal.tsx (74行)",
       "components/ManualPairingModal.tsx (290行)",
-      "components/MasterEditorModal.tsx (1105行)",
+      "components/MasterEditorModal.tsx (349行)",
       "components/ModelValidation.tsx (381行)",
       "components/NormalizationPresetsPanel.tsx (241行)",
       "components/NormalizationPreviewModal.tsx (228行)",
@@ -110,18 +111,20 @@
     ]
   },
   "hooks": {
-    "count": 6,
+    "count": 8,
     "files": [
-      "hooks/index.ts (6行)",
+      "hooks/index.ts (8行)",
       "hooks/useAppModals.ts (90行)",
       "hooks/useFsCache.ts (66行)",
+      "hooks/useMasterEditorAlias.ts (145行)",
+      "hooks/useMasterEditorState.ts (151行)",
       "hooks/useNormalizationFlow.ts (46行)",
       "hooks/usePendingState.ts (76行)",
       "hooks/useProcessingState.ts (95行)"
     ]
   },
   "utils": {
-    "count": 15,
+    "count": 16,
     "files": [
       "utils/analysisRules.ts (330行)",
       "utils/constructionMaster.ts (818行)",
@@ -131,6 +134,7 @@
       "utils/imageUtils.ts (90行)",
       "utils/layoutConfig.ts (119行)",
       "utils/learnedSortOrder.ts (89行)",
+      "utils/masterEditorStorage.ts (165行)",
       "utils/pdfGenerator.ts (927行)",
       "utils/storage.ts (1096行)",
       "utils/translations.ts (210行)",
@@ -149,15 +153,6 @@
       "priority": "high",
       "status": "todo",
       "estimatedLines": 1712
-    },
-    {
-      "id": "split-components-MasterEditorModal-tsx",
-      "title": "components/MasterEditorModal.tsx を分割",
-      "description": "1105行 → 目標500行以下。ロジックを別モジュール/カスタムフックに抽出",
-      "file": "components/MasterEditorModal.tsx",
-      "priority": "medium",
-      "status": "todo",
-      "estimatedLines": 605
     },
     {
       "id": "split-utils-storage-ts",
@@ -196,6 +191,15 @@
       "estimatedLines": 518
     },
     {
+      "id": "refactor-components-CodebaseHealthDashboard-tsx",
+      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
+      "description": "734行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "components/CodebaseHealthDashboard.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 434
+    },
+    {
       "id": "refactor-components-PhotoAlbumView-tsx",
       "title": "components/PhotoAlbumView.tsx をリファクタ",
       "description": "715行。重複削除・ロジック整理で300行以下を目指す",
@@ -203,24 +207,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 415
-    },
-    {
-      "id": "refactor-components-CodebaseHealthDashboard-tsx",
-      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "704行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/CodebaseHealthDashboard.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 404
-    },
-    {
-      "id": "refactor-scripts-test-pdf-image-extraction-ts",
-      "title": "scripts/test-pdf-image-extraction.ts をリファクタ",
-      "description": "702行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "scripts/test-pdf-image-extraction.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 402
     },
     {
       "id": "refactor-components-PreviewView-tsx",
@@ -297,7 +283,7 @@
     {
       "id": "apply-hooks",
       "title": "カスタムフックをApp.tsxに適用",
-      "description": "hooks/ の 6 個のフックをApp.tsxで使用して状態管理を整理",
+      "description": "hooks/ の 8 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
       "status": "todo",
