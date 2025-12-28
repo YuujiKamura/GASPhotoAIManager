@@ -373,6 +373,19 @@ export default function App() {
 
     // Final sort and cleanup
     setPhotos(prev => sortPhotosLogical(prev));
+
+    // エイリアス自動適用（設定が有効な場合）
+    const aliasSettings = loadAliasSettings();
+    if (aliasSettings.enabled && hasAliases(aliasSettings)) {
+      setPhotos(prev => {
+        const { modifiedCount, records } = applyAliasesToRecords(prev, aliasSettings);
+        if (modifiedCount > 0) {
+          addLog(`エイリアス自動適用: ${modifiedCount}件のデータを変換しました`, 'success');
+        }
+        return records;
+      });
+    }
+
     setShowNormalizationModal(false);
     setNormalizationProposals([]);
     setNormalizationOriginals([]);
@@ -385,6 +398,19 @@ export default function App() {
 
     // Final sort without applying corrections
     setPhotos(prev => sortPhotosLogical(prev));
+
+    // エイリアス自動適用（設定が有効な場合）
+    const aliasSettings = loadAliasSettings();
+    if (aliasSettings.enabled && hasAliases(aliasSettings)) {
+      setPhotos(prev => {
+        const { modifiedCount, records } = applyAliasesToRecords(prev, aliasSettings);
+        if (modifiedCount > 0) {
+          addLog(`エイリアス自動適用: ${modifiedCount}件のデータを変換しました`, 'success');
+        }
+        return records;
+      });
+    }
+
     setShowNormalizationModal(false);
     setNormalizationProposals([]);
     setNormalizationOriginals([]);
@@ -1347,6 +1373,18 @@ export default function App() {
         return sorted;
       });
 
+      // 5. エイリアス自動適用（設定が有効な場合）
+      const aliasSettings = loadAliasSettings();
+      if (aliasSettings.enabled && hasAliases(aliasSettings)) {
+        setPhotos(prev => {
+          const { modifiedCount, records } = applyAliasesToRecords(prev, aliasSettings);
+          if (modifiedCount > 0) {
+            addLog(`エイリアス自動適用: ${modifiedCount}件のデータを変換しました`, 'success');
+          }
+          return records;
+        });
+      }
+
       setSuccessMsg(txt.done);
 
     } catch (err: any) {
@@ -1851,6 +1889,18 @@ export default function App() {
         onOpenMasterEditor={() => setShowMasterEditor(true)}
         onReorderPhotos={handleReorderPhotos}
         onOpenStationReplace={() => setShowStationReplace(true)}
+        onApplyAliases={() => {
+          const settings = loadAliasSettings();
+          if (!settings.enabled || !hasAliases(settings)) {
+            return { modifiedCount: 0 };
+          }
+          const { modifiedCount, records } = applyAliasesToRecords(photos, settings);
+          if (modifiedCount > 0) {
+            setPhotos(records);
+            addLog(`エイリアス適用: ${modifiedCount}件のデータを変換しました`, 'success');
+          }
+          return { modifiedCount };
+        }}
       />
       )}
 
