@@ -400,6 +400,24 @@ export const parsePositionedTextToRecords = (
 };
 
 /**
+ * PDFオブジェクトを非同期で取得するヘルパー関数
+ * pdfjs-distのobjs.get()はオブジェクトが解決されるまでnullを返す可能性があるため、
+ * コールバック形式で確実に取得する
+ */
+const getObjectAsync = (objs: any, objName: string): Promise<any> => {
+  return new Promise((resolve) => {
+    // 既に解決済みの場合は即座に返す
+    const existing = objs.get(objName);
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+    // コールバック形式で待機
+    objs.get(objName, resolve);
+  });
+};
+
+/**
  * PDFから埋め込み画像を抽出
  * html2pdfで生成されたPDFには、各ページに画像が埋め込まれている
  */
@@ -407,6 +425,8 @@ export const extractImagesFromPdf = async (
   pdfFile: File | Blob
 ): Promise<{ data: Uint8Array; mimeType: string }[]> => {
   const images: { data: Uint8Array; mimeType: string }[] = [];
+  // 既に処理済みの画像名を追跡（重複抽出を防止）
+  const processedImageNames = new Set<string>();
 
   try {
     const arrayBuffer = await pdfFile.arrayBuffer();
@@ -417,48 +437,72 @@ export const extractImagesFromPdf = async (
       const operatorList = await page.getOperatorList();
       const objs = page.objs;
 
-      // OperatorListから画像オブジェクトを探す
+      // OperatorListから画像オブジェクト名を収集
       const OPS = pdfjsLib.OPS;
+      const imageNames: string[] = [];
+
       for (let i = 0; i < operatorList.fnArray.length; i++) {
         const op = operatorList.fnArray[i];
         if (op === OPS.paintImageXObject || op === OPS.paintJpegXObject) {
           const imgName = operatorList.argsArray[i][0];
+          // 重複チェック：同じ画像名は一度だけ処理
+          if (!processedImageNames.has(imgName)) {
+            imageNames.push(imgName);
+            processedImageNames.add(imgName);
+          }
+        }
+      }
 
-          try {
-            const imgData = objs.get(imgName);
-            if (imgData && imgData.data) {
-              // ImageDataをcanvasに描画してbase64に変換
-              const canvas = document.createElement('canvas');
-              canvas.width = imgData.width;
-              canvas.height = imgData.height;
-              const ctx = canvas.getContext('2d');
+      // 各画像を非同期で取得
+      for (const imgName of imageNames) {
+        try {
+          const imgData = await getObjectAsync(objs, imgName);
 
-              if (ctx) {
-                const imageData = new ImageData(
-                  new Uint8ClampedArray(imgData.data),
-                  imgData.width,
-                  imgData.height
-                );
-                ctx.putImageData(imageData, 0, 0);
+          if (imgData && imgData.data) {
+            // ImageDataをcanvasに描画してbase64に変換
+            const canvas = document.createElement('canvas');
+            canvas.width = imgData.width;
+            canvas.height = imgData.height;
+            const ctx = canvas.getContext('2d');
 
-                // Blob に変換
-                const blob = await new Promise<Blob | null>((resolve) => {
-                  canvas.toBlob(resolve, 'image/jpeg', 0.95);
+            if (ctx) {
+              const imageData = new ImageData(
+                new Uint8ClampedArray(imgData.data),
+                imgData.width,
+                imgData.height
+              );
+              ctx.putImageData(imageData, 0, 0);
+
+              // Blob に変換
+              const blob = await new Promise<Blob | null>((resolve) => {
+                canvas.toBlob(resolve, 'image/jpeg', 0.95);
+              });
+
+              if (blob) {
+                const buffer = await blob.arrayBuffer();
+                images.push({
+                  data: new Uint8Array(buffer),
+                  mimeType: 'image/jpeg'
                 });
-
-                if (blob) {
-                  const buffer = await blob.arrayBuffer();
-                  images.push({
-                    data: new Uint8Array(buffer),
-                    mimeType: 'image/jpeg'
-                  });
-                }
               }
             }
-          } catch (imgErr) {
-            // 個別画像の取得失敗は無視
-            console.warn(`Failed to extract image ${imgName}:`, imgErr);
+          } else if (imgData && imgData.src) {
+            // JPEG画像の場合、srcプロパティにデータURLが含まれる場合がある
+            try {
+              const response = await fetch(imgData.src);
+              const blob = await response.blob();
+              const buffer = await blob.arrayBuffer();
+              images.push({
+                data: new Uint8Array(buffer),
+                mimeType: blob.type || 'image/jpeg'
+              });
+            } catch {
+              console.warn(`Failed to fetch image src for ${imgName}`);
+            }
           }
+        } catch (imgErr) {
+          // 個別画像の取得失敗は無視
+          console.warn(`Failed to extract image ${imgName}:`, imgErr);
         }
       }
     }
