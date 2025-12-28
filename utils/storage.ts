@@ -1,14 +1,15 @@
-import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, AnalysisHistoryEntry, PhotoCategory } from "../types";
+import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, AnalysisHistoryEntry, PhotoCategory, AnalysisIssue, IssueType, IssueStatus } from "../types";
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 6; // Version 6: Added analysisHistory store
+const DB_VERSION = 7; // Version 7: Added analysisIssues store
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
 const STORE_EXAMPLES = 'analysisExamples'; // Store for few-shot examples
 const STORE_SESSIONS = 'analysisSessions'; // Store for saved sessions (お手本セッション)
 const STORE_HISTORY = 'analysisHistory'; // Store for analysis history (履歴)
+const STORE_ISSUES = 'analysisIssues'; // Store for analysis issues (問題ケース)
 const KEY_SESSION = 'currentSession';
 const KEY_ACTIVE_SESSION = 'activeExampleSession'; // LocalStorage key for currently selected session
 const MAX_HISTORY_ENTRIES = 20; // 履歴の最大件数
@@ -59,6 +60,14 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(STORE_HISTORY)) {
         const historyStore = db.createObjectStore(STORE_HISTORY, { keyPath: 'id' });
         historyStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+
+      // Store for analysis issues (問題ケース)
+      if (!db.objectStoreNames.contains(STORE_ISSUES)) {
+        const issuesStore = db.createObjectStore(STORE_ISSUES, { keyPath: 'id' });
+        issuesStore.createIndex('createdAt', 'createdAt', { unique: false });
+        issuesStore.createIndex('status', 'status', { unique: false });
+        issuesStore.createIndex('issueType', 'issueType', { unique: false });
       }
     };
 
@@ -953,4 +962,135 @@ export const getActiveExampleHistory = async (): Promise<AnalysisHistoryEntry | 
   const id = getActiveExampleHistoryId();
   if (!id) return null;
   return getAnalysisHistoryEntry(id);
+};
+
+// ============================================
+// 問題ケース (Analysis Issues)
+// ============================================
+
+/**
+ * 問題ケースを保存
+ */
+export const saveAnalysisIssue = async (
+  record: PhotoRecord,
+  issueDescription: string,
+  issueType: IssueType,
+  expectedValues?: AnalysisIssue['expectedValues']
+): Promise<AnalysisIssue> => {
+  if (!record.analysis) {
+    throw new Error('解析結果がありません');
+  }
+
+  const now = Date.now();
+  const issue: AnalysisIssue = {
+    id: `issue_${now}_${Math.random().toString(36).substr(2, 9)}`,
+    fileName: record.fileName,
+    thumbnail: record.base64,
+    actualAnalysis: { ...record.analysis },
+    expectedValues,
+    issueDescription,
+    issueType,
+    status: 'open',
+    createdAt: now
+  };
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_ISSUES, 'readwrite');
+    const store = transaction.objectStore(STORE_ISSUES);
+    const request = store.put(issue);
+    request.onsuccess = () => resolve(issue);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 問題ケース一覧を取得（新しい順）
+ */
+export const getAnalysisIssues = async (): Promise<AnalysisIssue[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_ISSUES, 'readonly');
+    const store = transaction.objectStore(STORE_ISSUES);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const issues = request.result as AnalysisIssue[];
+      resolve(issues.sort((a, b) => b.createdAt - a.createdAt));
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * ステータスで問題ケースをフィルタ
+ */
+export const getIssuesByStatus = async (status: IssueStatus): Promise<AnalysisIssue[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_ISSUES, 'readonly');
+    const store = transaction.objectStore(STORE_ISSUES);
+    const index = store.index('status');
+    const request = index.getAll(status);
+    request.onsuccess = () => {
+      const issues = request.result as AnalysisIssue[];
+      resolve(issues.sort((a, b) => b.createdAt - a.createdAt));
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 問題ケースを更新
+ */
+export const updateAnalysisIssue = async (
+  id: string,
+  updates: Partial<Omit<AnalysisIssue, 'id' | 'createdAt'>>
+): Promise<AnalysisIssue | null> => {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_ISSUES, 'readwrite');
+    const store = transaction.objectStore(STORE_ISSUES);
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const issue = getRequest.result as AnalysisIssue | undefined;
+      if (!issue) {
+        resolve(null);
+        return;
+      }
+
+      const updated = { ...issue, ...updates };
+      if (updates.status === 'resolved') {
+        updated.resolvedAt = Date.now();
+      }
+
+      const putRequest = store.put(updated);
+      putRequest.onsuccess = () => resolve(updated);
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+    getRequest.onerror = () => reject(getRequest.error);
+  });
+};
+
+/**
+ * 問題ケースを削除
+ */
+export const deleteAnalysisIssue = async (id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_ISSUES, 'readwrite');
+    const store = transaction.objectStore(STORE_ISSUES);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+/**
+ * 未解決の問題ケース数を取得
+ */
+export const getOpenIssueCount = async (): Promise<number> => {
+  const issues = await getIssuesByStatus('open');
+  return issues.length;
 };

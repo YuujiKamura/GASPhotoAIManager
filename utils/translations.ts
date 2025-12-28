@@ -86,7 +86,22 @@ export const TRANS = {
     changeLogTitle: "Change History",
     noChanges: "No changes were made during processing.",
     changedFrom: "From",
-    changedTo: "To"
+    changedTo: "To",
+    // Issue Tracking
+    reportIssue: "Report Issue",
+    issueTitle: "Report Analysis Issue",
+    issueDescPlaceholder: "Describe what went wrong...",
+    issueTypeLabel: "Issue Type",
+    issueTypes: {
+      wrong_classification: "Wrong Classification",
+      wrong_inheritance: "Wrong Inheritance",
+      master_rejection: "Master Rejected",
+      temperature_error: "Temperature Error",
+      ocr_error: "OCR Error",
+      other: "Other"
+    },
+    saveIssue: "Save Issue",
+    issueSaved: "Issue saved for review"
   },
   ja: {
     appTitle: "工事写真帳メーカー",
@@ -175,6 +190,21 @@ export const TRANS = {
     changeLogTitle: "変更履歴",
     noChanges: "処理中に変更はありませんでした。",
     changedFrom: "変更前",
-    changedTo: "変更後"
+    changedTo: "変更後",
+    // Issue Tracking
+    reportIssue: "問題として報告",
+    issueTitle: "解析問題を報告",
+    issueDescPlaceholder: "何が問題だったか説明してください...",
+    issueTypeLabel: "問題の種類",
+    issueTypes: {
+      wrong_classification: "分類が間違い",
+      wrong_inheritance: "継承が不適切",
+      master_rejection: "マスタ検証で消された",
+      temperature_error: "温度解析エラー",
+      ocr_error: "OCR読み取りエラー",
+      other: "その他"
+    },
+    saveIssue: "問題を保存",
+    issueSaved: "問題を検証用に保存しました"
   }
 };
