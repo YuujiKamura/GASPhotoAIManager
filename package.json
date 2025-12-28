@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npx tsx scripts/analyze-codebase.ts",
     "build": "vite build",
+    "analyze": "npx tsx scripts/analyze-codebase.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

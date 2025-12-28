@@ -1,0 +1,143 @@
+{
+  "generatedAt": "2025-12-28T23:02:26.886Z",
+  "totalFiles": 92,
+  "totalLines": 30037,
+  "largeFiles": [
+    {
+      "path": "App.tsx",
+      "lines": 2212,
+      "size": 84723
+    },
+    {
+      "path": "components/MasterEditorModal.tsx",
+      "lines": 1105,
+      "size": 41701
+    },
+    {
+      "path": "utils/storage.ts",
+      "lines": 1096,
+      "size": 35658
+    },
+    {
+      "path": "services/gemini/analysis.ts",
+      "lines": 1088,
+      "size": 44897
+    },
+    {
+      "path": "utils/pdfGenerator.ts",
+      "lines": 927,
+      "size": 31630
+    },
+    {
+      "path": "utils/constructionMaster.ts",
+      "lines": 818,
+      "size": 26474
+    },
+    {
+      "path": "components/PhotoAlbumView.tsx",
+      "lines": 715,
+      "size": 31320
+    },
+    {
+      "path": "scripts/test-pdf-image-extraction.ts",
+      "lines": 702,
+      "size": 23411
+    },
+    {
+      "path": "components/PreviewView.tsx",
+      "lines": 642,
+      "size": 28993
+    },
+    {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 624,
+      "size": 25207
+    }
+  ],
+  "components": {
+    "count": 26,
+    "files": [
+      "components/AnalysisRulesPanel.tsx (158行)",
+      "components/ApiKeySetup.tsx (331行)",
+      "components/CodebaseHealthDashboard.tsx (624行)",
+      "components/ConsolePanel.tsx (171行)",
+      "components/ExamplesModal.tsx (317行)",
+      "components/GitHubSyncPanel.tsx (341行)",
+      "components/InteractiveAnalysisDialog/index.tsx (288行)",
+      "components/InteractiveAnalysisDialog/types.ts (116行)",
+      "components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts (228行)",
+      "components/LimitModal.tsx (74行)",
+      "components/ManualPairingModal.tsx (290行)",
+      "components/MasterEditorModal.tsx (1105行)",
+      "components/ModelValidation.tsx (381行)",
+      "components/NormalizationPresetsPanel.tsx (241行)",
+      "components/NormalizationPreviewModal.tsx (228行)",
+      "components/PdfLoadDialog.tsx (226行)",
+      "components/PersonalStorageSetup.tsx (396行)",
+      "components/PhotoAlbumView.tsx (715行)",
+      "components/PreviewView.tsx (642行)",
+      "components/RefineModal.tsx (523行)",
+      "components/SessionHistoryPanel.tsx (404行)",
+      "components/SimplePairingMode.tsx (130行)",
+      "components/StationReplaceModal.tsx (525行)",
+      "components/UploadView.tsx (555行)",
+      "components/UsagePanel.tsx (127行)",
+      "components/WorkTypeConfirmModal.tsx (132行)"
+    ]
+  },
+  "services": {
+    "count": 19,
+    "files": [
+      "services/agentContext.ts (198行)",
+      "services/aiAgentService.ts (589行)",
+      "services/gemini/analysis.ts (1088行)",
+      "services/gemini/apiKey.ts (170行)",
+      "services/gemini/index.ts (88行)",
+      "services/gemini/models.ts (150行)",
+      "services/gemini/normalization.ts (445行)",
+      "services/geminiService.ts (12行)",
+      "services/githubSync.ts (617行)",
+      "services/learningService.ts (462行)",
+      "services/optimizedSpatialPairingService.ts (384行)",
+      "services/personalStorage.ts (538行)",
+      "services/projectStorage.ts (513行)",
+      "services/smartFlowService.ts (255行)",
+      "services/spatialPairingService.ts (369行)",
+      "services/storageManager.ts (343行)",
+      "services/usageTracker.ts (354行)",
+      "services/webAuthnService.ts (202行)",
+      "services/webContainerService.ts (271行)"
+    ]
+  },
+  "hooks": {
+    "count": 6,
+    "files": [
+      "hooks/index.ts (6行)",
+      "hooks/useAppModals.ts (90行)",
+      "hooks/useFsCache.ts (66行)",
+      "hooks/useNormalizationFlow.ts (46行)",
+      "hooks/usePendingState.ts (76行)",
+      "hooks/useProcessingState.ts (95行)"
+    ]
+  },
+  "utils": {
+    "count": 15,
+    "files": [
+      "utils/analysisRules.ts (330行)",
+      "utils/constructionMaster.ts (818行)",
+      "utils/crypto.ts (149行)",
+      "utils/excelGenerator.ts (243行)",
+      "utils/fileSystemCache.ts (355行)",
+      "utils/imageUtils.ts (90行)",
+      "utils/layoutConfig.ts (119行)",
+      "utils/learnedSortOrder.ts (89行)",
+      "utils/pdfGenerator.ts (927行)",
+      "utils/storage.ts (1096行)",
+      "utils/translations.ts (210行)",
+      "utils/userPresets.ts (161行)",
+      "utils/workTypeAliases.ts (325行)",
+      "utils/xmlGenerator.ts (69行)",
+      "utils/zipGenerator.ts (47行)"
+    ]
+  }
+}

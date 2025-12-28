@@ -25,6 +25,9 @@ import {
   Copy
 } from 'lucide-react';
 
+// ビルド時に生成された統計データ
+import codebaseStats from '../src/generated/codebase-stats.json';
+
 interface CodebaseHealthDashboardProps {
   lang: 'en' | 'ja';
   onClose: () => void;
@@ -143,158 +146,110 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
     setIsLoading(true);
 
     setTimeout(() => {
-      // === WASTE DETECTION (無駄検出) ===
-      const waste: WasteItem[] = [
-        // 巨大ファイル
-        {
-          type: 'bloated_file',
-          severity: 'high',
-          file: 'App.tsx',
-          lines: 2211,
-          description: lang === 'ja'
-            ? 'App.tsx が2211行で肥大化。責務が集中しすぎ'
-            : 'App.tsx is bloated at 2211 lines. Too many responsibilities',
-          suggestion: lang === 'ja'
-            ? 'hooks/にカスタムフック作成済み（未使用）。これらを適用して状態管理を分離'
-            : 'Custom hooks created in hooks/ (unused). Apply them to extract state management',
-          impact: lang === 'ja'
-            ? 'ビルド時間増加、Hot Reload遅延、保守性低下'
-            : 'Slower builds, delayed Hot Reload, reduced maintainability'
-        },
-        // ✅ geminiService.ts: services/gemini/ に完全分離済み (1736→11行)
-        {
-          type: 'bloated_file',
-          severity: 'medium',
-          file: 'UploadView.tsx',
-          lines: 554,
-          description: lang === 'ja'
-            ? 'UploadView.tsx が554行。UIとロジックが混在'
-            : 'UploadView.tsx is 554 lines mixing UI and logic',
-          suggestion: lang === 'ja'
-            ? 'フォームロジックをカスタムフックに、UIを小コンポーネントに分割'
-            : 'Extract form logic to hooks, split UI into smaller components',
-          impact: lang === 'ja'
-            ? '再利用性低下、テスト困難'
-            : 'Poor reusability, hard to test'
-        },
+      // === 動的データからWASTE検出 ===
+      const waste: WasteItem[] = [];
 
-        // バンドル肥大化
-        {
-          type: 'bundle_bloat',
-          severity: 'high',
-          file: 'index.js',
-          description: lang === 'ja'
-            ? 'メインバンドルが1.43MB (gzip: 521KB)。React.lazy導入済みだが依然として大きい'
-            : 'Main bundle is 1.43MB (gzip: 521KB). React.lazy applied but still large',
-          suggestion: lang === 'ja'
-            ? 'manualChunksでgeminiService等の重いモジュールを分割'
-            : 'Use manualChunks to split heavy modules like geminiService',
-          impact: lang === 'ja'
-            ? '初回ロード時間が長い（モバイルで特に顕著）'
-            : 'Long initial load time (especially on mobile)'
-        },
-        {
-          type: 'bundle_bloat',
-          severity: 'medium',
-          file: 'pdf.js + pdf.worker',
-          description: lang === 'ja'
-            ? 'PDF関連が合計1.95MB (877KB + 1.07MB)。PDF機能未使用時も一部読込'
-            : 'PDF total 1.95MB (877KB + 1.07MB). Partially loaded even when unused',
-          suggestion: lang === 'ja'
-            ? 'PDF機能を使用時のみ動的読込に変更'
-            : 'Load PDF functionality dynamically on demand',
-          impact: lang === 'ja'
-            ? 'PDF不要なユーザーにも負担'
-            : 'Penalty for users not using PDF'
-        },
+      // 巨大ファイル (500行以上を警告)
+      for (const file of codebaseStats.largeFiles) {
+        if (file.lines >= 500) {
+          waste.push({
+            type: 'bloated_file',
+            severity: file.lines >= 1000 ? 'high' : 'medium',
+            file: file.path,
+            lines: file.lines,
+            description: lang === 'ja'
+              ? `${file.path} が${file.lines.toLocaleString()}行で肥大化`
+              : `${file.path} is bloated at ${file.lines.toLocaleString()} lines`,
+            suggestion: lang === 'ja'
+              ? 'ロジックを分離モジュール/カスタムフックに抽出'
+              : 'Extract logic into separate modules/custom hooks',
+            impact: lang === 'ja'
+              ? 'ビルド時間増加、保守性低下'
+              : 'Slower builds, reduced maintainability'
+          });
+        }
+      }
 
-        // 重複・類似機能
-        {
-          type: 'duplicate_dep',
-          severity: 'medium',
-          description: lang === 'ja'
-            ? 'pdfjs-dist と jspdf の両方を使用。PDF機能が重複'
-            : 'Both pdfjs-dist and jspdf used. PDF functionality duplicated',
-          suggestion: lang === 'ja'
-            ? '読み込みにpdfjs、生成にjspdfと役割を明確化するか統一'
-            : 'Clarify roles (read vs generate) or consolidate to one library',
-          impact: lang === 'ja'
-            ? 'バンドルサイズ増加、保守対象が増える'
-            : 'Increased bundle size, more maintenance burden'
-        },
+      // バンドル肥大化 (静的 - ビルド結果から)
+      waste.push({
+        type: 'bundle_bloat',
+        severity: 'high',
+        file: 'index.js',
+        description: lang === 'ja'
+          ? 'メインバンドルが1.43MB (gzip: 521KB)'
+          : 'Main bundle is 1.43MB (gzip: 521KB)',
+        suggestion: lang === 'ja'
+          ? 'manualChunksで重いモジュールを分割'
+          : 'Use manualChunks to split heavy modules',
+        impact: lang === 'ja'
+          ? '初回ロード時間が長い'
+          : 'Long initial load time'
+      });
 
-        // 未使用フック
-        {
+      waste.push({
+        type: 'bundle_bloat',
+        severity: 'medium',
+        file: 'pdf.js + pdf.worker',
+        description: lang === 'ja'
+          ? 'PDF関連が合計1.95MB'
+          : 'PDF total 1.95MB',
+        suggestion: lang === 'ja'
+          ? 'PDF機能を使用時のみ動的読込に変更'
+          : 'Load PDF dynamically on demand',
+        impact: lang === 'ja'
+          ? 'PDF不要なユーザーにも負担'
+          : 'Penalty for users not using PDF'
+      });
+
+      // 重複・類似機能 (静的)
+      waste.push({
+        type: 'duplicate_dep',
+        severity: 'medium',
+        description: lang === 'ja'
+          ? 'pdfjs-dist と jspdf の両方を使用'
+          : 'Both pdfjs-dist and jspdf used',
+        suggestion: lang === 'ja'
+          ? '読み込みにpdfjs、生成にjspdfと役割を明確化'
+          : 'Clarify roles (read vs generate)',
+        impact: lang === 'ja'
+          ? 'バンドルサイズ増加'
+          : 'Increased bundle size'
+      });
+
+      // 未使用フック (hooks/ の数が多いのに使われてない場合)
+      if (codebaseStats.hooks.count >= 5) {
+        waste.push({
           type: 'unused_code',
           severity: 'medium',
           file: 'hooks/*.ts',
           description: lang === 'ja'
-            ? 'カスタムフック5個が作成済みだがApp.tsxで未使用'
-            : '5 custom hooks created but unused in App.tsx',
+            ? `カスタムフック${codebaseStats.hooks.count}個が作成済み`
+            : `${codebaseStats.hooks.count} custom hooks created`,
           suggestion: lang === 'ja'
-            ? 'useAppModals, useProcessingState等をApp.tsxに適用'
-            : 'Apply useAppModals, useProcessingState etc. to App.tsx',
+            ? 'App.tsxで活用して状態管理を整理'
+            : 'Use in App.tsx to organize state',
           impact: lang === 'ja'
-            ? 'App.tsxに40+のuseStateが残存、フックが無駄に'
-            : '40+ useState remain in App.tsx, hooks wasted'
-        },
+            ? 'フックが無駄に'
+            : 'Hooks wasted'
+        });
+      }
 
-        // 複雑性
-        {
-          type: 'complexity',
-          severity: 'high',
-          file: 'App.tsx',
-          description: lang === 'ja'
-            ? '40以上のuseState呼び出し。状態管理が複雑'
-            : 'Over 40 useState calls. State management is complex',
-          suggestion: lang === 'ja'
-            ? '作成済みカスタムフック (hooks/) を適用して状態を整理'
-            : 'Apply existing custom hooks (hooks/) to organize state',
-          impact: lang === 'ja'
-            ? '再レンダリング最適化が困難、バグ発生リスク'
-            : 'Hard to optimize re-renders, increased bug risk'
-        },
-        {
-          type: 'complexity',
-          severity: 'low',
-          description: lang === 'ja'
-            ? 'React Router未使用。条件分岐でルーティング実装'
-            : 'No React Router. Routing via conditional rendering',
-          suggestion: lang === 'ja'
-            ? 'React Routerを導入してURL履歴管理を改善'
-            : 'Add React Router for proper URL history management',
-          impact: lang === 'ja'
-            ? 'ブラウザ履歴が機能しない、ディープリンク不可'
-            : 'Browser history not working, no deep linking'
-        }
-      ];
-
-      // File metrics
+      // 動的ファイルメトリクス
       const metrics: FileMetrics[] = [
         {
           category: txt.components,
-          count: 22,
-          files: [
-            'UploadView.tsx (570行)', 'PreviewView.tsx', 'PhotoAlbumView.tsx',
-            'MasterEditorModal.tsx', 'RefineModal.tsx', 'ManualPairingModal.tsx',
-            'その他16ファイル...'
-          ]
+          count: codebaseStats.components.count,
+          files: codebaseStats.components.files.slice(0, 6)
         },
         {
           category: txt.services,
-          count: 15,
-          files: [
-            'gemini/ (分離済み)', 'aiAgentService.ts', 'smartFlowService.ts',
-            'learningService.ts', 'githubSync.ts', 'その他10ファイル...'
-          ]
+          count: codebaseStats.services.count,
+          files: codebaseStats.services.files.slice(0, 6)
         },
         {
           category: txt.utilities,
-          count: 14,
-          files: [
-            'pdfGenerator.ts', 'excelGenerator.ts', 'storage.ts', 'imageUtils.ts',
-            'その他10ファイル...'
-          ]
+          count: codebaseStats.utils.count,
+          files: codebaseStats.utils.files.slice(0, 6)
         }
       ];
 
