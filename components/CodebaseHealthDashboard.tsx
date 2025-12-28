@@ -161,21 +161,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             ? 'ビルド時間増加、Hot Reload遅延、保守性低下'
             : 'Slower builds, delayed Hot Reload, reduced maintainability'
         },
-        {
-          type: 'bloated_file',
-          severity: 'high',
-          file: 'geminiService.ts',
-          lines: 1736,
-          description: lang === 'ja'
-            ? 'geminiService.ts が1736行。複数の機能が混在'
-            : 'geminiService.ts is 1736 lines with mixed responsibilities',
-          suggestion: lang === 'ja'
-            ? 'API呼び出し、キャッシュ、変換処理を別モジュールに分離'
-            : 'Separate API calls, caching, and transformation into modules',
-          impact: lang === 'ja'
-            ? 'テストが困難、変更の影響範囲が不明確'
-            : 'Hard to test, unclear change impact'
-        },
+        // ✅ geminiService.ts: services/gemini/ に完全分離済み (1736→11行)
         {
           type: 'bloated_file',
           severity: 'medium',
@@ -298,7 +284,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
           category: txt.services,
           count: 15,
           files: [
-            'geminiService.ts (850行)', 'aiAgentService.ts', 'smartFlowService.ts',
+            'gemini/ (分離済み)', 'aiAgentService.ts', 'smartFlowService.ts',
             'learningService.ts', 'githubSync.ts', 'その他10ファイル...'
           ]
         },
@@ -652,12 +638,12 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                   </p>
                 </div>
                 <div className="bg-white/20 rounded-lg p-4">
-                  <div className="text-2xl mb-2">2️⃣</div>
-                  <p className="font-medium">
-                    {lang === 'ja' ? 'geminiServiceを分割' : 'Split geminiService'}
+                  <div className="text-2xl mb-2">✅</div>
+                  <p className="font-medium text-green-300">
+                    {lang === 'ja' ? 'geminiService分割完了' : 'geminiService Split Done'}
                   </p>
                   <p className="text-sm text-white/80 mt-1">
-                    {lang === 'ja' ? '1736行を複数モジュールに' : '1736 lines into modules'}
+                    {lang === 'ja' ? 'services/gemini/に分離済み' : 'Extracted to services/gemini/'}
                   </p>
                 </div>
                 <div className="bg-white/20 rounded-lg p-4">
