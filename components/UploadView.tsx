@@ -20,6 +20,7 @@ interface UploadViewProps {
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onImportPdf?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onPdfButtonClick?: () => void;  // フォルダ選択を先に行うためのハンドラ
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
@@ -43,6 +44,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   onExportJson,
   onImportJson,
   onImportPdf,
+  onPdfButtonClick,
   onClearCache,
   onShowPreview,
   onOpenSettings,
@@ -478,7 +480,17 @@ const UploadView: React.FC<UploadViewProps> = ({
             Restore (JSON)
           </button>
           {onImportPdf && (
-            <button onClick={() => fileInputPdfRef.current?.click()} className="hover:text-red-600 transition-colors flex items-center gap-1" title="PDFからセッションを復元">
+            <button
+              onClick={() => {
+                if (onPdfButtonClick) {
+                  onPdfButtonClick();
+                } else {
+                  fileInputPdfRef.current?.click();
+                }
+              }}
+              className="hover:text-red-600 transition-colors flex items-center gap-1"
+              title="PDFからセッションを復元"
+            >
               <FileText className="w-3 h-3" /> Load PDF
             </button>
           )}
