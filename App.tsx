@@ -1021,15 +1021,68 @@ export default function App() {
     addLog(`手動ペアリング完了: ${pairs.length}組`, 'success');
   };
 
-  // 履歴から読み込み
-  const handleLoadHistory = (entry: AnalysisHistoryEntry) => {
-    setPhotos(entry.photos);
-    setInitialInstruction(entry.instruction);
-    setActiveInstruction(entry.instruction);
-    setShowPreview(true);
+  // 履歴から読み込み（軽量版履歴なのでキャッシュから写真を復元）
+  const handleLoadHistory = async (entry: AnalysisHistoryEntry) => {
     setShowHistory(false);
-    addLog(`履歴読み込み: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success');
-    setSuccessMsg(`${entry.photoCount}枚の写真を履歴から読み込みました`);
+    setIsProcessing(true);
+    setCurrentStep('履歴から復元中...');
+
+    try {
+      // photoKeysを使ってキャッシュから解析結果を復元
+      const records: PhotoRecord[] = [];
+
+      for (let i = 0; i < entry.photoKeys.length; i++) {
+        const key = entry.photoKeys[i];
+        // キーからファイル情報を抽出（形式: name_size_modified）
+        const parts = key.split('_');
+        const fileName = parts.slice(0, -2).join('_'); // 最後の2つ以外はファイル名
+        const fileSize = parseInt(parts[parts.length - 2]) || 0;
+        const lastModified = parseInt(parts[parts.length - 1]) || 0;
+
+        // サムネイルがあれば使用
+        const thumbnail = entry.thumbnails?.[i] || '';
+
+        const record: PhotoRecord = {
+          fileName,
+          base64: thumbnail,
+          mimeType: 'image/jpeg',
+          fileSize,
+          lastModified,
+          status: 'done',
+          date: lastModified,
+          fromCache: true
+        };
+
+        // キャッシュから解析結果を取得（キーを直接使用）
+        const cachedAnalysis = await getCachedAnalysis(record);
+        if (cachedAnalysis) {
+          record.analysis = cachedAnalysis;
+        }
+
+        records.push(record);
+      }
+
+      setPhotos(records);
+      setStats({
+        total: records.length,
+        processed: records.length,
+        success: records.length,
+        failed: 0,
+        cached: records.length
+      });
+      setInitialInstruction(entry.instruction);
+      setActiveInstruction(entry.instruction);
+      setShowPreview(true);
+      addLog(`履歴読み込み: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success');
+      setSuccessMsg(`${entry.photoCount}枚の写真を履歴から読み込みました`);
+    } catch (err: any) {
+      console.error('履歴読み込みエラー:', err);
+      setErrorMsg('履歴の読み込みに失敗しました');
+      addLog('履歴読み込みエラー', 'error', err);
+    } finally {
+      setIsProcessing(false);
+      setCurrentStep('');
+    }
   };
 
   // --- Pipeline Steps ---

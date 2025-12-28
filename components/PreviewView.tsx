@@ -4,7 +4,7 @@ import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
-import ExamplesModal from './ExamplesModal';
+import SessionHistoryPanel from './SessionHistoryPanel';
 import { generateZip } from '../utils/zipGenerator';
 import { embedSessionInPdf } from '../utils/pdfGenerator';
 
@@ -94,7 +94,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
   const [draggedPhotoIndex, setDraggedPhotoIndex] = useState<number | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
-  const [showExamplesModal, setShowExamplesModal] = useState(false);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -478,11 +478,11 @@ const PreviewView: React.FC<PreviewViewProps> = ({
                       {lang === 'ja' ? '設定' : 'Settings'}
                     </div>
                     <button
-                      onClick={() => { setShowExamplesModal(true); setShowToolsMenu(false); }}
+                      onClick={() => { setShowHistoryPanel(true); setShowToolsMenu(false); }}
                       className="w-full px-3 py-2 text-sm text-left text-slate-200 hover:bg-amber-600 flex items-center gap-2 transition-colors"
                     >
                       <Star className="w-4 h-4 text-amber-400" />
-                      {lang === 'ja' ? 'お手本管理' : 'Examples'}
+                      {lang === 'ja' ? '履歴・お手本管理' : 'History & Examples'}
                     </button>
                     {onOpenMasterEditor && (
                       <button
@@ -651,13 +651,13 @@ const PreviewView: React.FC<PreviewViewProps> = ({
          />
       </div>
 
-      {/* Examples Modal */}
-      <ExamplesModal
-        isOpen={showExamplesModal}
-        onClose={() => setShowExamplesModal(false)}
-        lang={lang}
-        currentPhotos={photos}
-      />
+      {/* History & Examples Panel */}
+      {showHistoryPanel && (
+        <SessionHistoryPanel
+          onLoad={() => {}} // No-op: Already viewing photos in preview mode
+          onClose={() => setShowHistoryPanel(false)}
+        />
+      )}
     </div>
   );
 };

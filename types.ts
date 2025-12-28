@@ -106,7 +106,7 @@ export interface AnalysisSession {
   updatedAt: number;               // 更新日時
 }
 
-// 解析履歴（セッション単位で保存）- 軽量版
+// 解析履歴（セッション単位で保存）- お手本機能統合版
 export interface AnalysisHistoryEntry {
   id: string;                      // ユニークID (UUID)
   sessionKey: string;              // セッション識別キー（重複チェック用）
@@ -116,4 +116,8 @@ export interface AnalysisHistoryEntry {
   workTypes: string[];             // 含まれる工種（サマリー用）
   photoKeys: string[];             // ファイルキーのリスト（軽量）
   modelUsed?: string;              // 使用モデル
+  // お手本機能（統合）
+  isExampleSession?: boolean;      // お手本として使用するか
+  name?: string;                   // セッション名（お手本用、自動生成可）
+  thumbnails?: string[];           // サムネイル（お手本用、最大6枚）
 }

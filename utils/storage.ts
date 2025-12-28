@@ -685,7 +685,20 @@ export const importRulesFromJson = (jsonStr: string): AnalysisRule[] => {
 // ============================================
 
 /**
- * 解析結果を履歴として保存（軽量版: photoKeysのみ保存）
+ * 履歴用の自動名称を生成
+ */
+const generateHistoryName = (workTypes: string[], createdAt: number): string => {
+  const date = new Date(createdAt);
+  const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+  if (workTypes.length === 0) {
+    return dateStr;
+  }
+  const typeSummary = workTypes.slice(0, 2).join('・');
+  return workTypes.length > 2 ? `${typeSummary}他 (${dateStr})` : `${typeSummary} (${dateStr})`;
+};
+
+/**
+ * 解析結果を履歴として保存（お手本機能統合版）
  */
 export const saveAnalysisHistory = async (
   photos: PhotoRecord[],
@@ -705,15 +718,26 @@ export const saveAnalysisHistory = async (
   const sessionKey = generateSessionKey(photos);
   const photoKeys = photos.map(p => getFileKey(p));
 
+  // サムネイルを最大6枚抽出
+  const thumbnails = photos
+    .filter(p => p.base64)
+    .slice(0, 6)
+    .map(p => p.base64);
+
+  const createdAt = Date.now();
   const entry: AnalysisHistoryEntry = {
     id: crypto.randomUUID(),
     sessionKey,
-    createdAt: Date.now(),
+    createdAt,
     photoCount: photos.length,
     instruction,
     workTypes,
     photoKeys,
-    modelUsed
+    modelUsed,
+    // お手本機能用（デフォルトはfalse）
+    isExampleSession: false,
+    name: generateHistoryName(workTypes, createdAt),
+    thumbnails
   };
 
   return new Promise((resolve, reject) => {
@@ -828,4 +852,105 @@ export const clearAnalysisHistory = async (): Promise<void> => {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+};
+
+// ============================================
+// 履歴 ⇔ お手本機能 統合
+// ============================================
+
+/**
+ * 履歴エントリーをお手本として設定/解除
+ */
+export const toggleHistoryAsExample = async (
+  id: string,
+  isExample: boolean,
+  name?: string
+): Promise<AnalysisHistoryEntry | null> => {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const entry = getRequest.result as AnalysisHistoryEntry | undefined;
+      if (!entry) {
+        resolve(null);
+        return;
+      }
+
+      const updated: AnalysisHistoryEntry = {
+        ...entry,
+        isExampleSession: isExample,
+        name: name || entry.name
+      };
+
+      const putRequest = store.put(updated);
+      putRequest.onsuccess = () => resolve(updated);
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+    getRequest.onerror = () => reject(getRequest.error);
+  });
+};
+
+/**
+ * 履歴エントリーの名前を更新
+ */
+export const updateHistoryName = async (id: string, name: string): Promise<void> => {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_HISTORY, 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const entry = getRequest.result as AnalysisHistoryEntry | undefined;
+      if (!entry) {
+        resolve();
+        return;
+      }
+
+      const updated = { ...entry, name };
+      const putRequest = store.put(updated);
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+    getRequest.onerror = () => reject(getRequest.error);
+  });
+};
+
+/**
+ * お手本として設定された履歴を取得
+ */
+export const getExampleHistoryEntries = async (): Promise<AnalysisHistoryEntry[]> => {
+  const all = await getAnalysisHistory();
+  return all.filter(entry => entry.isExampleSession);
+};
+
+/**
+ * アクティブなお手本履歴を設定（LocalStorage）
+ */
+const KEY_ACTIVE_EXAMPLE_HISTORY = 'activeExampleHistoryId';
+
+export const setActiveExampleHistory = (historyId: string | null): void => {
+  if (historyId) {
+    localStorage.setItem(KEY_ACTIVE_EXAMPLE_HISTORY, historyId);
+  } else {
+    localStorage.removeItem(KEY_ACTIVE_EXAMPLE_HISTORY);
+  }
+};
+
+export const getActiveExampleHistoryId = (): string | null => {
+  return localStorage.getItem(KEY_ACTIVE_EXAMPLE_HISTORY);
+};
+
+/**
+ * アクティブなお手本履歴エントリーを取得
+ */
+export const getActiveExampleHistory = async (): Promise<AnalysisHistoryEntry | null> => {
+  const id = getActiveExampleHistoryId();
+  if (!id) return null;
+  return getAnalysisHistoryEntry(id);
 };
