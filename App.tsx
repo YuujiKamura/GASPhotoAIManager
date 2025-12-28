@@ -5,7 +5,7 @@ import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, app
 import { processPhotosWithSmartFlow } from './services/smartFlowService';
 import { generateExcel } from './utils/excelGenerator';
 import { saveProjectData, loadProjectData, clearProjectData, getCachedAnalysis, cacheAnalysis, exportDataToJson, importDataFromJson, clearAnalysisCache, saveAnalysisHistory, getAnalysisHistory, getAnalysisHistoryEntry, deleteAnalysisHistory } from './utils/storage';
-import { extractSessionFromPdf, isSmartPdf } from './utils/pdfGenerator';
+import { extractSessionFromPdf, isSmartPdf, extractImagesFromPdf } from './utils/pdfGenerator';
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { getDetailOrderMap, getVarietyOrderMap } from './utils/constructionMaster';
@@ -1613,27 +1613,32 @@ export default function App() {
         return;
       }
 
-      // IndexedDBの履歴から画像を検索
-      const history = await getAnalysisHistory();
-      const allHistoryPhotos = history.flatMap(entry => entry.photos);
+      // PDFから埋め込み画像を抽出
+      addLog('PDFから画像を抽出中...', 'info');
+      const extractedImages = await extractImagesFromPdf(pdfFile);
+      addLog(`${extractedImages.length}枚の画像を抽出しました`, 'info');
 
-      // ファイル名でマッチングしてbase64を取得
-      let matchedCount = 0;
-      let restoredPhotos: PhotoRecord[] = sessionData.map(data => {
-        const fileName = data.fileName || 'unknown.jpg';
-        // 履歴から同じファイル名の画像を検索
-        const matchedPhoto = allHistoryPhotos.find(p => p.fileName === fileName && p.base64);
+      // セッションデータと画像をマッチング
+      const restoredPhotos: PhotoRecord[] = sessionData.map((data, index) => {
+        const fileName = data.fileName || `photo_${index + 1}.jpg`;
 
-        if (matchedPhoto?.base64) {
-          matchedCount++;
+        // 抽出した画像があれば使用
+        let base64 = '';
+        if (extractedImages[index]) {
+          const bytes = extractedImages[index].data;
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          base64 = btoa(binary);
         }
 
         return {
           fileName,
-          base64: matchedPhoto?.base64 || '', // 履歴から取得、なければ空
-          mimeType: matchedPhoto?.mimeType || data.mimeType || 'image/jpeg',
-          fileSize: matchedPhoto?.fileSize || 0,
-          lastModified: matchedPhoto?.lastModified || 0,
+          base64,
+          mimeType: extractedImages[index]?.mimeType || data.mimeType || 'image/jpeg',
+          fileSize: extractedImages[index]?.data.length || 0,
+          lastModified: 0,
           status: (data.status as any) || 'done',
           date: data.date,
           analysis: data.analysis,
@@ -1643,45 +1648,7 @@ export default function App() {
         };
       });
 
-      // 履歴になかった画像があればフォルダ選択を提案
-      const missingCount = restoredPhotos.length - matchedCount;
-      if (missingCount > 0 && 'showDirectoryPicker' in window) {
-        const shouldSelectFolder = window.confirm(
-          lang === 'ja'
-            ? `${missingCount}枚の画像が履歴にありません。\n元の画像フォルダを選択して復元しますか？`
-            : `${missingCount} images not found in history.\nSelect the original image folder to restore?`
-        );
-
-        if (shouldSelectFolder) {
-          try {
-            // @ts-ignore - File System Access API
-            const dirHandle = await window.showDirectoryPicker();
-            addLog('フォルダ選択: 画像を検索中...', 'info');
-
-            // フォルダ内のファイルを検索
-            for await (const entry of dirHandle.values()) {
-              if (entry.kind === 'file') {
-                const missingPhoto = restoredPhotos.find(p => p.fileName === entry.name && !p.base64);
-                if (missingPhoto) {
-                  const file = await entry.getFile();
-                  const { base64, mimeType } = await processImageForAI(file);
-                  missingPhoto.base64 = base64;
-                  missingPhoto.mimeType = mimeType;
-                  missingPhoto.fileSize = file.size;
-                  missingPhoto.lastModified = file.lastModified;
-                  matchedCount++;
-                  addLog(`  ✓ ${entry.name}`, 'success');
-                }
-              }
-            }
-          } catch (folderErr: any) {
-            if (folderErr.name !== 'AbortError') {
-              console.error('Folder selection error:', folderErr);
-              addLog('フォルダ選択エラー', 'error');
-            }
-          }
-        }
-      }
+      const matchedCount = restoredPhotos.filter(p => p.base64).length;
 
       setPhotos(restoredPhotos);
       setStats({
@@ -1700,8 +1667,8 @@ export default function App() {
         addLog(`PDFから${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`, 'success');
         setSuccessMsg(`${restoredPhotos.length}枚中${matchedCount}枚の画像を復元しました`);
       } else {
-        addLog(`PDFから${restoredPhotos.length}枚の解析データを復元しました（画像なし）`, 'info');
-        setSuccessMsg(`${restoredPhotos.length}枚の解析データを復元しました（画像なし）`);
+        addLog(`PDFから${restoredPhotos.length}枚の解析データを復元しました（画像抽出失敗）`, 'info');
+        setSuccessMsg(`${restoredPhotos.length}枚の解析データを復元しました（画像抽出失敗）`);
       }
 
     } catch (err: any) {
