@@ -1560,3 +1560,178 @@ export const analyzePhotoBatch = async (
 
   throw new Error("Max retries exceeded");
 };
+
+// ============================================
+// 対話型写真解析 (Interactive Analysis)
+// ============================================
+
+interface InteractiveMessage {
+  role: 'ai' | 'user' | 'system';
+  content: string;
+}
+
+interface InteractiveAnalysisResult {
+  response: string;
+  analysis: AIAnalysisResult | null;
+}
+
+const INTERACTIVE_SYSTEM_PROMPT = `あなたは工事写真の解析アシスタントです。
+MGS2の無線通信のように、簡潔でプロフェッショナルに対話してください。
+
+## スタイル
+- 敬語は使わず、フランクに話す（「～だね」「～しよう」）
+- 専門用語は適切に使う
+- 長文は避け、要点を簡潔に
+- 1-2文で返答する
+
+## 対話の流れ
+1. 写真を解析したら、まず所見を述べる
+2. 解析結果の確認を促す
+3. ユーザーの修正要望に応じて調整
+4. 最終確認を取る
+
+## 出力形式
+必ず以下のJSON形式で返答すること:
+{
+  "response": "ユーザーへの返答メッセージ",
+  "analysis": {
+    "fileName": "ファイル名",
+    "workType": "工種",
+    "variety": "種別",
+    "detail": "細別",
+    "station": "測点",
+    "remarks": "備考",
+    "measurements": "測定値",
+    "description": "記事",
+    "hasBoard": true/false,
+    "detectedText": "OCRテキスト",
+    "reasoning": "判断根拠"
+  }
+}
+`;
+
+/**
+ * 対話型写真解析
+ * 1枚の写真に対してAIと対話しながら解析結果を調整する
+ */
+export const analyzePhotoInteractive = async (
+  photo: PhotoRecord,
+  conversationHistory: InteractiveMessage[],
+  apiKey: string,
+  onStream?: (text: string) => void,
+  shouldAbort?: () => boolean
+): Promise<InteractiveAnalysisResult> => {
+  const genAI = new GoogleGenAI({ apiKey });
+  const modelToUse = getSelectedModel();
+
+  // 写真データを準備
+  const base64Data = extractBase64Data(photo.base64);
+  const imagePart = {
+    inlineData: {
+      mimeType: photo.mimeType,
+      data: base64Data,
+    },
+  };
+
+  // 会話履歴を構築
+  const contents: any[] = [];
+
+  // 最初の写真とリクエスト
+  if (conversationHistory.length === 0) {
+    // 初回解析
+    contents.push({
+      role: 'user',
+      parts: [
+        imagePart,
+        {
+          text: `この工事写真を解析してください。
+ファイル名: ${photo.fileName}
+${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n種別: ${photo.analysis.variety || ''}\n細別: ${photo.analysis.detail || ''}\n測点: ${photo.analysis.station}\n備考: ${photo.analysis.remarks}` : ''}
+
+写真の内容を確認して、所見を述べてください。`,
+        },
+      ],
+    });
+  } else {
+    // 継続対話
+    // 最初のメッセージには画像を含める
+    contents.push({
+      role: 'user',
+      parts: [
+        imagePart,
+        { text: `ファイル名: ${photo.fileName}\n写真を解析してください。` },
+      ],
+    });
+
+    // 会話履歴を追加
+    for (const msg of conversationHistory) {
+      const role = msg.role === 'ai' ? 'model' : 'user';
+      contents.push({
+        role,
+        parts: [{ text: msg.content }],
+      });
+    }
+  }
+
+  try {
+    const result = await genAI.models.generateContentStream({
+      model: modelToUse,
+      contents,
+      config: {
+        systemInstruction: INTERACTIVE_SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0.3,
+      },
+    });
+
+    let fullText = '';
+    for await (const chunk of result) {
+      if (shouldAbort?.()) {
+        throw new Error('処理が中断されました');
+      }
+      const chunkText = chunk.text;
+      fullText += chunkText;
+      onStream?.(fullText);
+    }
+
+    // JSONをパース
+    let parsed: any;
+    try {
+      parsed = JSON.parse(fullText);
+    } catch {
+      // JSONが見つからない場合、テキストのみ返す
+      return {
+        response: fullText,
+        analysis: null,
+      };
+    }
+
+    const analysis: AIAnalysisResult | null = parsed.analysis
+      ? {
+          fileName: parsed.analysis.fileName || photo.fileName,
+          workType: parsed.analysis.workType || '',
+          variety: parsed.analysis.variety || '',
+          detail: parsed.analysis.detail || '',
+          station: parsed.analysis.station || '',
+          remarks: parsed.analysis.remarks || '',
+          remarksCategory: parsed.analysis.remarks || '',
+          description: parsed.analysis.description || '',
+          measurements: parsed.analysis.measurements || '',
+          hasBoard: !!parsed.analysis.hasBoard,
+          detectedText: parsed.analysis.detectedText || '',
+          reasoning: parsed.analysis.reasoning || '',
+          changeLog: [],
+        }
+      : null;
+
+    return {
+      response: parsed.response || '',
+      analysis,
+    };
+  } catch (error: any) {
+    if (error.message?.includes('中断')) {
+      throw error;
+    }
+    throw new Error(`対話型解析エラー: ${sanitizeErrorMessage(error.message || '', apiKey)}`);
+  }
+};

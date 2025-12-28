@@ -31,6 +31,7 @@ import SessionHistoryPanel from './components/SessionHistoryPanel';
 import GitHubSyncPanel from './components/GitHubSyncPanel';
 import PdfLoadDialog from './components/PdfLoadDialog';
 import CodebaseHealthDashboard from './components/CodebaseHealthDashboard';
+import { InteractiveAnalysisDialog } from './components/InteractiveAnalysisDialog';
 import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
@@ -109,6 +110,9 @@ export default function App() {
   const [showWorkTypeConfirm, setShowWorkTypeConfirm] = useState(false);
   const [showHealthDashboard, setShowHealthDashboard] = useState(false);
   const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
+
+  // 対話型解析ダイアログ
+  const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
 
   // Normalization approval flow
   const [showNormalizationModal, setShowNormalizationModal] = useState(false);
@@ -1640,65 +1644,40 @@ export default function App() {
     }
   };
 
-  const handleSingleReanalysis = async (fileName: string) => {
-    setIsProcessing(true);
-    setCurrentStep(`Re-analyzing ${fileName}...`);
-    clearLogs();
-    shouldAbortRef.current = false;
-
-    try {
-      const target = photos.find(p => p.fileName === fileName);
-      if (!target) return;
-
-      const results = await analyzePhotoBatch(
-        [target],
-        "", // Empty instruction for default analysis
-        1, // batchSize
-        appMode,
-        apiKey,
-        addLog,
-        logIndividualResult,
-        () => shouldAbortRef.current,
-        (reasoningText) => {
-          setCurrentStep(`Thinking: ${reasoningText.slice(0, 100)}${reasoningText.length > 100 ? '...' : ''}`);
-        }
-      );
-
-      if (results.length > 0) {
-        const res = results[0];
-        let finalAnalysis = res;
-
-        // Preserve Edited Fields
-        if (target.analysis?.editedFields) {
-          finalAnalysis = { ...res, editedFields: target.analysis.editedFields };
-          target.analysis.editedFields.forEach(field => {
-            // @ts-ignore
-            finalAnalysis[field] = target.analysis[field];
-          });
-        }
-
-        setPhotos(prev => prev.map(p =>
-          p.fileName === fileName
-            ? { ...p, analysis: finalAnalysis, status: 'done' }
-            : p
-        ));
-
-        if (res.reasoning) {
-          addLog(`Reasoning for ${fileName}: ${res.reasoning}`, 'info');
-          console.log(`[AI Reasoning] ${fileName}:`, res.reasoning);
-        }
-
-        addLog(`Re-analysis complete for ${fileName}`, 'success');
-        setSuccessMsg("Photo re-analyzed successfully.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Re-analysis failed");
-      addLog("Re-analysis error", 'error', err);
-    } finally {
-      setIsProcessing(false);
-      setCurrentStep("");
+  // 対話型解析を開始
+  const handleInteractiveAnalysis = (fileName: string) => {
+    const target = photos.find(p => p.fileName === fileName);
+    if (target) {
+      setInteractiveAnalysisTarget(target);
     }
+  };
+
+  // 対話型解析の結果を確定
+  const handleInteractiveAnalysisConfirm = (fileName: string, analysis: AIAnalysisResult) => {
+    const target = photos.find(p => p.fileName === fileName);
+    let finalAnalysis = analysis;
+
+    // Preserve Edited Fields
+    if (target?.analysis?.editedFields) {
+      finalAnalysis = { ...analysis, editedFields: target.analysis.editedFields };
+      target.analysis.editedFields.forEach(field => {
+        // @ts-ignore
+        finalAnalysis[field] = target.analysis[field];
+      });
+    }
+
+    setPhotos(prev => prev.map(p =>
+      p.fileName === fileName
+        ? { ...p, analysis: finalAnalysis, status: 'done' }
+        : p
+    ));
+
+    if (analysis.reasoning) {
+      addLog(`Reasoning for ${fileName}: ${analysis.reasoning}`, 'info');
+    }
+
+    addLog(`Interactive analysis complete for ${fileName}`, 'success');
+    setSuccessMsg("Photo analyzed successfully.");
   };
 
   // Missing handlers added here
@@ -2088,7 +2067,7 @@ export default function App() {
         onSendInstruction={handleConsoleInstruction}
         onSelectCacheFolder={handleSelectCacheFolder}
         onClearFileSystemCache={handleClearFileSystemCache}
-        onReanalyzePhoto={handleSingleReanalysis}
+        onReanalyzePhoto={handleInteractiveAnalysis}
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
         onOpenMasterEditor={() => setShowMasterEditor(true)}
         onReorderPhotos={handleReorderPhotos}
@@ -2191,6 +2170,15 @@ export default function App() {
           onOpenSettings={handleOpenMasterEditorFromConfirm}
         />
       )}
+
+      {/* 対話型解析ダイアログ */}
+      <InteractiveAnalysisDialog
+        photo={interactiveAnalysisTarget}
+        apiKey={apiKey || ''}
+        lang={lang}
+        onConfirm={handleInteractiveAnalysisConfirm}
+        onClose={() => setInteractiveAnalysisTarget(null)}
+      />
     </>
   );
 }

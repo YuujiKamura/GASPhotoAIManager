@@ -22,7 +22,12 @@
       "Bash(GEMINI_API_KEY=\"AIzaSyAAQxrGQ0zX5aX55IuF_iWZWnhUeeW40f0\" npx tsx:*)",
       "Bash(export GEMINI_API_KEY:*)",
       "Bash(find:*)",
-      "WebFetch(domain:www.youtube.com)"
+      "WebFetch(domain:www.youtube.com)",
+      "Bash(git checkout:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run dev:*)",
+      "Bash(gh run:*)",
+      "Bash(wc:*)"
     ]
   }
 }

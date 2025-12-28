@@ -6,10 +6,9 @@ import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
 import { generateZip } from '../utils/zipGenerator';
-import { embedSessionInPdf } from '../utils/pdfGenerator';
+import { generatePdfWithImages } from '../utils/pdfGenerator';
 
-// Declare html2pdf and saveAs
-declare const html2pdf: any;
+// Declare saveAs (html2pdf is no longer used)
 declare const saveAs: any;
 
 const A4_WIDTH_PX = 794;
@@ -237,41 +236,22 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   }, [isFitMode]);
 
   const handleDownloadPDF = async () => {
-    if (typeof html2pdf === 'undefined') {
-      alert("PDF library not loaded.");
-      return;
-    }
-
     setIsGeneratingPdf(true);
-    const element = document.getElementById('album-content');
-    if (element) element.classList.add('pdf-mode');
 
     const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
 
-    const opt = {
-      margin: 0,
-      filename: filename,
-      image: { type: 'jpeg', quality: 1.0 },
-      html2canvas: { scale: 3, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: 'css', after: '.sheet-preview' }
-    };
-
     try {
-      const blob: Blob = await html2pdf().set(opt).from(element).output('blob');
+      // pdf-libを使って個別画像埋め込みPDFを生成
+      // これにより、PDFから個別の写真を抽出可能になる
+      const pdfBlob = await generatePdfWithImages(photos, photosPerPage, '工事写真帳');
 
-      // セッションデータをPDFに埋め込み（スマートPDF化）
-      const smartPdfBlob = await embedSessionInPdf(blob, photos);
-
-      saveAs(smartPdfBlob, filename);
-      const url = URL.createObjectURL(smartPdfBlob);
+      saveAs(pdfBlob, filename);
+      const url = URL.createObjectURL(pdfBlob);
       window.open(url, '_blank');
       setIsGeneratingPdf(false);
-      if (element) element.classList.remove('pdf-mode');
     } catch (err: any) {
-      console.error(err);
+      console.error('PDF generation error:', err);
       setIsGeneratingPdf(false);
-      if (element) element.classList.remove('pdf-mode');
       alert(txt.pdfError);
     }
   };

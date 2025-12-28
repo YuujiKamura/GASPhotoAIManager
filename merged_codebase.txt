@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-28 22:59:41
+生成日時: 2025-12-29 07:22:30
 ================================================================================
 
 === ファイル一覧 ===
@@ -12,9 +12,13 @@ GASPhotoAIManager - Merged Codebase Snapshot
 App.tsx
 components/AnalysisRulesPanel.tsx
 components/ApiKeySetup.tsx
+components/CodebaseHealthDashboard.tsx
 components/ConsolePanel.tsx
 components/ExamplesModal.tsx
 components/GitHubSyncPanel.tsx
+components/InteractiveAnalysisDialog/index.tsx
+components/InteractiveAnalysisDialog/types.ts
+components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts
 components/LimitModal.tsx
 components/ManualPairingModal.tsx
 components/MasterEditorModal.tsx
@@ -122,6 +126,8 @@ import NormalizationPreviewModal, { OriginalData } from './components/Normalizat
 import SessionHistoryPanel from './components/SessionHistoryPanel';
 import GitHubSyncPanel from './components/GitHubSyncPanel';
 import PdfLoadDialog from './components/PdfLoadDialog';
+import CodebaseHealthDashboard from './components/CodebaseHealthDashboard';
+import { InteractiveAnalysisDialog } from './components/InteractiveAnalysisDialog';
 import { AnalysisHistoryEntry } from './types';
 
 // Declare saveAs for export
@@ -198,7 +204,11 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showGitHubSync, setShowGitHubSync] = useState(false);
   const [showWorkTypeConfirm, setShowWorkTypeConfirm] = useState(false);
+  const [showHealthDashboard, setShowHealthDashboard] = useState(false);
   const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
+
+  // 対話型解析ダイアログ
+  const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
 
   // Normalization approval flow
   const [showNormalizationModal, setShowNormalizationModal] = useState(false);
@@ -1730,65 +1740,40 @@ export default function App() {
     }
   };
 
-  const handleSingleReanalysis = async (fileName: string) => {
-    setIsProcessing(true);
-    setCurrentStep(`Re-analyzing ${fileName}...`);
-    clearLogs();
-    shouldAbortRef.current = false;
-
-    try {
-      const target = photos.find(p => p.fileName === fileName);
-      if (!target) return;
-
-      const results = await analyzePhotoBatch(
-        [target],
-        "", // Empty instruction for default analysis
-        1, // batchSize
-        appMode,
-        apiKey,
-        addLog,
-        logIndividualResult,
-        () => shouldAbortRef.current,
-        (reasoningText) => {
-          setCurrentStep(`Thinking: ${reasoningText.slice(0, 100)}${reasoningText.length > 100 ? '...' : ''}`);
-        }
-      );
-
-      if (results.length > 0) {
-        const res = results[0];
-        let finalAnalysis = res;
-
-        // Preserve Edited Fields
-        if (target.analysis?.editedFields) {
-          finalAnalysis = { ...res, editedFields: target.analysis.editedFields };
-          target.analysis.editedFields.forEach(field => {
-            // @ts-ignore
-            finalAnalysis[field] = target.analysis[field];
-          });
-        }
-
-        setPhotos(prev => prev.map(p =>
-          p.fileName === fileName
-            ? { ...p, analysis: finalAnalysis, status: 'done' }
-            : p
-        ));
-
-        if (res.reasoning) {
-          addLog(`Reasoning for ${fileName}: ${res.reasoning}`, 'info');
-          console.log(`[AI Reasoning] ${fileName}:`, res.reasoning);
-        }
-
-        addLog(`Re-analysis complete for ${fileName}`, 'success');
-        setSuccessMsg("Photo re-analyzed successfully.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Re-analysis failed");
-      addLog("Re-analysis error", 'error', err);
-    } finally {
-      setIsProcessing(false);
-      setCurrentStep("");
+  // 対話型解析を開始
+  const handleInteractiveAnalysis = (fileName: string) => {
+    const target = photos.find(p => p.fileName === fileName);
+    if (target) {
+      setInteractiveAnalysisTarget(target);
     }
+  };
+
+  // 対話型解析の結果を確定
+  const handleInteractiveAnalysisConfirm = (fileName: string, analysis: AIAnalysisResult) => {
+    const target = photos.find(p => p.fileName === fileName);
+    let finalAnalysis = analysis;
+
+    // Preserve Edited Fields
+    if (target?.analysis?.editedFields) {
+      finalAnalysis = { ...analysis, editedFields: target.analysis.editedFields };
+      target.analysis.editedFields.forEach(field => {
+        // @ts-ignore
+        finalAnalysis[field] = target.analysis[field];
+      });
+    }
+
+    setPhotos(prev => prev.map(p =>
+      p.fileName === fileName
+        ? { ...p, analysis: finalAnalysis, status: 'done' }
+        : p
+    ));
+
+    if (analysis.reasoning) {
+      addLog(`Reasoning for ${fileName}: ${analysis.reasoning}`, 'info');
+    }
+
+    addLog(`Interactive analysis complete for ${fileName}`, 'success');
+    setSuccessMsg("Photo analyzed successfully.");
   };
 
   // Missing handlers added here
@@ -2103,7 +2088,12 @@ export default function App() {
         />
       )}
 
-      {showMasterEditor ? (
+      {showHealthDashboard ? (
+        <CodebaseHealthDashboard
+          lang={lang}
+          onClose={() => setShowHealthDashboard(false)}
+        />
+      ) : showMasterEditor ? (
         <MasterEditorModal
           lang={lang}
           onClose={() => setShowMasterEditor(false)}
@@ -2127,6 +2117,8 @@ export default function App() {
           photos={photos}
           appMode={appMode}
           apiKey={apiKey || ''}
+          logs={logs}
+          isAskingAI={isAskingAI}
           setAppMode={setAppMode}
           onStartProcessing={handleStartProcessing}
           onResume={handleResume}
@@ -2140,8 +2132,9 @@ export default function App() {
           onManualPairing={handleStartManualPairing}
           onShowHistory={() => setShowHistory(true)}
           onOpenMasterEditor={() => setShowMasterEditor(true)}
+          onOpenHealthDashboard={() => setShowHealthDashboard(true)}
           onAskAI={handleAskAI}
-          isAskingAI={isAskingAI}
+          onClearLogs={clearLogs}
         />
       ) : (
         <PreviewView
@@ -2170,7 +2163,7 @@ export default function App() {
         onSendInstruction={handleConsoleInstruction}
         onSelectCacheFolder={handleSelectCacheFolder}
         onClearFileSystemCache={handleClearFileSystemCache}
-        onReanalyzePhoto={handleSingleReanalysis}
+        onReanalyzePhoto={handleInteractiveAnalysis}
         onAbort={() => { shouldAbortRef.current = true; addLog("解析を中断しています...", 'info'); }}
         onOpenMasterEditor={() => setShowMasterEditor(true)}
         onReorderPhotos={handleReorderPhotos}
@@ -2273,6 +2266,15 @@ export default function App() {
           onOpenSettings={handleOpenMasterEditorFromConfirm}
         />
       )}
+
+      {/* 対話型解析ダイアログ */}
+      <InteractiveAnalysisDialog
+        photo={interactiveAnalysisTarget}
+        apiKey={apiKey || ''}
+        lang={lang}
+        onConfirm={handleInteractiveAnalysisConfirm}
+        onClose={() => setInteractiveAnalysisTarget(null)}
+      />
     </>
   );
 }
@@ -2774,6 +2776,705 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
 export default ApiKeySetup;
 
 === END: components/ApiKeySetup.tsx ===
+
+=== FILE: components/CodebaseHealthDashboard.tsx ===
+
+import React, { useState, useEffect } from 'react';
+import {
+  ArrowLeft,
+  FileCode,
+  Package,
+  GitBranch,
+  CheckCircle,
+  AlertTriangle,
+  Info,
+  Layers,
+  FolderTree,
+  Cpu,
+  Database,
+  Wrench,
+  RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
+  Scale,
+  Zap,
+  AlertCircle,
+  TrendingDown,
+  FileWarning,
+  PackageX,
+  Copy
+} from 'lucide-react';
+
+interface CodebaseHealthDashboardProps {
+  lang: 'en' | 'ja';
+  onClose: () => void;
+}
+
+interface FileMetrics {
+  category: string;
+  count: number;
+  files: string[];
+}
+
+interface DependencyInfo {
+  name: string;
+  version: string;
+  type: 'prod' | 'dev';
+  size?: string;
+  issue?: string;
+}
+
+interface HealthCheck {
+  name: string;
+  status: 'ok' | 'warning' | 'error';
+  message: string;
+  details?: string;
+}
+
+interface WasteItem {
+  type: 'bloated_file' | 'unused_code' | 'duplicate_dep' | 'bundle_bloat' | 'complexity';
+  severity: 'high' | 'medium' | 'low';
+  file?: string;
+  description: string;
+  suggestion: string;
+  impact: string;
+  lines?: number;
+}
+
+const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang, onClose }) => {
+  const [fileMetrics, setFileMetrics] = useState<FileMetrics[]>([]);
+  const [dependencies, setDependencies] = useState<DependencyInfo[]>([]);
+  const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
+  const [wasteItems, setWasteItems] = useState<WasteItem[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['waste', 'bundle']));
+  const [isLoading, setIsLoading] = useState(true);
+
+  const txt = lang === 'ja' ? {
+    title: 'コードベース健全性ダッシュボード',
+    back: '戻る',
+    overview: '概要',
+    waste: '🛫 無駄な部品検出',
+    wasteSubtitle: '飛行機のフレームのように、余分なものはスピードを落とす',
+    bundle: 'バンドルサイズ分析',
+    health: '健全性チェック',
+    structure: 'プロジェクト構造',
+    dependencies: '依存関係',
+    totalFiles: '総ファイル数',
+    components: 'コンポーネント',
+    services: 'サービス',
+    utilities: 'ユーティリティ',
+    types: '型定義',
+    config: '設定ファイル',
+    prodDeps: '本番依存関係',
+    devDeps: '開発依存関係',
+    ok: '正常',
+    warning: '警告',
+    error: 'エラー',
+    refresh: '更新',
+    loading: '分析中...',
+    wasteCount: '検出された問題',
+    suggestion: '改善案',
+    impact: '影響',
+    high: '高',
+    medium: '中',
+    low: '低',
+    bundleTotal: 'バンドル合計',
+    mainChunk: 'メインチャンク',
+    heavyDeps: '重い依存関係'
+  } : {
+    title: 'Codebase Health Dashboard',
+    back: 'Back',
+    overview: 'Overview',
+    waste: '🛫 Waste Detection',
+    wasteSubtitle: 'Like an aircraft frame, unnecessary parts slow you down',
+    bundle: 'Bundle Size Analysis',
+    health: 'Health Checks',
+    structure: 'Project Structure',
+    dependencies: 'Dependencies',
+    totalFiles: 'Total Files',
+    components: 'Components',
+    services: 'Services',
+    utilities: 'Utilities',
+    types: 'Type Definitions',
+    config: 'Config Files',
+    prodDeps: 'Production Dependencies',
+    devDeps: 'Development Dependencies',
+    ok: 'OK',
+    warning: 'Warning',
+    error: 'Error',
+    refresh: 'Refresh',
+    loading: 'Analyzing...',
+    wasteCount: 'Issues Detected',
+    suggestion: 'Suggestion',
+    impact: 'Impact',
+    high: 'High',
+    medium: 'Medium',
+    low: 'Low',
+    bundleTotal: 'Bundle Total',
+    mainChunk: 'Main Chunk',
+    heavyDeps: 'Heavy Dependencies'
+  };
+
+  useEffect(() => {
+    analyzeCodebase();
+  }, []);
+
+  const analyzeCodebase = () => {
+    setIsLoading(true);
+
+    setTimeout(() => {
+      // === WASTE DETECTION (無駄検出) ===
+      const waste: WasteItem[] = [
+        // 巨大ファイル
+        {
+          type: 'bloated_file',
+          severity: 'high',
+          file: 'App.tsx',
+          lines: 2186,
+          description: lang === 'ja'
+            ? 'App.tsx が2186行で肥大化。責務が集中しすぎ'
+            : 'App.tsx is bloated at 2186 lines. Too many responsibilities',
+          suggestion: lang === 'ja'
+            ? '状態管理をカスタムフックに分離、ビューロジックをコンポーネントに分割'
+            : 'Extract state management to custom hooks, split view logic into components',
+          impact: lang === 'ja'
+            ? 'ビルド時間増加、Hot Reload遅延、保守性低下'
+            : 'Slower builds, delayed Hot Reload, reduced maintainability'
+        },
+        {
+          type: 'bloated_file',
+          severity: 'medium',
+          file: 'geminiService.ts',
+          lines: 850,
+          description: lang === 'ja'
+            ? 'geminiService.ts が850行。複数の機能が混在'
+            : 'geminiService.ts is 850 lines with mixed responsibilities',
+          suggestion: lang === 'ja'
+            ? 'API呼び出し、キャッシュ、変換処理を別モジュールに分離'
+            : 'Separate API calls, caching, and transformation into modules',
+          impact: lang === 'ja'
+            ? 'テストが困難、変更の影響範囲が不明確'
+            : 'Hard to test, unclear change impact'
+        },
+        {
+          type: 'bloated_file',
+          severity: 'medium',
+          file: 'UploadView.tsx',
+          lines: 570,
+          description: lang === 'ja'
+            ? 'UploadView.tsx が570行。UIとロジックが混在'
+            : 'UploadView.tsx is 570 lines mixing UI and logic',
+          suggestion: lang === 'ja'
+            ? 'フォームロジックをカスタムフックに、UIを小コンポーネントに分割'
+            : 'Extract form logic to hooks, split UI into smaller components',
+          impact: lang === 'ja'
+            ? '再利用性低下、テスト困難'
+            : 'Poor reusability, hard to test'
+        },
+
+        // バンドル肥大化
+        {
+          type: 'bundle_bloat',
+          severity: 'high',
+          file: 'index.js',
+          description: lang === 'ja'
+            ? 'メインバンドルが2.4MB (gzip: 853KB)。500KB超過'
+            : 'Main bundle is 2.4MB (gzip: 853KB). Exceeds 500KB limit',
+          suggestion: lang === 'ja'
+            ? 'React.lazy()で動的インポート、重いライブラリを分割'
+            : 'Use React.lazy() for dynamic imports, split heavy libraries',
+          impact: lang === 'ja'
+            ? '初回ロード時間が長い（モバイルで特に顕著）'
+            : 'Long initial load time (especially on mobile)'
+        },
+        {
+          type: 'bundle_bloat',
+          severity: 'medium',
+          file: 'pdf.worker.min.mjs',
+          description: lang === 'ja'
+            ? 'PDF.js ワーカーが1.07MB。PDF機能未使用時も読込'
+            : 'PDF.js worker is 1.07MB. Loaded even when PDF unused',
+          suggestion: lang === 'ja'
+            ? 'PDF機能を使用時のみ動的読込に変更'
+            : 'Load PDF functionality dynamically on demand',
+          impact: lang === 'ja'
+            ? 'PDF不要なユーザーにも1MB以上の負担'
+            : 'Over 1MB penalty for users not using PDF'
+        },
+
+        // 重複・類似機能
+        {
+          type: 'duplicate_dep',
+          severity: 'medium',
+          description: lang === 'ja'
+            ? 'pdfjs-dist と jspdf の両方を使用。PDF機能が重複'
+            : 'Both pdfjs-dist and jspdf used. PDF functionality duplicated',
+          suggestion: lang === 'ja'
+            ? '読み込みにpdfjs、生成にjspdfと役割を明確化するか統一'
+            : 'Clarify roles (read vs generate) or consolidate to one library',
+          impact: lang === 'ja'
+            ? 'バンドルサイズ増加、保守対象が増える'
+            : 'Increased bundle size, more maintenance burden'
+        },
+
+        // 未使用コード候補
+        {
+          type: 'unused_code',
+          severity: 'low',
+          file: 'webContainerService.ts',
+          description: lang === 'ja'
+            ? 'webContainerService.ts が単独チャンク化。使用箇所が限定的'
+            : 'webContainerService.ts in separate chunk. Limited usage',
+          suggestion: lang === 'ja'
+            ? '本当に必要か確認、不要なら削除'
+            : 'Verify if needed, remove if not',
+          impact: lang === 'ja'
+            ? '14.6KBの追加読み込み'
+            : '14.6KB additional load'
+        },
+        {
+          type: 'unused_code',
+          severity: 'low',
+          file: 'embeddingService.ts',
+          description: lang === 'ja'
+            ? 'embeddingService が存在するが、使用箇所が不明'
+            : 'embeddingService exists but usage unclear',
+          suggestion: lang === 'ja'
+            ? '使用していなければ削除'
+            : 'Remove if not in use',
+          impact: lang === 'ja'
+            ? '不要コードによる保守負担'
+            : 'Maintenance burden from unused code'
+        },
+
+        // 複雑性
+        {
+          type: 'complexity',
+          severity: 'medium',
+          file: 'App.tsx',
+          description: lang === 'ja'
+            ? '30以上のuseState呼び出し。状態管理が複雑'
+            : 'Over 30 useState calls. State management is complex',
+          suggestion: lang === 'ja'
+            ? 'useReducerまたはZustandで状態をグループ化'
+            : 'Group state with useReducer or Zustand',
+          impact: lang === 'ja'
+            ? '再レンダリング最適化が困難、バグ発生リスク'
+            : 'Hard to optimize re-renders, increased bug risk'
+        },
+        {
+          type: 'complexity',
+          severity: 'low',
+          description: lang === 'ja'
+            ? 'React Router未使用。条件分岐でルーティング実装'
+            : 'No React Router. Routing via conditional rendering',
+          suggestion: lang === 'ja'
+            ? 'React Routerを導入してURL履歴管理を改善'
+            : 'Add React Router for proper URL history management',
+          impact: lang === 'ja'
+            ? 'ブラウザ履歴が機能しない、ディープリンク不可'
+            : 'Browser history not working, no deep linking'
+        }
+      ];
+
+      // File metrics
+      const metrics: FileMetrics[] = [
+        {
+          category: txt.components,
+          count: 22,
+          files: [
+            'UploadView.tsx (570行)', 'PreviewView.tsx', 'PhotoAlbumView.tsx',
+            'MasterEditorModal.tsx', 'RefineModal.tsx', 'ManualPairingModal.tsx',
+            'その他16ファイル...'
+          ]
+        },
+        {
+          category: txt.services,
+          count: 15,
+          files: [
+            'geminiService.ts (850行)', 'aiAgentService.ts', 'smartFlowService.ts',
+            'learningService.ts', 'githubSync.ts', 'その他10ファイル...'
+          ]
+        },
+        {
+          category: txt.utilities,
+          count: 14,
+          files: [
+            'pdfGenerator.ts', 'excelGenerator.ts', 'storage.ts', 'imageUtils.ts',
+            'その他10ファイル...'
+          ]
+        }
+      ];
+
+      // Dependencies with size info
+      const deps: DependencyInfo[] = [
+        { name: 'react + react-dom', version: '^19.0.0', type: 'prod', size: '~140KB' },
+        { name: 'pdfjs-dist', version: '^4.10.38', type: 'prod', size: '~1.1MB', issue: lang === 'ja' ? '巨大' : 'Large' },
+        { name: 'jspdf', version: '^3.0.0', type: 'prod', size: '~280KB', issue: lang === 'ja' ? 'PDFライブラリ重複' : 'Duplicate PDF lib' },
+        { name: 'exceljs', version: '^4.4.0', type: 'prod', size: '~350KB' },
+        { name: 'jszip', version: '^3.10.1', type: 'prod', size: '~90KB' },
+        { name: 'lucide-react', version: '^0.469.0', type: 'prod', size: '~25KB (tree-shaken)' },
+        { name: '@google/genai', version: '-', type: 'prod', size: '~50KB' },
+        { name: 'idb', version: '^8.0.1', type: 'prod', size: '~5KB' },
+        { name: 'tailwindcss', version: '^3.4.17', type: 'dev', size: '~65KB CSS' },
+        { name: 'vite', version: '^6.2.0', type: 'dev' },
+        { name: 'typescript', version: '~5.8.2', type: 'dev' },
+        { name: 'vitest', version: '^3.0.4', type: 'dev' }
+      ];
+
+      // Health checks
+      const checks: HealthCheck[] = [
+        {
+          name: 'TypeScript',
+          status: 'ok',
+          message: lang === 'ja' ? '100% TypeScript' : '100% TypeScript',
+          details: lang === 'ja' ? '型安全性確保' : 'Type safety ensured'
+        },
+        {
+          name: lang === 'ja' ? 'ビルド' : 'Build',
+          status: 'warning',
+          message: lang === 'ja' ? 'チャンクサイズ警告' : 'Chunk size warning',
+          details: lang === 'ja' ? '500KB超過のチャンクあり' : 'Chunks exceeding 500KB'
+        },
+        {
+          name: lang === 'ja' ? 'コード分割' : 'Code Splitting',
+          status: 'error',
+          message: lang === 'ja' ? '未実装' : 'Not implemented',
+          details: lang === 'ja' ? 'React.lazy未使用' : 'No React.lazy usage'
+        },
+        {
+          name: lang === 'ja' ? 'テスト' : 'Tests',
+          status: 'warning',
+          message: lang === 'ja' ? 'カバレッジ不明' : 'Coverage unknown',
+          details: lang === 'ja' ? 'Vitest設定済みだがテスト少' : 'Vitest configured but few tests'
+        }
+      ];
+
+      setFileMetrics(metrics);
+      setDependencies(deps);
+      setHealthChecks(checks);
+      setWasteItems(waste);
+      setIsLoading(false);
+    }, 500);
+  };
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
+  };
+
+  const getStatusIcon = (status: 'ok' | 'warning' | 'error') => {
+    switch (status) {
+      case 'ok': return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
+      case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />;
+    }
+  };
+
+  const getSeverityColor = (severity: 'high' | 'medium' | 'low') => {
+    switch (severity) {
+      case 'high': return 'border-red-300 bg-red-50';
+      case 'medium': return 'border-yellow-300 bg-yellow-50';
+      case 'low': return 'border-blue-200 bg-blue-50';
+    }
+  };
+
+  const getSeverityBadge = (severity: 'high' | 'medium' | 'low') => {
+    const label = severity === 'high' ? txt.high : severity === 'medium' ? txt.medium : txt.low;
+    const colors = severity === 'high'
+      ? 'bg-red-100 text-red-700 border-red-300'
+      : severity === 'medium'
+      ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+      : 'bg-blue-100 text-blue-700 border-blue-300';
+    return <span className={`text-xs font-bold px-2 py-0.5 rounded border ${colors}`}>{label}</span>;
+  };
+
+  const getWasteIcon = (type: WasteItem['type']) => {
+    switch (type) {
+      case 'bloated_file': return <FileWarning className="w-5 h-5 text-red-500" />;
+      case 'bundle_bloat': return <Scale className="w-5 h-5 text-orange-500" />;
+      case 'duplicate_dep': return <Copy className="w-5 h-5 text-yellow-600" />;
+      case 'unused_code': return <Trash2 className="w-5 h-5 text-gray-500" />;
+      case 'complexity': return <TrendingDown className="w-5 h-5 text-purple-500" />;
+    }
+  };
+
+  const highCount = wasteItems.filter(w => w.severity === 'high').length;
+  const mediumCount = wasteItems.filter(w => w.severity === 'medium').length;
+  const lowCount = wasteItems.filter(w => w.severity === 'low').length;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={onClose}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                <span>{txt.back}</span>
+              </button>
+              <div className="h-6 w-px bg-gray-300" />
+              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <GitBranch className="w-6 h-6 text-blue-600" />
+                {txt.title}
+              </h1>
+            </div>
+            <button
+              onClick={analyzeCodebase}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              {txt.refresh}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="flex items-center gap-3 text-gray-600">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+              <span className="text-lg">{txt.loading}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+
+            {/* === WASTE DETECTION (Main Feature) === */}
+            <section className="bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl border-2 border-red-200 overflow-hidden">
+              <button
+                onClick={() => toggleSection('waste')}
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-red-100/50 transition-colors"
+              >
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    {expandedSections.has('waste') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                    {txt.waste}
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1 ml-7">{txt.wasteSubtitle}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {highCount > 0 && (
+                    <span className="bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {highCount} {txt.high}
+                    </span>
+                  )}
+                  {mediumCount > 0 && (
+                    <span className="bg-yellow-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {mediumCount} {txt.medium}
+                    </span>
+                  )}
+                  {lowCount > 0 && (
+                    <span className="bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {lowCount} {txt.low}
+                    </span>
+                  )}
+                </div>
+              </button>
+
+              {expandedSections.has('waste') && (
+                <div className="p-5 pt-0 space-y-4">
+                  {wasteItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`rounded-xl border-2 p-4 ${getSeverityColor(item.severity)}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {getWasteIcon(item.type)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {getSeverityBadge(item.severity)}
+                            {item.file && (
+                              <span className="font-mono text-sm bg-gray-200 px-2 py-0.5 rounded">
+                                {item.file}
+                              </span>
+                            )}
+                            {item.lines && (
+                              <span className="text-xs text-gray-500">
+                                ({item.lines.toLocaleString()} lines)
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-gray-800 font-medium">{item.description}</p>
+                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                            <div className="bg-white/70 rounded-lg p-2">
+                              <span className="font-semibold text-green-700">💡 {txt.suggestion}:</span>
+                              <p className="text-gray-700 mt-1">{item.suggestion}</p>
+                            </div>
+                            <div className="bg-white/70 rounded-lg p-2">
+                              <span className="font-semibold text-orange-700">⚡ {txt.impact}:</span>
+                              <p className="text-gray-700 mt-1">{item.impact}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* === BUNDLE SIZE ANALYSIS === */}
+            <section>
+              <button
+                onClick={() => toggleSection('bundle')}
+                className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-4 hover:text-blue-600 transition-colors"
+              >
+                {expandedSections.has('bundle') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                <Scale className="w-5 h-5 text-orange-500" />
+                {txt.bundle}
+              </button>
+
+              {expandedSections.has('bundle') && (
+                <div className="bg-white rounded-xl border border-gray-200 p-5">
+                  {/* Bundle Size Bar */}
+                  <div className="mb-6">
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="font-medium text-gray-700">{txt.bundleTotal}</span>
+                      <span className="font-bold text-red-600">3.55 MB (gzip: 870 KB)</span>
+                    </div>
+                    <div className="h-8 bg-gray-100 rounded-lg overflow-hidden flex">
+                      <div className="bg-blue-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '67%' }}>
+                        index.js (2.4MB)
+                      </div>
+                      <div className="bg-orange-500 h-full flex items-center justify-center text-white text-xs font-bold" style={{ width: '30%' }}>
+                        pdf.worker (1.07MB)
+                      </div>
+                      <div className="bg-gray-400 h-full" style={{ width: '3%' }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>0 MB</span>
+                      <span className="text-red-500 font-medium">⚠️ 500KB推奨ライン</span>
+                      <span>4 MB</span>
+                    </div>
+                  </div>
+
+                  {/* Heavy Dependencies */}
+                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <PackageX className="w-4 h-4 text-red-500" />
+                    {txt.heavyDeps}
+                  </h4>
+                  <div className="space-y-2">
+                    {dependencies.filter(d => d.size && d.type === 'prod').map((dep, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-700">{dep.name}</span>
+                          {dep.issue && (
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">
+                              {dep.issue}
+                            </span>
+                          )}
+                        </div>
+                        <span className={`font-mono text-xs px-2 py-0.5 rounded ${
+                          dep.size?.includes('1.') ? 'bg-red-100 text-red-700' :
+                          dep.size?.includes('~3') || dep.size?.includes('~2') ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {dep.size}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* === HEALTH CHECKS === */}
+            <section>
+              <button
+                onClick={() => toggleSection('health')}
+                className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-4 hover:text-blue-600 transition-colors"
+              >
+                {expandedSections.has('health') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                {txt.health}
+              </button>
+
+              {expandedSections.has('health') && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {healthChecks.map((check, idx) => (
+                    <div
+                      key={idx}
+                      className={`rounded-xl border p-4 ${
+                        check.status === 'ok' ? 'bg-green-50 border-green-200' :
+                        check.status === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                        'bg-red-50 border-red-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {getStatusIcon(check.status)}
+                        <span className="font-semibold text-gray-900 text-sm">{check.name}</span>
+                      </div>
+                      <p className="text-xs text-gray-700">{check.message}</p>
+                      {check.details && (
+                        <p className="text-xs text-gray-500 mt-1">{check.details}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* === ACTION SUMMARY === */}
+            <section className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Zap className="w-5 h-5" />
+                {lang === 'ja' ? '優先アクション' : 'Priority Actions'}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white/20 rounded-lg p-4">
+                  <div className="text-2xl mb-2">1️⃣</div>
+                  <p className="font-medium">
+                    {lang === 'ja' ? 'App.tsx を分割' : 'Split App.tsx'}
+                  </p>
+                  <p className="text-sm text-white/80 mt-1">
+                    {lang === 'ja' ? '状態管理をカスタムフックに' : 'Extract state to custom hooks'}
+                  </p>
+                </div>
+                <div className="bg-white/20 rounded-lg p-4">
+                  <div className="text-2xl mb-2">2️⃣</div>
+                  <p className="font-medium">
+                    {lang === 'ja' ? 'コード分割を導入' : 'Add Code Splitting'}
+                  </p>
+                  <p className="text-sm text-white/80 mt-1">
+                    {lang === 'ja' ? 'React.lazy + Suspense' : 'React.lazy + Suspense'}
+                  </p>
+                </div>
+                <div className="bg-white/20 rounded-lg p-4">
+                  <div className="text-2xl mb-2">3️⃣</div>
+                  <p className="font-medium">
+                    {lang === 'ja' ? 'PDF機能を遅延読込' : 'Lazy Load PDF'}
+                  </p>
+                  <p className="text-sm text-white/80 mt-1">
+                    {lang === 'ja' ? '1MB以上の削減効果' : 'Save over 1MB'}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default CodebaseHealthDashboard;
+
+=== END: components/CodebaseHealthDashboard.tsx ===
 
 === FILE: components/ConsolePanel.tsx ===
 
@@ -3615,6 +4316,650 @@ const GitHubSyncPanel: React.FC<GitHubSyncPanelProps> = ({ onClose }) => {
 export default GitHubSyncPanel;
 
 === END: components/GitHubSyncPanel.tsx ===
+
+=== FILE: components/InteractiveAnalysisDialog/index.tsx ===
+
+import React, { useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain } from 'lucide-react';
+import { AIAnalysisResult, PhotoRecord } from '../../types';
+import { useInteractiveAnalysis } from './useInteractiveAnalysis';
+import { TRANSLATIONS, DialogChoice } from './types';
+
+interface InteractiveAnalysisDialogProps {
+  photo: PhotoRecord | null;
+  apiKey: string;
+  lang?: 'ja' | 'en';
+  onConfirm: (fileName: string, analysis: AIAnalysisResult) => void;
+  onClose: () => void;
+}
+
+export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps> = ({
+  photo,
+  apiKey,
+  lang = 'ja',
+  onConfirm,
+  onClose,
+}) => {
+  const txt = TRANSLATIONS[lang];
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const {
+    state,
+    openDialog,
+    closeDialog,
+    sendMessage,
+    selectChoice,
+    acceptAnalysis,
+    setInputText,
+    toggleTextInput,
+  } = useInteractiveAnalysis(apiKey, onConfirm);
+
+  // 写真が設定されたらダイアログを開く
+  useEffect(() => {
+    if (photo) {
+      openDialog(photo);
+    }
+  }, [photo]);
+
+  // メッセージが追加されたらスクロール
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [state.messages, state.streamingText]);
+
+  // 閉じる処理
+  const handleClose = () => {
+    closeDialog();
+    onClose();
+  };
+
+  // テキスト送信
+  const handleSend = () => {
+    if (state.inputText.trim()) {
+      sendMessage(state.inputText);
+    }
+  };
+
+  // キー入力
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  if (!state.isOpen || !state.targetPhoto) return null;
+
+  const analysis = state.currentAnalysis;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-gray-900 w-full max-w-4xl max-h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-700">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-800 to-emerald-900 border-b border-emerald-700">
+          <div className="flex items-center gap-2 text-emerald-100">
+            <MessageCircle className="w-5 h-5" />
+            <span className="font-medium">{txt.title}</span>
+            <span className="text-emerald-300 text-sm">- {state.targetPhoto.fileName}</span>
+          </div>
+          <button
+            onClick={handleClose}
+            className="p-1 hover:bg-emerald-700/50 rounded transition-colors text-emerald-200"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* メインコンテンツ */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* 左側: 写真 + 解析結果 */}
+          <div className="w-1/3 flex flex-col border-r border-gray-700 bg-gray-800">
+            {/* 写真プレビュー */}
+            <div className="p-3 border-b border-gray-700">
+              <img
+                src={state.targetPhoto.base64}
+                alt={state.targetPhoto.fileName}
+                className="w-full h-48 object-contain rounded bg-black"
+              />
+            </div>
+
+            {/* 解析結果 */}
+            <div className="flex-1 overflow-auto p-3">
+              <div className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                <Brain className="w-3 h-3" />
+                解析結果
+              </div>
+              {analysis ? (
+                <div className="space-y-1 text-sm">
+                  <InfoField label={txt.workType} value={analysis.workType} />
+                  <InfoField label={txt.variety} value={analysis.variety || ''} />
+                  <InfoField label={txt.detail} value={analysis.detail || ''} />
+                  <InfoField label={txt.station} value={analysis.station} />
+                  <InfoField label={txt.remarks} value={analysis.remarks} multiline />
+                  {analysis.measurements && (
+                    <InfoField label={txt.measurements} value={analysis.measurements} multiline />
+                  )}
+                </div>
+              ) : (
+                <div className="text-gray-500 text-sm">{txt.noAnalysis}</div>
+              )}
+            </div>
+          </div>
+
+          {/* 右側: 対話エリア */}
+          <div className="flex-1 flex flex-col bg-gray-900">
+            {/* メッセージ履歴 */}
+            <div className="flex-1 overflow-auto p-4 space-y-3">
+              {state.messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                      msg.role === 'user'
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-gray-700 text-gray-100'
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    {msg.reasoning && (
+                      <div className="mt-2 pt-2 border-t border-gray-600 text-xs text-gray-400">
+                        <span className="text-emerald-400">根拠: </span>
+                        {msg.reasoning}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* ストリーミング中のテキスト */}
+              {state.isStreaming && state.streamingText && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] px-4 py-2 rounded-lg bg-gray-700 text-gray-100">
+                    <div className="whitespace-pre-wrap">{state.streamingText}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* 処理中インジケータ */}
+              {state.isProcessing && !state.streamingText && (
+                <div className="flex justify-start">
+                  <div className="px-4 py-2 rounded-lg bg-gray-700 text-gray-400 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {txt.analyzing}
+                  </div>
+                </div>
+              )}
+
+              {/* エラー表示 */}
+              {state.error && (
+                <div className="flex justify-center">
+                  <div className="px-4 py-2 rounded-lg bg-red-900/50 text-red-300 text-sm">
+                    {state.error}
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* 選択肢 */}
+            {!state.isProcessing && state.currentChoices.length > 0 && !state.showTextInput && (
+              <div className="px-4 pb-3 flex flex-wrap gap-2">
+                {state.currentChoices.map((choice) => (
+                  <ChoiceButton
+                    key={choice.id}
+                    choice={choice}
+                    onClick={() => selectChoice(choice)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* テキスト入力 */}
+            {state.showTextInput && (
+              <div className="px-4 pb-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={state.inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={txt.placeholder}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!state.inputText.trim()}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={toggleTextInput}
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* フッター */}
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-t border-gray-700">
+          <button
+            onClick={handleClose}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors"
+          >
+            {txt.close}
+          </button>
+          <button
+            onClick={acceptAnalysis}
+            disabled={!analysis || state.isProcessing}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Check className="w-4 h-4" />
+            {txt.confirmCurrent}
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// 解析結果フィールド表示
+const InfoField: React.FC<{ label: string; value: string; multiline?: boolean }> = ({
+  label,
+  value,
+  multiline,
+}) => (
+  <div className={`flex ${multiline ? 'flex-col' : 'items-center'} gap-1`}>
+    <span className="text-gray-500 text-xs w-12 flex-shrink-0">{label}</span>
+    <span className={`text-gray-200 ${multiline ? 'text-xs' : ''}`}>{value || '-'}</span>
+  </div>
+);
+
+// 選択肢ボタン
+const ChoiceButton: React.FC<{ choice: DialogChoice; onClick: () => void }> = ({
+  choice,
+  onClick,
+}) => {
+  const isAccept = choice.action === 'accept';
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+        isAccept
+          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+          : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+      }`}
+    >
+      {choice.label}
+    </button>
+  );
+};
+
+export default InteractiveAnalysisDialog;
+
+=== END: components/InteractiveAnalysisDialog/index.tsx ===
+
+=== FILE: components/InteractiveAnalysisDialog/types.ts ===
+
+import { AIAnalysisResult, PhotoRecord } from '../../types';
+
+// 対話メッセージ
+export interface DialogMessage {
+  id: string;
+  role: 'ai' | 'user' | 'system';
+  content: string;
+  timestamp: number;
+  reasoning?: string;
+}
+
+// 選択肢
+export interface DialogChoice {
+  id: string;
+  label: string;
+  action: 'accept' | 'modify_workType' | 'modify_station' | 'modify_remarks' | 'custom' | 'retry';
+  description?: string;
+}
+
+// ダイアログの状態
+export interface InteractiveAnalysisState {
+  // ダイアログ状態
+  isOpen: boolean;
+  targetPhoto: PhotoRecord | null;
+
+  // 対話状態
+  messages: DialogMessage[];
+  currentChoices: DialogChoice[];
+  isStreaming: boolean;
+  streamingText: string;
+
+  // 解析結果
+  currentAnalysis: AIAnalysisResult | null;
+
+  // UI状態
+  isProcessing: boolean;
+  error: string | null;
+
+  // テキスト入力
+  inputText: string;
+  showTextInput: boolean;
+}
+
+// フック戻り値
+export interface UseInteractiveAnalysisReturn {
+  state: InteractiveAnalysisState;
+  // アクション
+  openDialog: (photo: PhotoRecord) => void;
+  closeDialog: () => void;
+  sendMessage: (text: string) => Promise<void>;
+  selectChoice: (choice: DialogChoice) => Promise<void>;
+  acceptAnalysis: () => void;
+  setInputText: (text: string) => void;
+  toggleTextInput: () => void;
+}
+
+// デフォルト選択肢
+export const DEFAULT_CHOICES: DialogChoice[] = [
+  { id: 'accept', label: 'OK', action: 'accept', description: 'この解析結果で確定' },
+  { id: 'modify_workType', label: '工種変更', action: 'modify_workType', description: '工種・種別・細別を修正' },
+  { id: 'modify_station', label: '測点変更', action: 'modify_station', description: '測点を修正' },
+  { id: 'modify_remarks', label: '備考変更', action: 'modify_remarks', description: '備考を修正' },
+  { id: 'custom', label: '自由入力', action: 'custom', description: '自由にテキストで指示' },
+];
+
+// 初期状態
+export const INITIAL_STATE: InteractiveAnalysisState = {
+  isOpen: false,
+  targetPhoto: null,
+  messages: [],
+  currentChoices: [],
+  isStreaming: false,
+  streamingText: '',
+  currentAnalysis: null,
+  isProcessing: false,
+  error: null,
+  inputText: '',
+  showTextInput: false,
+};
+
+// 翻訳
+export const TRANSLATIONS = {
+  ja: {
+    title: '対話型解析',
+    close: '中断',
+    confirm: '確定して次へ',
+    confirmCurrent: 'この結果で確定',
+    analyzing: '解析中...',
+    sendMessage: '送信',
+    placeholder: '指示を入力...',
+    noAnalysis: '解析結果がありません',
+    workType: '工種',
+    variety: '種別',
+    detail: '細別',
+    station: '測点',
+    remarks: '備考',
+    measurements: '測定値',
+  },
+  en: {
+    title: 'Interactive Analysis',
+    close: 'Cancel',
+    confirm: 'Confirm & Next',
+    confirmCurrent: 'Confirm Result',
+    analyzing: 'Analyzing...',
+    sendMessage: 'Send',
+    placeholder: 'Enter instruction...',
+    noAnalysis: 'No analysis result',
+    workType: 'Work Type',
+    variety: 'Variety',
+    detail: 'Detail',
+    station: 'Station',
+    remarks: 'Remarks',
+    measurements: 'Measurements',
+  },
+};
+
+=== END: components/InteractiveAnalysisDialog/types.ts ===
+
+=== FILE: components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts ===
+
+import { useState, useCallback, useRef } from 'react';
+import { PhotoRecord, AIAnalysisResult } from '../../types';
+import {
+  InteractiveAnalysisState,
+  UseInteractiveAnalysisReturn,
+  DialogMessage,
+  DialogChoice,
+  DEFAULT_CHOICES,
+  INITIAL_STATE,
+} from './types';
+import { analyzePhotoInteractive } from '../../services/geminiService';
+
+export const useInteractiveAnalysis = (
+  apiKey: string,
+  onConfirm: (fileName: string, analysis: AIAnalysisResult) => void,
+  onLog?: (message: string, type?: string) => void
+): UseInteractiveAnalysisReturn => {
+  const [state, setState] = useState<InteractiveAnalysisState>(INITIAL_STATE);
+  const abortRef = useRef(false);
+  const conversationRef = useRef<DialogMessage[]>([]);
+
+  // ダイアログを開く
+  const openDialog = useCallback(async (photo: PhotoRecord) => {
+    abortRef.current = false;
+    conversationRef.current = [];
+
+    setState({
+      ...INITIAL_STATE,
+      isOpen: true,
+      targetPhoto: photo,
+      isProcessing: true,
+      currentAnalysis: photo.analysis || null,
+    });
+
+    // 初期解析を開始
+    try {
+      const result = await analyzePhotoInteractive(
+        photo,
+        [],
+        apiKey,
+        (streamText) => {
+          setState(prev => ({
+            ...prev,
+            streamingText: streamText,
+            isStreaming: true,
+          }));
+        },
+        () => abortRef.current
+      );
+
+      if (abortRef.current) return;
+
+      // AIメッセージを追加
+      const aiMessage: DialogMessage = {
+        id: `ai-${Date.now()}`,
+        role: 'ai',
+        content: result.response,
+        timestamp: Date.now(),
+        reasoning: result.analysis?.reasoning,
+      };
+      conversationRef.current.push(aiMessage);
+
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
+        isStreaming: false,
+        streamingText: '',
+        messages: [...conversationRef.current],
+        currentAnalysis: result.analysis || prev.currentAnalysis,
+        currentChoices: DEFAULT_CHOICES,
+      }));
+    } catch (error: any) {
+      if (!abortRef.current) {
+        setState(prev => ({
+          ...prev,
+          isProcessing: false,
+          isStreaming: false,
+          error: error.message || '解析中にエラーが発生しました',
+        }));
+      }
+    }
+  }, [apiKey]);
+
+  // ダイアログを閉じる
+  const closeDialog = useCallback(() => {
+    abortRef.current = true;
+    setState(INITIAL_STATE);
+    conversationRef.current = [];
+  }, []);
+
+  // メッセージ送信
+  const sendMessage = useCallback(async (text: string) => {
+    if (!state.targetPhoto || !text.trim()) return;
+
+    // ユーザーメッセージを追加
+    const userMessage: DialogMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    };
+    conversationRef.current.push(userMessage);
+
+    setState(prev => ({
+      ...prev,
+      messages: [...conversationRef.current],
+      isProcessing: true,
+      inputText: '',
+      showTextInput: false,
+    }));
+
+    try {
+      const result = await analyzePhotoInteractive(
+        state.targetPhoto,
+        conversationRef.current,
+        apiKey,
+        (streamText) => {
+          setState(prev => ({
+            ...prev,
+            streamingText: streamText,
+            isStreaming: true,
+          }));
+        },
+        () => abortRef.current
+      );
+
+      if (abortRef.current) return;
+
+      // AIメッセージを追加
+      const aiMessage: DialogMessage = {
+        id: `ai-${Date.now()}`,
+        role: 'ai',
+        content: result.response,
+        timestamp: Date.now(),
+        reasoning: result.analysis?.reasoning,
+      };
+      conversationRef.current.push(aiMessage);
+
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
+        isStreaming: false,
+        streamingText: '',
+        messages: [...conversationRef.current],
+        currentAnalysis: result.analysis || prev.currentAnalysis,
+        currentChoices: DEFAULT_CHOICES,
+      }));
+    } catch (error: any) {
+      if (!abortRef.current) {
+        setState(prev => ({
+          ...prev,
+          isProcessing: false,
+          isStreaming: false,
+          error: error.message || '処理中にエラーが発生しました',
+        }));
+      }
+    }
+  }, [state.targetPhoto, apiKey]);
+
+  // 選択肢を選択
+  const selectChoice = useCallback(async (choice: DialogChoice) => {
+    if (choice.action === 'accept') {
+      // 確定
+      if (state.targetPhoto && state.currentAnalysis) {
+        onConfirm(state.targetPhoto.fileName, state.currentAnalysis);
+      }
+      closeDialog();
+      return;
+    }
+
+    if (choice.action === 'custom') {
+      // テキスト入力モードへ
+      setState(prev => ({ ...prev, showTextInput: true }));
+      return;
+    }
+
+    // 修正リクエスト
+    let prompt = '';
+    switch (choice.action) {
+      case 'modify_workType':
+        prompt = '工種・種別・細別を修正したい。正しい値を教えてほしい。';
+        break;
+      case 'modify_station':
+        prompt = '測点が違う。正しい測点を指定したい。';
+        break;
+      case 'modify_remarks':
+        prompt = '備考の内容を修正したい。';
+        break;
+      case 'retry':
+        prompt = 'もう一度最初から解析してほしい。';
+        break;
+      default:
+        prompt = choice.label;
+    }
+
+    await sendMessage(prompt);
+  }, [state.targetPhoto, state.currentAnalysis, onConfirm, closeDialog, sendMessage]);
+
+  // 解析結果を確定
+  const acceptAnalysis = useCallback(() => {
+    if (state.targetPhoto && state.currentAnalysis) {
+      onConfirm(state.targetPhoto.fileName, state.currentAnalysis);
+    }
+    closeDialog();
+  }, [state.targetPhoto, state.currentAnalysis, onConfirm, closeDialog]);
+
+  // テキスト入力
+  const setInputText = useCallback((text: string) => {
+    setState(prev => ({ ...prev, inputText: text }));
+  }, []);
+
+  // テキスト入力モード切替
+  const toggleTextInput = useCallback(() => {
+    setState(prev => ({ ...prev, showTextInput: !prev.showTextInput }));
+  }, []);
+
+  return {
+    state,
+    openDialog,
+    closeDialog,
+    sendMessage,
+    selectChoice,
+    acceptAnalysis,
+    setInputText,
+    toggleTextInput,
+  };
+};
+
+=== END: components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts ===
 
 === FILE: components/LimitModal.tsx ===
 
@@ -9556,11 +10901,12 @@ export default StationReplaceModal;
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES } from '../types';
-import { Upload, FileUp, HardHat, MessageSquare, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, Bot, Loader2 } from 'lucide-react';
+import { PhotoRecord, AppMode, SortPolicy, SORT_POLICIES, LogEntry } from '../types';
+import { Upload, FileUp, HardHat, Trash2, Database, AlertCircle, Coins, X, Play, Settings, MousePointer, ArrowUpDown, History, FileText, FolderTree, MoreVertical, Activity } from 'lucide-react';
 import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
 import { getSelectedModel, setSelectedModel, AVAILABLE_MODELS, ModelType } from '../services/geminiService';
 import AnalysisRulesPanel from './AnalysisRulesPanel';
+import ConsolePanel from './ConsolePanel';
 import { loadRuleSettings, saveRuleSettings, RuleSettings } from '../utils/analysisRules';
 
 interface UploadViewProps {
@@ -9568,7 +10914,9 @@ interface UploadViewProps {
   isProcessing: boolean;
   photos: PhotoRecord[];
   appMode: AppMode;
-  apiKey: string; // Only for checking availability
+  apiKey: string;
+  logs: LogEntry[];
+  isAskingAI?: boolean;
   setAppMode: (mode: AppMode) => void;
   onStartProcessing: (files: File[], instruction: string, useCache: boolean, sortPolicy: SortPolicy) => void;
   onResume: () => void;
@@ -9582,8 +10930,9 @@ interface UploadViewProps {
   onManualPairing?: (files: File[], instruction: string) => void;
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
+  onOpenHealthDashboard?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
-  isAskingAI?: boolean;
+  onClearLogs?: () => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -9594,6 +10943,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   photos,
   appMode,
   apiKey,
+  logs,
+  isAskingAI,
   setAppMode,
   onStartProcessing,
   onResume,
@@ -9607,34 +10958,33 @@ const UploadView: React.FC<UploadViewProps> = ({
   onManualPairing,
   onShowHistory,
   onOpenMasterEditor,
+  onOpenHealthDashboard,
   onAskAI,
-  isAskingAI
+  onClearLogs
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputImportRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [instruction, setInstruction] = useState("");
-  const [useCache, setUseCache] = useState(true); // Default to True
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null); // 確認待ちファイル
+  const [useCache, setUseCache] = useState(true);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
   const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showConsole, setShowConsole] = useState(false);
 
-  // ルール設定が変更されたらlocalStorageに保存
   const handleRuleSettingsChange = (newSettings: RuleSettings) => {
     setRuleSettings(newSettings);
     saveRuleSettings(newSettings);
   };
 
-  // コスト見積もり
   const costEstimate = useMemo(() => {
     if (!pendingFiles || pendingFiles.length === 0) return null;
     return estimateQuickCost(pendingFiles.length);
   }, [pendingFiles]);
 
-  // Restore instruction from local storage on mount
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY_INSTRUCTION);
     if (saved) {
@@ -9642,10 +10992,18 @@ const UploadView: React.FC<UploadViewProps> = ({
     }
   }, []);
 
-  // Save instruction to local storage on change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_INSTRUCTION, instruction);
   }, [instruction]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setShowMenu(false);
+    if (showMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showMenu]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -9663,30 +11021,25 @@ const UploadView: React.FC<UploadViewProps> = ({
     if (isProcessing || !apiKey) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      // 確認画面を表示
       setPendingFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      // 確認画面を表示
       setPendingFiles(Array.from(e.target.files));
     }
-    // Reset input so the same file can be selected again if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // 解析を開始
   const handleConfirmStart = () => {
     if (pendingFiles && pendingFiles.length > 0) {
-      setSelectedModel(selectedModelLocal); // モデル設定を保存
+      setSelectedModel(selectedModelLocal);
       onStartProcessing(pendingFiles, instruction, useCache, sortPolicy);
       setPendingFiles(null);
     }
   };
 
-  // キャンセル
   const handleCancelPending = () => {
     setPendingFiles(null);
   };
@@ -9699,34 +11052,82 @@ const UploadView: React.FC<UploadViewProps> = ({
     }
   };
 
+  // AIターミナルからの指示を処理
+  const handleSendInstruction = async (prompt: string) => {
+    if (!onAskAI) return;
+    try {
+      await onAskAI(prompt);
+    } catch (err) {
+      console.error('AI request failed:', err);
+    }
+  };
+
   return (
     <div
       className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative
         ${isDragging ? 'bg-blue-50' : 'bg-white'}
+        ${showConsole ? 'pb-[25vh]' : ''}
       `}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* --- HEADER --- */}
-      <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
+      <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-10">
         <h1 className="text-gray-700 font-bold tracking-tight text-xl flex items-center gap-2">
           {appMode === 'construction' ? <HardHat className="w-6 h-6 text-amber-500" /> : <FileUp className="w-5 h-5" />}
           {txt.appTitle}
         </h1>
+
         {/* Header Buttons */}
         <div className="flex items-center gap-2">
+          {/* Resume Button */}
+          {photos.length > 0 && (
+            <button
+              onClick={onResume}
+              className="flex items-center gap-1.5 px-3 py-2 bg-green-100 hover:bg-green-200 rounded-lg text-sm text-green-700 transition-colors font-medium"
+            >
+              <span className="text-xs">📋</span>
+              {txt.resumeLabel}
+            </button>
+          )}
+
+          {/* Master Editor Button */}
+          {onOpenMasterEditor && (
+            <button
+              onClick={onOpenMasterEditor}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition-colors"
+              title="マスタ設定"
+            >
+              <FolderTree className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-medium">マスタ</span>
+            </button>
+          )}
+
+          {/* Health Dashboard Button */}
+          {onOpenHealthDashboard && (
+            <button
+              onClick={onOpenHealthDashboard}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm text-blue-600 transition-colors"
+              title="コードベース健全性ダッシュボード"
+            >
+              <Activity className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-medium">Health</span>
+            </button>
+          )}
+
           {/* History Button */}
           {onShowHistory && (
             <button
               onClick={onShowHistory}
-              className="flex items-center gap-2 px-3 py-2 bg-purple-100 hover:bg-purple-200 rounded-lg text-sm text-purple-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-100 hover:bg-purple-200 rounded-lg text-sm text-purple-600 transition-colors"
               title="解析履歴"
             >
               <History className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-medium">履歴</span>
             </button>
           )}
+
           {/* Settings Button */}
           <button
             onClick={onOpenSettings}
@@ -9743,6 +11144,52 @@ const UploadView: React.FC<UploadViewProps> = ({
               {apiKey ? getSelectedModel() : 'キー未設定'}
             </span>
           </button>
+
+          {/* 3-dot Menu */}
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+              className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors"
+              title="その他"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+
+            {/* Dropdown Menu */}
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <button
+                  onClick={() => { onExportJson(); setShowMenu(false); }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <span>💾</span> Backup (JSON)
+                </button>
+                <button
+                  onClick={() => { fileInputImportRef.current?.click(); setShowMenu(false); }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <span>📂</span> Restore (JSON)
+                </button>
+                {onPdfButtonClick && (
+                  <button
+                    onClick={() => { onPdfButtonClick(); setShowMenu(false); }}
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" /> Load PDF
+                  </button>
+                )}
+                <div className="border-t border-gray-100 my-1" />
+                {onClearCache && (
+                  <button
+                    onClick={() => { onClearCache(); setShowMenu(false); }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Clear Cache
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -9780,77 +11227,6 @@ const UploadView: React.FC<UploadViewProps> = ({
             accept="image/*"
           />
         </div>
-
-        {/* --- SETTINGS / INSTRUCTION INPUT --- */}
-        {apiKey && (
-          <div className="w-full max-w-md mt-6 z-20 animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-3">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 pt-3 pointer-events-none">
-                <MessageSquare className="h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-              </div>
-              <textarea
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                onClick={(e) => e.stopPropagation()} // Prevent triggering upload
-                placeholder={lang === 'ja'
-                  ? "AIへの指示（任意）: 例「工種は全て『舗装工』にして」「場所は東京駅」"
-                  : "Custom Instruction (Optional): e.g., 'Categorize all as Kitchen'"}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm resize-none shadow-sm transition-shadow h-20"
-              />
-            </div>
-
-            {/* AIに聞くボタン */}
-            {onAskAI && instruction.trim() && (
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (!instruction.trim() || isAskingAI) return;
-                  setAiResponse(null);
-                  try {
-                    const response = await onAskAI(instruction);
-                    setAiResponse(response);
-                  } catch (err: any) {
-                    setAiResponse(`エラー: ${err.message}`);
-                  }
-                }}
-                disabled={isAskingAI}
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg"
-              >
-                {isAskingAI ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    AIが処理中...
-                  </>
-                ) : (
-                  <>
-                    <Bot className="w-4 h-4" />
-                    AIに聞く（コード操作）
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* AIレスポンス表示 */}
-            {aiResponse && (
-              <div className="mt-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-500 flex items-center gap-1">
-                    <Bot className="w-3 h-3" /> AIレスポンス
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setAiResponse(null); }}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
-                  {aiResponse}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Processing Indicator */}
         {isProcessing && (
@@ -10024,7 +11400,6 @@ const UploadView: React.FC<UploadViewProps> = ({
                       if (pendingFiles && pendingFiles.length > 0) {
                         setSelectedModel(selectedModelLocal);
                         onStartProcessing([pendingFiles[0]], instruction, useCache, sortPolicy);
-                        // Keep pendingFiles for full run after test
                       }
                     }}
                     className="flex-1 px-4 py-2.5 border-2 border-green-500 text-green-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-green-50 transition-colors"
@@ -10061,59 +11436,24 @@ const UploadView: React.FC<UploadViewProps> = ({
 
       </div>
 
-      {/* --- FOOTER (Data Management) --- */}
-      <div className="absolute bottom-0 w-full p-6 flex justify-between items-end z-10 text-xs font-medium text-gray-400">
+      {/* Hidden file input for import */}
+      <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
 
-        {/* Master Editor Button */}
-        {onOpenMasterEditor && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onOpenMasterEditor(); }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 hover:text-gray-800 transition-all text-xs"
-          >
-            <FolderTree className="w-3 h-3" />
-            <span>マスタ</span>
-          </button>
-        )}
-
-        <div className="flex gap-4 items-center">
-          {photos.length > 0 && (
-            <button onClick={onResume} className="hover:text-gray-800 transition-colors border-b border-transparent hover:border-gray-800 pb-0.5">
-              {txt.resumeLabel}
-            </button>
-          )}
-          <span className="w-px bg-gray-300 mx-1 h-4"></span>
-          <button onClick={onExportJson} className="hover:text-gray-800 transition-colors">
-            Backup (JSON)
-          </button>
-          <button onClick={() => fileInputImportRef.current?.click()} className="hover:text-gray-800 transition-colors">
-            Restore (JSON)
-          </button>
-          {onPdfButtonClick && (
-            <button
-              onClick={onPdfButtonClick}
-              className="hover:text-red-600 transition-colors flex items-center gap-1"
-              title="PDFからセッションを復元"
-            >
-              <FileText className="w-3 h-3" /> Load PDF
-            </button>
-          )}
-          {onClearCache && (
-            <>
-              <span className="w-px bg-gray-300 mx-1 h-4"></span>
-              <button onClick={onClearCache} className="hover:text-red-600 transition-colors flex items-center gap-1" title="Delete stored AI analysis results">
-                <Trash2 className="w-3 h-3" /> Clear Cache
-              </button>
-            </>
-          )}
-          <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
-        </div>
-      </div>
-
+      {/* --- AI CONSOLE (Bottom) --- */}
+      <ConsolePanel
+        logs={logs}
+        isOpen={showConsole}
+        onToggle={() => setShowConsole(!showConsole)}
+        onClear={onClearLogs || (() => {})}
+        isProcessing={isAskingAI}
+        onSendInstruction={onAskAI ? handleSendInstruction : undefined}
+      />
     </div>
   );
 };
 
 export default UploadView;
+
 === END: components/UploadView.tsx ===
 
 === FILE: components/UsagePanel.tsx ===
@@ -11766,6 +13106,7 @@ async function main() {
 main().catch(console.error);
 
 
+
 === END: scripts/test-final-pdf.ts ===
 
 === FILE: scripts/test-html2pdf-debug.ts ===
@@ -11949,6 +13290,7 @@ async function main() {
 }
 
 main().catch(console.error);
+
 
 
 === END: scripts/test-html2pdf-debug.ts ===
@@ -12200,6 +13542,7 @@ async function main() {
 }
 
 main().catch(console.error);
+
 
 
 === END: scripts/test-html2pdf-extract.ts ===
@@ -12815,6 +14158,7 @@ async function main() {
 main().catch(console.error);
 
 
+
 === END: scripts/test-html2pdf-split.ts ===
 
 === FILE: scripts/test-pdf-dialog.ts ===
@@ -13067,6 +14411,7 @@ async function main() {
 }
 
 main().catch(console.error);
+
 
 
 === END: scripts/test-pdf-dialog.ts ===
@@ -14129,6 +15474,7 @@ async function main() {
 main().catch(console.error);
 
 
+
 === END: scripts/test-pdflibgen.ts ===
 
 === FILE: scripts/test-pdflib-japanese.ts ===
@@ -14608,6 +15954,7 @@ window.handlePdfLoad = async function(pdfBase64, folderImagesMap) {
 }
 
 main().catch(console.error);
+
 
 
 === END: scripts/test-pdf-load-logic.ts ===
@@ -15107,6 +16454,7 @@ async function main() {
 }
 
 main().catch(console.error);
+
 
 
 === END: scripts/test-real-pdf.ts ===
@@ -18139,6 +19487,181 @@ export const analyzePhotoBatch = async (
   }
 
   throw new Error("Max retries exceeded");
+};
+
+// ============================================
+// 対話型写真解析 (Interactive Analysis)
+// ============================================
+
+interface InteractiveMessage {
+  role: 'ai' | 'user' | 'system';
+  content: string;
+}
+
+interface InteractiveAnalysisResult {
+  response: string;
+  analysis: AIAnalysisResult | null;
+}
+
+const INTERACTIVE_SYSTEM_PROMPT = `あなたは工事写真の解析アシスタントです。
+MGS2の無線通信のように、簡潔でプロフェッショナルに対話してください。
+
+## スタイル
+- 敬語は使わず、フランクに話す（「～だね」「～しよう」）
+- 専門用語は適切に使う
+- 長文は避け、要点を簡潔に
+- 1-2文で返答する
+
+## 対話の流れ
+1. 写真を解析したら、まず所見を述べる
+2. 解析結果の確認を促す
+3. ユーザーの修正要望に応じて調整
+4. 最終確認を取る
+
+## 出力形式
+必ず以下のJSON形式で返答すること:
+{
+  "response": "ユーザーへの返答メッセージ",
+  "analysis": {
+    "fileName": "ファイル名",
+    "workType": "工種",
+    "variety": "種別",
+    "detail": "細別",
+    "station": "測点",
+    "remarks": "備考",
+    "measurements": "測定値",
+    "description": "記事",
+    "hasBoard": true/false,
+    "detectedText": "OCRテキスト",
+    "reasoning": "判断根拠"
+  }
+}
+`;
+
+/**
+ * 対話型写真解析
+ * 1枚の写真に対してAIと対話しながら解析結果を調整する
+ */
+export const analyzePhotoInteractive = async (
+  photo: PhotoRecord,
+  conversationHistory: InteractiveMessage[],
+  apiKey: string,
+  onStream?: (text: string) => void,
+  shouldAbort?: () => boolean
+): Promise<InteractiveAnalysisResult> => {
+  const genAI = new GoogleGenAI({ apiKey });
+  const modelToUse = getSelectedModel();
+
+  // 写真データを準備
+  const base64Data = extractBase64Data(photo.base64);
+  const imagePart = {
+    inlineData: {
+      mimeType: photo.mimeType,
+      data: base64Data,
+    },
+  };
+
+  // 会話履歴を構築
+  const contents: any[] = [];
+
+  // 最初の写真とリクエスト
+  if (conversationHistory.length === 0) {
+    // 初回解析
+    contents.push({
+      role: 'user',
+      parts: [
+        imagePart,
+        {
+          text: `この工事写真を解析してください。
+ファイル名: ${photo.fileName}
+${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n種別: ${photo.analysis.variety || ''}\n細別: ${photo.analysis.detail || ''}\n測点: ${photo.analysis.station}\n備考: ${photo.analysis.remarks}` : ''}
+
+写真の内容を確認して、所見を述べてください。`,
+        },
+      ],
+    });
+  } else {
+    // 継続対話
+    // 最初のメッセージには画像を含める
+    contents.push({
+      role: 'user',
+      parts: [
+        imagePart,
+        { text: `ファイル名: ${photo.fileName}\n写真を解析してください。` },
+      ],
+    });
+
+    // 会話履歴を追加
+    for (const msg of conversationHistory) {
+      const role = msg.role === 'ai' ? 'model' : 'user';
+      contents.push({
+        role,
+        parts: [{ text: msg.content }],
+      });
+    }
+  }
+
+  try {
+    const result = await genAI.models.generateContentStream({
+      model: modelToUse,
+      contents,
+      config: {
+        systemInstruction: INTERACTIVE_SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0.3,
+      },
+    });
+
+    let fullText = '';
+    for await (const chunk of result) {
+      if (shouldAbort?.()) {
+        throw new Error('処理が中断されました');
+      }
+      const chunkText = chunk.text;
+      fullText += chunkText;
+      onStream?.(fullText);
+    }
+
+    // JSONをパース
+    let parsed: any;
+    try {
+      parsed = JSON.parse(fullText);
+    } catch {
+      // JSONが見つからない場合、テキストのみ返す
+      return {
+        response: fullText,
+        analysis: null,
+      };
+    }
+
+    const analysis: AIAnalysisResult | null = parsed.analysis
+      ? {
+          fileName: parsed.analysis.fileName || photo.fileName,
+          workType: parsed.analysis.workType || '',
+          variety: parsed.analysis.variety || '',
+          detail: parsed.analysis.detail || '',
+          station: parsed.analysis.station || '',
+          remarks: parsed.analysis.remarks || '',
+          remarksCategory: parsed.analysis.remarks || '',
+          description: parsed.analysis.description || '',
+          measurements: parsed.analysis.measurements || '',
+          hasBoard: !!parsed.analysis.hasBoard,
+          detectedText: parsed.analysis.detectedText || '',
+          reasoning: parsed.analysis.reasoning || '',
+          changeLog: [],
+        }
+      : null;
+
+    return {
+      response: parsed.response || '',
+      analysis,
+    };
+  } catch (error: any) {
+    if (error.message?.includes('中断')) {
+      throw error;
+    }
+    throw new Error(`対話型解析エラー: ${sanitizeErrorMessage(error.message || '', apiKey)}`);
+  }
 };
 === END: services/geminiService.ts ===
 
