@@ -123,13 +123,33 @@ const ensureDataBranch = async (token: string): Promise<boolean> => {
   }
 };
 
+// ブランチ存在フラグ（404を一度受け取ったらスキップ）
+const BRANCH_NOT_EXISTS_KEY = 'github_data_branch_not_exists';
+
+const isDataBranchKnownMissing = (): boolean => {
+  return sessionStorage.getItem(BRANCH_NOT_EXISTS_KEY) === 'true';
+};
+
+const markDataBranchMissing = (): void => {
+  sessionStorage.setItem(BRANCH_NOT_EXISTS_KEY, 'true');
+};
+
+export const clearDataBranchMissingFlag = (): void => {
+  sessionStorage.removeItem(BRANCH_NOT_EXISTS_KEY);
+};
+
 /**
  * 現在の学習データをGitHubから取得
  */
 export const fetchLearnedSettings = async (token: string): Promise<LearnedSettings | null> => {
+  // 既にブランチが存在しないことがわかっている場合はスキップ
+  if (isDataBranchKnownMissing()) {
+    return createEmptySettings();
+  }
+
   try {
     // まずdataブランチから取得を試みる
-    let response = await fetch(
+    const response = await fetch(
       `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${DATA_PATH}?ref=${DATA_BRANCH}`,
       {
         headers: {
@@ -139,22 +159,10 @@ export const fetchLearnedSettings = async (token: string): Promise<LearnedSettin
       }
     );
 
-    // dataブランチになければmainから
     if (!response.ok) {
-      response = await fetch(
-        `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${DATA_PATH}?ref=main`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github.v3+json'
-          }
-        }
-      );
-    }
-
-    if (!response.ok) {
-      // ファイルが存在しない場合は空の設定を返す
+      // ファイル/ブランチが存在しない場合
       if (response.status === 404) {
+        markDataBranchMissing();
         return createEmptySettings();
       }
       return null;

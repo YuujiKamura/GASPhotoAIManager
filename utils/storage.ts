@@ -2,7 +2,7 @@ import { PhotoRecord, AIAnalysisResult, AnalysisExample, AnalysisSession, Analys
 import { fsCache } from './fileSystemCache';
 
 const DB_NAME = 'ConstructionPhotoManagerDB';
-const DB_VERSION = 7; // Version 7: Added analysisIssues store
+const DB_VERSION = 8; // Version 8: Sync with existing browser DB
 const STORE_SESSION = 'projectData';
 const STORE_CACHE = 'analysisCache'; // Persistent pool for analysis results
 const STORE_RULES = 'analysisRules'; // Store for custom prompt rules
