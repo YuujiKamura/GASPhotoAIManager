@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, Check, Search, ChevronRight, Trash2, Edit2, X, Plus } from 'lucide-react';
+import { ArrowLeft, Save, Check, Search, ChevronRight, Trash2, Edit2, X, Plus, Replace, ToggleLeft, ToggleRight, RefreshCw } from 'lucide-react';
 import { CONSTRUCTION_HIERARCHY } from '../utils/constructionMaster';
+import {
+  loadAliasSettings,
+  saveAliasSettings,
+  applyPreset,
+  clearAliasSettings,
+  PRESET_ALIASES,
+  AliasSettings,
+  PresetKey
+} from '../utils/workTypeAliases';
 
 interface Props {
   onClose: () => void;
   lang: 'en' | 'ja';
+  onApplyAliasesToSession?: () => { modifiedCount: number }; // セッション全体にエイリアス適用
 }
 
 interface WorkTypeData {
@@ -12,7 +22,7 @@ interface WorkTypeData {
   categories: Map<string, any>;
 }
 
-type ViewMode = 'list' | 'detail';
+type ViewMode = 'list' | 'detail' | 'alias';
 
 // カスタマイズデータの型
 interface CustomizationData {
@@ -346,7 +356,7 @@ const EditableTreeView: React.FC<EditableTreeViewProps> = ({
   );
 };
 
-const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
+const MasterEditorModal: React.FC<Props> = ({ onClose, lang, onApplyAliasesToSession }) => {
   const [allWorkTypes] = useState<Map<string, WorkTypeData>>(() => collectAllWorkTypes());
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
@@ -354,6 +364,13 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedWorkType, setSelectedWorkType] = useState<WorkTypeData | null>(null);
   const [customization, setCustomization] = useState<CustomizationData>({ deletedPaths: [], renamedPaths: {}, addedEntries: [] });
+
+  // Alias settings state
+  const [aliasSettings, setAliasSettings] = useState<AliasSettings>(loadAliasSettings());
+  const [newWorkTypeFrom, setNewWorkTypeFrom] = useState('');
+  const [newWorkTypeTo, setNewWorkTypeTo] = useState('');
+  const [newVarietyFrom, setNewVarietyFrom] = useState('');
+  const [newVarietyTo, setNewVarietyTo] = useState('');
 
   const txt = {
     title: lang === 'ja' ? '工種セット管理' : 'Work Type Sets',
@@ -373,6 +390,18 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     back: lang === 'ja' ? '戻る' : 'Back',
     edit: lang === 'ja' ? '編集' : 'Edit',
     resetCustomization: lang === 'ja' ? 'リセット' : 'Reset',
+    // Alias translations
+    aliasTitle: lang === 'ja' ? '名称エイリアス' : 'Name Aliases',
+    aliasDescription: lang === 'ja' ? '工種・種別名を別名に変換' : 'Convert names to aliases',
+    aliasEnabled: lang === 'ja' ? '有効' : 'Enabled',
+    aliasDisabled: lang === 'ja' ? '無効' : 'Disabled',
+    workTypeAliases: lang === 'ja' ? '工種エイリアス' : 'Work Type Aliases',
+    varietyAliases: lang === 'ja' ? '種別エイリアス' : 'Variety Aliases',
+    from: lang === 'ja' ? '元の名前' : 'Original',
+    to: lang === 'ja' ? '変換後' : 'Alias',
+    add: lang === 'ja' ? '追加' : 'Add',
+    presets: lang === 'ja' ? 'プリセット' : 'Presets',
+    noAliases: lang === 'ja' ? 'エイリアスなし' : 'No aliases',
   };
 
   useEffect(() => {
@@ -453,6 +482,113 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
         addedEntries: prev.addedEntries.filter(e => !e.parentPath.startsWith(workTypeName + '/') && e.parentPath !== workTypeName)
       }));
       setHasChanges(true);
+    }
+  };
+
+  // Alias handlers
+  const handleToggleAliasEnabled = () => {
+    setAliasSettings(prev => {
+      const updated = { ...prev, enabled: !prev.enabled };
+      saveAliasSettings(updated);
+      return updated;
+    });
+  };
+
+  const handleApplyPreset = (presetKey: PresetKey) => {
+    const newSettings = applyPreset(presetKey);
+    setAliasSettings(newSettings);
+  };
+
+  const handleResetAliases = () => {
+    const newSettings = clearAliasSettings();
+    setAliasSettings(newSettings);
+  };
+
+  const handleAddWorkTypeAlias = () => {
+    if (newWorkTypeFrom.trim() && newWorkTypeTo.trim()) {
+      setAliasSettings(prev => {
+        const updated = {
+          ...prev,
+          mappings: {
+            ...prev.mappings,
+            workType: {
+              ...prev.mappings.workType,
+              [newWorkTypeFrom.trim()]: newWorkTypeTo.trim()
+            }
+          },
+          activePreset: undefined
+        };
+        saveAliasSettings(updated);
+        return updated;
+      });
+      setNewWorkTypeFrom('');
+      setNewWorkTypeTo('');
+    }
+  };
+
+  const handleAddVarietyAlias = () => {
+    if (newVarietyFrom.trim() && newVarietyTo.trim()) {
+      setAliasSettings(prev => {
+        const updated = {
+          ...prev,
+          mappings: {
+            ...prev.mappings,
+            variety: {
+              ...prev.mappings.variety,
+              [newVarietyFrom.trim()]: newVarietyTo.trim()
+            }
+          },
+          activePreset: undefined
+        };
+        saveAliasSettings(updated);
+        return updated;
+      });
+      setNewVarietyFrom('');
+      setNewVarietyTo('');
+    }
+  };
+
+  const handleRemoveWorkTypeAlias = (key: string) => {
+    setAliasSettings(prev => {
+      const newWorkType = { ...prev.mappings.workType };
+      delete newWorkType[key];
+      const updated = {
+        ...prev,
+        mappings: { ...prev.mappings, workType: newWorkType },
+        activePreset: undefined
+      };
+      saveAliasSettings(updated);
+      return updated;
+    });
+  };
+
+  const handleRemoveVarietyAlias = (key: string) => {
+    setAliasSettings(prev => {
+      const newVariety = { ...prev.mappings.variety };
+      delete newVariety[key];
+      const updated = {
+        ...prev,
+        mappings: { ...prev.mappings, variety: newVariety },
+        activePreset: undefined
+      };
+      saveAliasSettings(updated);
+      return updated;
+    });
+  };
+
+  const workTypeAliasEntries = Object.entries(aliasSettings.mappings.workType);
+  const varietyAliasEntries = Object.entries(aliasSettings.mappings.variety);
+  const hasAnyAliases = workTypeAliasEntries.length > 0 || varietyAliasEntries.length > 0;
+
+  // セッションへの適用結果
+  const [applyResult, setApplyResult] = useState<{ modifiedCount: number } | null>(null);
+
+  const handleApplyToSession = () => {
+    if (onApplyAliasesToSession) {
+      const result = onApplyAliasesToSession();
+      setApplyResult(result);
+      // 3秒後にメッセージをクリア
+      setTimeout(() => setApplyResult(null), 3000);
     }
   };
 
@@ -569,6 +705,241 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
     );
   }
 
+  // エイリアス設定画面
+  if (viewMode === 'alias') {
+    return (
+      <div className="min-h-screen w-full bg-gray-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setViewMode('list')}
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h3 className="text-lg font-bold">{txt.aliasTitle}</h3>
+              <p className="text-xs text-amber-200">{txt.aliasDescription}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 space-y-4">
+          {/* Enable/Disable Toggle */}
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-medium text-gray-900">エイリアス変換</h4>
+                <p className="text-sm text-gray-500">解析済みデータに一括適用</p>
+              </div>
+              <button
+                onClick={handleToggleAliasEnabled}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  aliasSettings.enabled
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {aliasSettings.enabled ? (
+                  <>
+                    <ToggleRight className="w-5 h-5" />
+                    {txt.aliasEnabled}
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-5 h-5" />
+                    {txt.aliasDisabled}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Presets */}
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <h4 className="font-medium text-gray-900 mb-3">{txt.presets}</h4>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(PRESET_ALIASES).map(([key, preset]) => (
+                <button
+                  key={key}
+                  onClick={() => handleApplyPreset(key as PresetKey)}
+                  className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                    aliasSettings.activePreset === key
+                      ? 'bg-amber-100 text-amber-700 border-2 border-amber-300'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                  }`}
+                >
+                  <div className="font-medium">{preset.name}</div>
+                  <div className="text-xs text-gray-500">{preset.description}</div>
+                </button>
+              ))}
+              <button
+                onClick={handleResetAliases}
+                className="px-3 py-2 rounded-lg text-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 flex items-center gap-1"
+              >
+                <RefreshCw className="w-4 h-4" />
+                {txt.resetCustomization}
+              </button>
+            </div>
+          </div>
+
+          {/* Work Type Aliases */}
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <h4 className="font-medium text-gray-900 mb-3">{txt.workTypeAliases}</h4>
+
+            {workTypeAliasEntries.length > 0 ? (
+              <div className="space-y-2 mb-4">
+                {workTypeAliasEntries.map(([from, to]) => (
+                  <div key={from} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                    <span className="flex-1 text-sm font-medium text-gray-700">{from}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="flex-1 text-sm text-amber-600 font-medium">{to}</span>
+                    <button
+                      onClick={() => handleRemoveWorkTypeAlias(from)}
+                      className="p-1 text-red-500 hover:bg-red-100 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 mb-4">{txt.noAliases}</p>
+            )}
+
+            {/* Add new work type alias */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newWorkTypeFrom}
+                onChange={(e) => setNewWorkTypeFrom(e.target.value)}
+                placeholder={txt.from}
+                className="flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <span className="text-gray-400">→</span>
+              <input
+                type="text"
+                value={newWorkTypeTo}
+                onChange={(e) => setNewWorkTypeTo(e.target.value)}
+                placeholder={txt.to}
+                className="flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <button
+                onClick={handleAddWorkTypeAlias}
+                disabled={!newWorkTypeFrom.trim() || !newWorkTypeTo.trim()}
+                className="px-3 py-2 rounded-lg text-sm bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                {txt.add}
+              </button>
+            </div>
+          </div>
+
+          {/* Variety Aliases */}
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <h4 className="font-medium text-gray-900 mb-3">{txt.varietyAliases}</h4>
+
+            {varietyAliasEntries.length > 0 ? (
+              <div className="space-y-2 mb-4">
+                {varietyAliasEntries.map(([from, to]) => (
+                  <div key={from} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                    <span className="flex-1 text-sm font-medium text-gray-700">{from}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="flex-1 text-sm text-amber-600 font-medium">{to}</span>
+                    <button
+                      onClick={() => handleRemoveVarietyAlias(from)}
+                      className="p-1 text-red-500 hover:bg-red-100 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 mb-4">{txt.noAliases}</p>
+            )}
+
+            {/* Add new variety alias */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newVarietyFrom}
+                onChange={(e) => setNewVarietyFrom(e.target.value)}
+                placeholder={txt.from}
+                className="flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <span className="text-gray-400">→</span>
+              <input
+                type="text"
+                value={newVarietyTo}
+                onChange={(e) => setNewVarietyTo(e.target.value)}
+                placeholder={txt.to}
+                className="flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <button
+                onClick={handleAddVarietyAlias}
+                disabled={!newVarietyFrom.trim() || !newVarietyTo.trim()}
+                className="px-3 py-2 rounded-lg text-sm bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                {txt.add}
+              </button>
+            </div>
+          </div>
+
+          {/* Preview & Apply Section */}
+          {hasAnyAliases && aliasSettings.enabled && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="font-medium text-amber-800 mb-2">変換プレビュー</h4>
+              <div className="text-sm text-amber-700 mb-4">
+                <p>以下の変換が適用されます：</p>
+                <ul className="mt-2 space-y-1 list-disc list-inside">
+                  {workTypeAliasEntries.map(([from, to]) => (
+                    <li key={`wt-${from}`}>工種: {from} → {to}</li>
+                  ))}
+                  {varietyAliasEntries.map(([from, to]) => (
+                    <li key={`var-${from}`}>種別: {from} → {to}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Apply to Session Button */}
+              {onApplyAliasesToSession && (
+                <div className="border-t border-amber-200 pt-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">現在のセッションに適用</p>
+                      <p className="text-xs text-amber-600">解析済みの写真データを一括変換します</p>
+                    </div>
+                    <button
+                      onClick={handleApplyToSession}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2"
+                    >
+                      <Replace className="w-4 h-4" />
+                      適用
+                    </button>
+                  </div>
+                  {applyResult && (
+                    <div className={`mt-3 p-2 rounded text-sm ${
+                      applyResult.modifiedCount > 0
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {applyResult.modifiedCount > 0
+                        ? `${applyResult.modifiedCount}件のデータを変換しました`
+                        : '変換対象のデータがありませんでした'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // 工種リスト画面（フォールド状態）
   return (
     <div className="min-h-screen w-full bg-gray-50 flex flex-col">
@@ -608,6 +979,20 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
           {txt.enabled}: <span className="font-bold text-blue-600">{enabledTypes.size}</span> / {allWorkTypes.size}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('alias')}
+            className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${
+              hasAnyAliases && aliasSettings.enabled
+                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Replace className="w-3 h-3" />
+            {txt.aliasTitle}
+            {hasAnyAliases && aliasSettings.enabled && (
+              <span className="w-2 h-2 bg-amber-500 rounded-full" />
+            )}
+          </button>
           <button
             onClick={handleSelectAll}
             className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
