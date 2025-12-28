@@ -77,7 +77,12 @@ export const TRANS = {
     pairingNoPairs: "No clear pairs found.",
     layout2up: "2 Photos/Page",
     layout3up: "3 Photos/Page",
-    autoPairLabel: "Auto-sort Before/After pairs"
+    autoPairLabel: "Auto-sort Before/After pairs",
+    // Reasoning (AI Transparency)
+    showReasoning: "Show AI Reasoning",
+    reasoningTitle: "AI Reasoning",
+    noReasoning: "No reasoning available for this analysis.",
+    closeBtn: "Close"
   },
   ja: {
     appTitle: "工事写真帳メーカー",
@@ -157,6 +162,11 @@ export const TRANS = {
     pairingNoPairs: "明確なペアが見つかりませんでした",
     layout2up: "2枚/ページ",
     layout3up: "3枚/ページ",
-    autoPairLabel: "着手前・完了写真を自動ペアリング"
+    autoPairLabel: "着手前・完了写真を自動ペアリング",
+    // Reasoning (AI Transparency)
+    showReasoning: "判断根拠を表示",
+    reasoningTitle: "AI判断根拠",
+    noReasoning: "この解析に判断根拠がありません。",
+    closeBtn: "閉じる"
   }
 };

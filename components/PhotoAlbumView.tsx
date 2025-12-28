@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { Trash2, Wand2, Star } from 'lucide-react';
+import { Trash2, Wand2, Star, Brain, X } from 'lucide-react';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 import { saveExample } from '../utils/storage';
 
@@ -116,11 +116,18 @@ type ContextMenuState = {
   targetFileName: string;
 } | null;
 
+type ReasoningModalState = {
+  fileName: string;
+  reasoning: string;
+  analysis: AIAnalysisResult;
+} | null;
+
 const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
   const totalPages = Math.ceil(records.length / photosPerPage);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [isSavingExample, setIsSavingExample] = useState(false);
+  const [reasoningModal, setReasoningModal] = useState<ReasoningModalState>(null);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -176,6 +183,24 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
       setIsSavingExample(false);
       setContextMenu(null);
     }
+  };
+
+  const executeShowReasoning = () => {
+    if (!contextMenu) return;
+
+    const record = records.find(r => r.fileName === contextMenu.targetFileName);
+    if (!record?.analysis) {
+      alert(lang === 'ja' ? '解析結果がありません' : 'No analysis result');
+      setContextMenu(null);
+      return;
+    }
+
+    setReasoningModal({
+      fileName: record.fileName,
+      reasoning: record.analysis.reasoning || '',
+      analysis: record.analysis
+    });
+    setContextMenu(null);
   };
 
   const isTwoUp = photosPerPage === 2;
@@ -340,6 +365,13 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
             {lang === 'ja' ? 'この画像を再解析' : 'Re-analyze Photo'}
           </button>
           <button
+            onClick={executeShowReasoning}
+            className="w-full text-left px-4 py-2 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-2"
+          >
+            <Brain className="w-4 h-4" />
+            {txt.showReasoning}
+          </button>
+          <button
             onClick={executeSaveAsExample}
             disabled={isSavingExample}
             className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2 disabled:opacity-50"
@@ -354,6 +386,96 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
             <Trash2 className="w-4 h-4" />
             {lang === 'ja' ? '削除する' : 'Delete Photo'}
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Reasoning Modal */}
+      {reasoningModal && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
+          onClick={() => setReasoningModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Brain className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">{txt.reasoningTitle}</h3>
+                  <p className="text-sm text-gray-500">{reasoningModal.fileName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReasoningModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Analysis Summary */}
+            <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {reasoningModal.analysis.workType && (
+                  <div><span className="text-gray-500">{txt.labelWorkType}:</span> <span className="font-medium">{reasoningModal.analysis.workType}</span></div>
+                )}
+                {reasoningModal.analysis.variety && (
+                  <div><span className="text-gray-500">{txt.labelVariety}:</span> <span className="font-medium">{reasoningModal.analysis.variety}</span></div>
+                )}
+                {reasoningModal.analysis.detail && (
+                  <div><span className="text-gray-500">{txt.labelDetail}:</span> <span className="font-medium">{reasoningModal.analysis.detail}</span></div>
+                )}
+                {reasoningModal.analysis.remarks && (
+                  <div><span className="text-gray-500">{txt.labelRemarks}:</span> <span className="font-medium">{reasoningModal.analysis.remarks}</span></div>
+                )}
+                {reasoningModal.analysis.measurements && (
+                  <div><span className="text-gray-500">{txt.labelMeasurements}:</span> <span className="font-medium">{reasoningModal.analysis.measurements}</span></div>
+                )}
+                {reasoningModal.analysis.station && (
+                  <div><span className="text-gray-500">{txt.labelStation}:</span> <span className="font-medium">{reasoningModal.analysis.station}</span></div>
+                )}
+              </div>
+            </div>
+
+            {/* Reasoning Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {reasoningModal.reasoning ? (
+                <div className="prose prose-sm max-w-none">
+                  <div className="whitespace-pre-wrap text-gray-700 leading-relaxed bg-gradient-to-br from-purple-50/50 to-indigo-50/50 p-4 rounded-lg border border-purple-100">
+                    {reasoningModal.reasoning}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="p-4 bg-gray-100 rounded-full w-fit mx-auto mb-4">
+                    <Brain className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500">{txt.noReasoning}</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    {lang === 'ja'
+                      ? '再解析を行うと判断根拠が記録されます'
+                      : 'Re-analyze the photo to record AI reasoning'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setReasoningModal(null)}
+                className="w-full py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors font-medium"
+              >
+                {txt.closeBtn}
+              </button>
+            </div>
+          </div>
         </div>,
         document.body
       )}
