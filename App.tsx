@@ -1738,6 +1738,14 @@ export default function App() {
       // 画像が抽出できなかった場合はフォルダ選択を提案
       let folderImages: { file: File; base64: string; mimeType: string }[] = [];
 
+      // デバッグログ
+      console.log('[PDF Import Debug]', {
+        isSmart,
+        sessionDataLength: sessionData?.length ?? 'null',
+        extractedImagesLength: extractedImages.length,
+        showDirectoryPickerAvailable: 'showDirectoryPicker' in window
+      });
+
       if (!sessionData || sessionData.length === 0) {
         if (extractedImages.length === 0) {
           // 画像がPDFに埋め込まれていない場合、フォルダ選択を提案
