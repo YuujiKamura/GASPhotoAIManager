@@ -1717,58 +1717,49 @@ export default function App() {
 
   // PDFボタンクリック時 - フォルダ選択を先に行う（ユーザージェスチャー内で実行）
   const handlePdfButtonClick = async () => {
-    // フォルダを選択するか確認（ユーザージェスチャーのコンテキスト内）
+    // フォルダ選択を直接開始（confirm()を使うとユーザージェスチャーが失われる場合がある）
     if ('showDirectoryPicker' in window) {
-      const shouldSelectFolder = window.confirm(
-        lang === 'ja'
-          ? '画像フォルダを先に選択しますか？\n（PDFに画像が埋め込まれていない場合に必要）\n\n「OK」→ フォルダを選択してからPDFを選択\n「キャンセル」→ PDFのみ選択'
-          : 'Select image folder first?\n(Required if PDF does not contain embedded images)\n\n"OK" → Select folder then PDF\n"Cancel" → PDF only'
-      );
+      try {
+        // @ts-ignore - File System Access API（ユーザージェスチャー内で呼び出し）
+        const dirHandle = await window.showDirectoryPicker();
+        addLog('フォルダ選択: 画像を読み込み中...', 'info');
 
-      if (shouldSelectFolder) {
-        try {
-          // @ts-ignore - File System Access API（ユーザージェスチャー内で呼び出し）
-          const dirHandle = await window.showDirectoryPicker();
-          addLog('フォルダ選択: 画像を読み込み中...', 'info');
+        const folderImages: { file: File; base64: string; mimeType: string }[] = [];
 
-          const folderImages: { file: File; base64: string; mimeType: string }[] = [];
-
-          // フォルダ内の画像ファイルを収集
-          for await (const entry of dirHandle.values()) {
-            if (entry.kind === 'file') {
-              const file = await entry.getFile();
-              if (file.type.startsWith('image/')) {
-                const { base64, mimeType } = await processImageForAI(file);
-                folderImages.push({ file, base64, mimeType });
-                addLog(`  ✓ ${file.name}`, 'success');
-              }
+        // フォルダ内の画像ファイルを収集
+        for await (const entry of dirHandle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            if (file.type.startsWith('image/')) {
+              const { base64, mimeType } = await processImageForAI(file);
+              folderImages.push({ file, base64, mimeType });
+              addLog(`  ✓ ${file.name}`, 'success');
             }
           }
+        }
 
-          // ファイル名でソート
-          folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
-          addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
+        // ファイル名でソート
+        folderImages.sort((a, b) => a.file.name.localeCompare(b.file.name));
+        addLog(`${folderImages.length}枚の画像を読み込みました`, 'info');
 
-          if (folderImages.length === 0) {
-            alert(lang === 'ja'
-              ? '選択したフォルダに画像がありませんでした。'
-              : 'No images found in the selected folder.');
-            return;
-          }
+        if (folderImages.length === 0) {
+          alert(lang === 'ja'
+            ? '選択したフォルダに画像がありませんでした。'
+            : 'No images found in the selected folder.');
+          return;
+        }
 
-          // フォルダ画像を状態に保存
-          setPendingFolderImages(folderImages);
-        } catch (folderErr: any) {
-          if (folderErr.name === 'AbortError') {
-            return; // ユーザーがキャンセル
-          }
+        // フォルダ画像を状態に保存
+        setPendingFolderImages(folderImages);
+      } catch (folderErr: any) {
+        if (folderErr.name === 'AbortError') {
+          // ユーザーがキャンセル → フォルダなしでPDF選択に進む
+          setPendingFolderImages([]);
+        } else {
           console.error('Folder selection error:', folderErr);
           setErrorMsg('フォルダ選択エラー');
           return;
         }
-      } else {
-        // フォルダ選択しない場合はクリア
-        setPendingFolderImages([]);
       }
     }
 
