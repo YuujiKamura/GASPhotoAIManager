@@ -1480,9 +1480,20 @@ export default function App() {
         addLog(`[INSTRUCTION] Station override detected: "${refinementStation}"`, 'info');
       }
 
-      if (instruction === "__REANALYZE__") {
+      // 「全体を再解析」「すべて再解析」などの指示を検出
+      const isReanalyzeAllRequest = instruction === "__REANALYZE__" ||
+        (instruction && /全体|すべて|全件|全部|all\s*(photos?)?|re-?analyze\s*all/i.test(instruction));
+
+      addLog(`[DEBUG] instruction="${instruction}", isReanalyzeAllRequest=${isReanalyzeAllRequest}, photos.length=${photos.length}`, 'info');
+
+      if (isReanalyzeAllRequest) {
         targetFileNames = photos.map(p => p.fileName);
-        addLog("Re-analyzing ALL photos.", 'info');
+        addLog(`[DEBUG] targetFileNames.length=${targetFileNames.length}`, 'info');
+        if (instruction === "__REANALYZE__") {
+          addLog("Re-analyzing ALL photos.", 'info');
+        } else {
+          addLog(`Re-analyzing ALL photos with instruction: "${instruction}"`, 'info');
+        }
       } else {
         setCurrentStep(txt.identifyingTargets);
         targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey, addLog, () => shouldAbortRef.current);
