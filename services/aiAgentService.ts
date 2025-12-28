@@ -2,12 +2,20 @@
  * AI Agent Service
  *
  * Gemini APIにツールを提供し、AIがコードを読み書きできるようにする
- * ツール定義は自動生成
+ * 将来のエージェント永続化に対応した設計
  */
 
 import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
 import { getGitHubToken } from './githubSync';
 import { getApiKey } from './geminiService';
+import {
+  AgentContext,
+  loadContext,
+  createNewContext,
+  saveContext,
+  addMessage,
+  contextToPrompt
+} from './agentContext';
 
 // 利用可能なツールを定義（実装と連動）
 export const CODE_TOOLS: FunctionDeclaration[] = [
@@ -384,6 +392,19 @@ export const executeToolCall = async (
   }
 };
 
+// 現在のエージェントコンテキスト（セッション間で永続化）
+let currentContext: AgentContext | null = null;
+
+/**
+ * エージェントコンテキストを取得（なければ作成）
+ */
+export const getAgentContext = (): AgentContext => {
+  if (!currentContext) {
+    currentContext = loadContext() || createNewContext();
+  }
+  return currentContext;
+};
+
 /**
  * AIエージェントを実行（ツール使用ループ）
  */
@@ -400,6 +421,10 @@ export const runAIAgent = async (
   const genAI = new GoogleGenAI({ apiKey });
   const token = getGitHubToken();
   const hasGitHub = !!token;
+
+  // エージェントコンテキストを取得
+  const context = getAgentContext();
+  const contextPrompt = contextToPrompt(context);
 
   // GitHub連携がある場合のみツール説明を追加
   const toolsSection = hasGitHub ? `
@@ -419,10 +444,10 @@ export const runAIAgent = async (
   const systemPrompt = `あなたは工事写真管理アプリのAIアシスタントです。
 
 ## 基本方針
-- まず普通に会話してください
+- フレンドリーに、カジュアルに話してください
 - 質問には直接答えてください
+- 堅苦しい敬語は不要です
 - コード操作が明確に必要な場合のみツールを使ってください
-- 「ツールを使います」とか「listSkillsを呼び出してください」とか言わないでください
 
 ## このアプリについて
 - 工事写真をAIで自動分類・整理するアプリです
@@ -430,7 +455,12 @@ export const runAIAgent = async (
 - 工種、種別、細別、測点、備考などを自動判定します
 ${toolsSection}
 
+${contextPrompt ? `## エージェントの記憶\n${contextPrompt}` : ''}
+
 ユーザーの質問や要望に、普通に日本語で答えてください。`;
+
+  // ユーザーメッセージをコンテキストに記録
+  addMessage(context, 'user', userRequest);
 
   // 会話履歴を管理
   const conversationHistory: Array<{ role: 'user' | 'model', parts: any[] }> = [];
@@ -460,14 +490,19 @@ ${toolsSection}
     const hasFunctionCall = response.candidates?.[0]?.content?.parts?.some(p => 'functionCall' in p);
 
     if (textPart && 'text' in textPart && !hasFunctionCall) {
-      return textPart.text;
+      const responseText = textPart.text;
+      // 応答をコンテキストに記録
+      addMessage(context, 'assistant', responseText);
+      return responseText;
     }
 
     // GitHub連携がない場合、またはツール呼び出しがない場合は終了
     if (!hasGitHub) {
       // テキストがあればそれを返す
       if (textPart && 'text' in textPart) {
-        return textPart.text;
+        const responseText = textPart.text;
+        addMessage(context, 'assistant', responseText);
+        return responseText;
       }
       break;
     }
