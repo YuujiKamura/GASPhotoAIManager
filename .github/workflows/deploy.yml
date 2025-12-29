@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Analyze codebase
+        run: npm run analyze
+
       - name: Build
         run: npm run build
 

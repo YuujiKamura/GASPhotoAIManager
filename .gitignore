@@ -16,6 +16,9 @@ dist
 dist-ssr
 *.local
 
+# Generated files (regenerated at build time)
+src/generated/codebase-stats.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
