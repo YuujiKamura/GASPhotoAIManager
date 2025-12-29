@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-12-29T00:57:44.322Z",
+  "generatedAt": "2025-12-29T01:06:22.889Z",
   "totalFiles": 124,
   "totalLines": 30237,
   "largeFiles": [
@@ -222,7 +222,7 @@
       "status": "warning",
       "count": 221,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "Unused files (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -372,7 +372,7 @@
       "description": "hooks/ の 18 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 500
     },
     {
@@ -380,7 +380,7 @@
       "title": "PDF機能を遅延読込",
       "description": "pdfGenerator.ts, PdfLoadDialog.tsx を動的importに変更",
       "priority": "medium",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 0
     }
   ]
