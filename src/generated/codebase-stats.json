@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T01:37:59.589Z",
+  "generatedAt": "2025-12-29T02:14:45.552Z",
   "totalFiles": 124,
-  "totalLines": 29819,
+  "totalLines": 29825,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -95,7 +95,7 @@
       "services/gemini/apiKey.ts (170行)",
       "services/gemini/helpers.ts (106行)",
       "services/gemini/index.ts (88行)",
-      "services/gemini/interactiveAnalysis.ts (188行)",
+      "services/gemini/interactiveAnalysis.ts (194行)",
       "services/gemini/models.ts (150行)",
       "services/gemini/normalization.ts (445行)",
       "services/gemini/systemPrompts.ts (282行)",
