@@ -34,6 +34,7 @@
     "autoprefixer": "^10.4.23",
     "depcheck": "^1.4.7",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "jscpd": "^4.0.5",
     "jsdom": "^27.4.0",
     "knip": "^5.78.0",
