@@ -25,6 +25,8 @@ const createSheetOptions = () => ({
     fitToPage: true,
     fitToWidth: 1,
     fitToHeight: 1,
+    horizontalCentered: true,
+    verticalCentered: true,
     margins: {
       left: PDF_LAYOUT.MARGIN / 72,
       right: PDF_LAYOUT.MARGIN / 72,
@@ -119,8 +121,9 @@ export const generateExcel = async (
         sheet.getRow(r).height = ROW_HEIGHT_PT;
       }
 
-      // --- 1. Image Section (Column A) ---
-      sheet.mergeCells(startRow, 1, endRow, 1);
+      // --- 1. Image Section (Column A) - 余白行を除く ---
+      const photoEndRow = endRow - 1;  // 余白行を除く
+      sheet.mergeCells(startRow, 1, photoEndRow, 1);
       const imgCell = sheet.getCell(startRow, 1);
       imgCell.border = {
         top: { style: 'thin', color: { argb: 'FFCCCCCC' } },

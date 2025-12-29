@@ -76,25 +76,24 @@ export const CONVERSION = {
 // Excel用に導出された値
 // ============================================
 
+// 全体スケール (1.0 = ベースサイズ)
+const SCALE = 1.1;
+
 // 行の設計（写真高さ242.9ptを10行 + 余白1行）
 const PHOTO_ROWS = 10;  // 写真部分の行数
 const GAP_ROWS = 1;     // 余白行数
 const ROWS_3UP = PHOTO_ROWS + GAP_ROWS;  // 11行/ブロック
 const ROWS_2UP = PHOTO_ROWS + GAP_ROWS;  // 2upも同様
 
-// 行高さ (pt) = 写真高さ ÷ 写真行数
-const ROW_HEIGHT_PT_3UP = Math.round(PHOTO_HEIGHT_PT / PHOTO_ROWS);  // 24pt
-const ROW_HEIGHT_PT_2UP = Math.round(PHOTO_HEIGHT_PT / PHOTO_ROWS);  // 24pt
+// 行高さ (pt) = 写真高さ ÷ 写真行数 × SCALE (切り捨て)
+const ROW_HEIGHT_PT_3UP = Math.floor((PHOTO_HEIGHT_PT / PHOTO_ROWS) * SCALE);  // 26pt
+const ROW_HEIGHT_PT_2UP = Math.floor((PHOTO_HEIGHT_PT / PHOTO_ROWS) * SCALE);  // 26pt
 
-// 列幅 (Excel単位) - 実測値から逆算
-// 10行 × 24pt = 240pt (高さ) → 幅 = 240 × 4/3 = 320pt
-// Excelで427px = 列幅52.75
-const PHOTO_COL_WIDTH = 52.75;  // 113mm (高さ240pt × 4/3)
-const INFO_COL_WIDTH = 36;      // 77mm (190mm - 113mm)
-
-// ラベル列とバリュー列の分割（情報エリア内）
-const LABEL_COL_WIDTH = 10;     // ラベル列
-const VALUE_COL_WIDTH = INFO_COL_WIDTH - LABEL_COL_WIDTH;  // 26
+// 列幅 (Excel単位) - 実測値で調整
+const PHOTO_COL_WIDTH = 56.1;  // アスペクト比に合わせて調整
+const LABEL_COL_WIDTH = 10 * SCALE;     // 11
+const VALUE_COL_WIDTH = 26 * SCALE;     // 28.6
+const INFO_COL_WIDTH = LABEL_COL_WIDTH + VALUE_COL_WIDTH;  // 39.6
 
 // ============================================
 // エクスポート用定数（PDF/Excel/CSS共通で使用）

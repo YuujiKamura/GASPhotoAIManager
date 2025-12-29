@@ -233,6 +233,8 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 1,
+      horizontalCentered: true,
+      verticalCentered: true,
       margins: {
         left: PDF_LAYOUT.MARGIN / 72,
         right: PDF_LAYOUT.MARGIN / 72,
@@ -283,8 +285,9 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
         sheet.getRow(r).height = layout.ROW_HEIGHT_PTS;
       }
 
-      // 画像セル（A列）
-      sheet.mergeCells(startRow, 1, endRow, 1);
+      // 画像セル（A列）- 余白行を除く
+      const photoEndRow = endRow - 1;  // 余白行を除く
+      sheet.mergeCells(startRow, 1, photoEndRow, 1);
       const imgCell = sheet.getCell(startRow, 1);
       imgCell.border = {
         top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
