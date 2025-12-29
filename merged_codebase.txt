@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 09:23:56
+生成日時: 2025-12-29 09:25:47
 ================================================================================
 
 === ファイル一覧 ===
@@ -137,7 +137,7 @@ import { getPhotoDate } from './utils/imageUtils';
 import { applyNormalizationCorrections, NormalizationCorrection, getApiKey, setApiKey as saveApiKey } from './services/geminiService';
 import { generateExcel } from './utils/excelGenerator';
 import { clearAnalysisCache, exportDataToJson, importDataFromJson } from './utils/storage';
-import { extractSessionFromPdf, isSmartPdf, hasIndividualImages, extractImagesFromPdf } from './utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { loadAliasSettings, hasAliases, applyAliasesToRecords } from './utils/workTypeAliases';
@@ -166,9 +166,10 @@ import ApiKeySetup from './components/ApiKeySetup';
 import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
 import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
-import PdfLoadDialog from './components/PdfLoadDialog';
+// PdfLoadDialog is lazy-loaded to reduce initial bundle size
 
 // Lazy-loaded components
+const PdfLoadDialog = lazy(() => import('./components/PdfLoadDialog'));
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
 const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
@@ -416,6 +417,9 @@ export default function App() {
     log(`PDF読み込み: ${pdfFile.name}`);
 
     try {
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { isSmartPdf, hasIndividualImages, extractImagesFromPdf, extractSessionFromPdf } = await import('./utils/pdfGenerator');
+
       let images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
       let captionData: Record<string, any> | null = null;
       const isSmart = await isSmartPdf(pdfFile);
@@ -545,12 +549,16 @@ export default function App() {
   // Render
   return (
     <>
-      <PdfLoadDialog
-        isOpen={modals.showPdfLoadDialog}
-        onClose={() => { modals.setShowPdfLoadDialog(false); if (photos.length > 0) setShowPreview(true); }}
-        onLoad={handlePdfLoad}
-        lang={lang}
-      />
+      {modals.showPdfLoadDialog && (
+        <Suspense fallback={<LoadingFallback />}>
+          <PdfLoadDialog
+            isOpen={modals.showPdfLoadDialog}
+            onClose={() => { modals.setShowPdfLoadDialog(false); if (photos.length > 0) setShowPreview(true); }}
+            onLoad={handlePdfLoad}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {modals.showApiKeySetup && (
         <ApiKeySetup
@@ -5251,7 +5259,7 @@ export default NormalizationPreviewModal;
 
 import React, { useState, useRef } from 'react';
 import { FileText, FolderOpen, Loader2, AlertTriangle, X, Upload } from 'lucide-react';
-import { isSmartPdf, hasIndividualImages } from '../utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 
 interface PdfLoadDialogProps {
   isOpen: boolean;
@@ -5296,6 +5304,10 @@ const PdfLoadDialog: React.FC<PdfLoadDialogProps> = ({ isOpen, onClose, onLoad, 
 
     try {
       pushLog('PDFを解析中...');
+
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { isSmartPdf, hasIndividualImages } = await import('../utils/pdfGenerator');
+
       const isSmart = await isSmartPdf(file);
       const hasImages = await hasIndividualImages(file);
 
@@ -6606,7 +6618,7 @@ import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
 import { generateZip } from '../utils/zipGenerator';
-import { generatePdfWithImages } from '../utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 
 // Declare saveAs (html2pdf is no longer used)
 declare const saveAs: any;
@@ -6841,6 +6853,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
 
     try {
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { generatePdfWithImages } = await import('../utils/pdfGenerator');
+
       // pdf-libを使って個別画像埋め込みPDFを生成
       // これにより、PDFから個別の写真を抽出可能になる
       const pdfBlob = await generatePdfWithImages(photos, photosPerPage, '工事写真帳');
