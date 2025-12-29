@@ -1,17 +1,12 @@
 {
-  "generatedAt": "2025-12-29T04:39:07.203Z",
-  "totalFiles": 134,
-  "totalLines": 28110,
+  "generatedAt": "2025-12-29T05:06:05.870Z",
+  "totalFiles": 135,
+  "totalLines": 28002,
   "largeFiles": [
     {
       "path": "hooks/useAnalysisHandlers.ts",
       "lines": 684,
       "size": 28145
-    },
-    {
-      "path": "components/UploadView.tsx",
-      "lines": 555,
-      "size": 23417
     },
     {
       "path": "components/CodebaseHealthDashboard.tsx",
@@ -52,15 +47,21 @@
       "path": "services/learningService.ts",
       "lines": 462,
       "size": 13208
+    },
+    {
+      "path": "services/gemini/normalization.ts",
+      "lines": 445,
+      "size": 16176
     }
   ],
   "components": {
-    "count": 34,
+    "count": 35,
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
       "components/CodebaseHealthDashboard.tsx (543行)",
       "components/ConsolePanel.tsx (171行)",
+      "components/CostEstimationPanel.tsx (202行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
       "components/GitHubSyncPanel.tsx (341行)",
@@ -79,18 +80,18 @@
       "components/PhotoAlbumView/IssueReportModal.tsx (115行)",
       "components/PhotoAlbumView/ReasoningModal.tsx (130行)",
       "components/PhotoAlbumView.tsx (199行)",
+      "components/PreviewView/index.ts (3行)",
       "components/PreviewView/PreviewToolsMenu.tsx (200行)",
       "components/PreviewView/ReorderModeView.tsx (181行)",
-      "components/PreviewView/index.ts (3行)",
       "components/PreviewView.tsx (253行)",
       "components/RefineModal.tsx (523行)",
       "components/SessionHistoryPanel.tsx (404行)",
+      "components/shared/EditableField.tsx (93行)",
       "components/SimplePairingMode.tsx (130行)",
       "components/StationReplaceModal.tsx (525行)",
-      "components/UploadView.tsx (555行)",
+      "components/UploadView.tsx (245行)",
       "components/UsagePanel.tsx (127行)",
-      "components/WorkTypeConfirmModal.tsx (132行)",
-      "components/shared/EditableField.tsx (93行)"
+      "components/WorkTypeConfirmModal.tsx (132行)"
     ]
   },
   "services": {
@@ -232,7 +233,7 @@
       "status": "warning",
       "count": 221,
       "details": [
-        "Unused files (27)",
+        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -249,15 +250,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 384
-    },
-    {
-      "id": "refactor-components-UploadView-tsx",
-      "title": "components/UploadView.tsx をリファクタ",
-      "description": "555行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/UploadView.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 255
     },
     {
       "id": "refactor-components-CodebaseHealthDashboard-tsx",
