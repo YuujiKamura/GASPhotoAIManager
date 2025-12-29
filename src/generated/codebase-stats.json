@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-12-29T03:04:49.054Z",
+  "generatedAt": "2025-12-29T03:13:51.252Z",
   "totalFiles": 124,
   "totalLines": 29862,
   "largeFiles": [
@@ -222,7 +222,7 @@
       "status": "warning",
       "count": 221,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "Unused files (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -371,7 +371,7 @@
       "title": "PDF機能を遅延読込",
       "description": "pdfGenerator.ts, PdfLoadDialog.tsx を動的importに変更",
       "priority": "medium",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 0
     }
   ]
