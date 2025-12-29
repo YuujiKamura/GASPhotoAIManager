@@ -30,7 +30,8 @@
       "Bash(wc:*)",
       "Bash(node:*)",
       "Bash(timeout 5 npm run dev:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(git ls-tree:*)"
     ]
   }
 }
