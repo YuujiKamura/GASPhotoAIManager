@@ -28,13 +28,35 @@ export default defineConfig(({ mode }) => {
       build: {
         rollupOptions: {
           output: {
-            manualChunks: {
-              // PDF関連を別チャンクに分離
-              'pdf': ['pdfjs-dist', 'pdf-lib'],
-              // React関連をvendorチャンクに
-              'vendor': ['react', 'react-dom'],
-              // UI関連
-              'ui': ['lucide-react'],
+            manualChunks: (id) => {
+              // node_modulesのパッケージを分離
+              if (id.includes('node_modules')) {
+                // fontkit関連（PDF用フォント処理）
+                if (id.includes('fontkit') || id.includes('@pdf-lib/fontkit')) {
+                  return 'fontkit';
+                }
+                // PDF関連
+                if (id.includes('pdfjs-dist') || id.includes('pdf-lib')) {
+                  return 'pdf';
+                }
+                // Gemini API
+                if (id.includes('@google/genai')) {
+                  return 'gemini';
+                }
+                // WebContainer
+                if (id.includes('@webcontainer')) {
+                  return 'webcontainer';
+                }
+                // UI関連（lucide-react）- vendorより先にチェック
+                if (id.includes('lucide-react')) {
+                  return 'ui';
+                }
+                // React関連
+                if (id.includes('react-dom') || id.includes('react')) {
+                  return 'vendor';
+                }
+              }
+              return undefined;
             },
           },
         },
