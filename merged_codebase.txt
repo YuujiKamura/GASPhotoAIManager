@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 09:09:05
+生成日時: 2025-12-29 09:12:15
 ================================================================================
 
 === ファイル一覧 ===
@@ -19545,11 +19545,14 @@ Example: Blackboard says "乳剤端部塗布状況"
 The idea: "乳剤端部塗布" and "端部乳剤塗布" are the SAME operation with words reordered.
 
 **PAIRED OPERATIONS on blackboard**:
-When blackboard shows paired items like "乳剤・養生砂散布状況" (separated by ・):
-- This means TWO sequential operations were written together
-- For the FIRST photo of this pair → use the FIRST item: "乳剤散布状況"
-- For the SECOND photo → use the SECOND item: "養生砂散布状況"
-- Split at "・" and pick the appropriate one based on photo content/sequence.
+Workers often write multiple sequential operations together on one blackboard, separated by "・" or "、".
+Examples: "乳剤・養生砂散布状況", "掘削・積込状況", "転圧・整正状況"
+
+Rule:
+- Split at the delimiter (・ or 、)
+- For the FIRST photo → use the FIRST item (e.g., "乳剤散布状況")
+- For the SECOND photo → use the SECOND item (e.g., "養生砂散布状況")
+- Determine which one based on photo content or filename sequence.
 
 **Category-specific rules:**
 *   **着手前及び完成写真**: remarksCategory = "着手前" or "竣工"
