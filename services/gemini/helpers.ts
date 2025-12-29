@@ -4,7 +4,10 @@
  * 共通ヘルパー関数、型定義、定数を集約
  */
 
-import { AnalysisExample, FieldChange, ChangeStage } from "../../types";
+import { Type, Schema } from "@google/genai";
+import { AnalysisExample, FieldChange, ChangeStage, AIAnalysisResult, PhotoRecord } from "../../types";
+import { validateAgainstMaster, validateTemperatureRemarks, isQualityManagementPhoto } from "../../utils/constructionMaster";
+import { REMARKS_CATEGORIES } from './systemPrompts';
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -103,3 +106,188 @@ export const sanitizeApiKeyFromMessage = (message: string, apiKey?: string): str
  * ログ出力用の型定義
  */
 export type LogFunction = (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void;
+
+// ============================================
+// バッチ解析用スキーマ
+// ============================================
+export const BATCH_ANALYSIS_SCHEMA: Schema = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      fileName: { type: Type.STRING },
+      workType: { type: Type.STRING },
+      variety: { type: Type.STRING },
+      detail: { type: Type.STRING },
+      station: { type: Type.STRING },
+      remarksCategory: {
+        type: Type.STRING,
+        enum: REMARKS_CATEGORIES,
+        description: "備考の種類。温度管理なら「到着温度」「敷均し温度」等を選択（測定値は含めない）"
+      },
+      measurements: {
+        type: Type.STRING,
+        description: "測定値。単位は種別名の後ろに1回。例: 「基準高下がり (mm)\\n設計値 H1=50, H2=50\\n実測値 H1=50, H2=51」。複数種別は空行で区切る。値がない場合は空文字"
+      },
+      description: { type: Type.STRING },
+      hasBoard: { type: Type.BOOLEAN },
+      detectedText: { type: Type.STRING },
+      reasoning: { type: Type.STRING }
+    },
+    required: ["fileName", "workType", "station", "description", "remarksCategory"]
+  }
+};
+
+// ============================================
+// AIレスポンスパース関数
+// ============================================
+export const parseAIResponse = (text: string): any[] => {
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    const match = text.match(/\[.*\]/s);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    throw new Error("Invalid JSON response from AI");
+  }
+};
+
+/**
+ * AIレスポンスをAIAnalysisResult形式に変換
+ */
+export const mapToAnalysisResults = (parsed: any[]): AIAnalysisResult[] => {
+  return parsed.map((item: any) => {
+    const remarksCategory = item.remarksCategory || "";
+    return {
+      fileName: item.fileName || "unknown",
+      workType: item.workType || "",
+      variety: item.variety || "",
+      detail: item.detail || "",
+      station: item.station || "",
+      remarks: remarksCategory,
+      remarksCategory: remarksCategory,
+      remarksValue: "",
+      description: item.description || "",
+      measurements: item.measurements || "",
+      hasBoard: !!item.hasBoard,
+      detectedText: item.detectedText || "",
+      reasoning: item.reasoning || "",
+      changeLog: []
+    };
+  });
+};
+
+/**
+ * AI結果をレコードにマッチング
+ */
+export const matchResultsToRecords = (
+  records: PhotoRecord[],
+  validResults: AIAnalysisResult[],
+  onLog?: LogFunction
+): AIAnalysisResult[] => {
+  return records.map(record => {
+    const aiResult = validResults.find(res => res.fileName === record.fileName);
+    if (aiResult) return aiResult;
+
+    onLog?.(`[WARNING] No AI result found for ${record.fileName}, using placeholder`, 'error');
+    return {
+      fileName: record.fileName,
+      workType: '', variety: '', detail: '', station: '',
+      remarks: '', remarksCategory: '', remarksValue: '',
+      description: '', measurements: '',
+      hasBoard: false, detectedText: '', reasoning: '',
+      changeLog: []
+    };
+  });
+};
+
+// ============================================
+// コンテキスト継承 (Context Relay)
+// ============================================
+const isSafetyRemarks = (remarks: string): boolean => {
+  const safetyKeywords = ['朝礼', 'KY', '安全', '新規入場', '点灯', '巡視'];
+  return safetyKeywords.some(kw => remarks.includes(kw));
+};
+
+export const applyContextRelay = (results: AIAnalysisResult[]): AIAnalysisResult[] => {
+  let lastKnown = { station: "", variety: "", workType: "", detail: "", remarks: "", measurements: "" };
+
+  return results.map(res => {
+    if (isSafetyRemarks(res.remarks || '')) return res;
+
+    const changeLog = res.changeLog || [];
+    const fields = ['station', 'variety', 'workType', 'detail', 'remarks', 'measurements'] as const;
+    const updated: any = { ...res };
+
+    for (const field of fields) {
+      const inherited = res[field] || lastKnown[field];
+      trackFieldChange(changeLog, field, 'context_relay', res[field] || '', inherited, '前の写真から継承');
+      updated[field] = inherited;
+      if (res[field]) lastKnown[field] = res[field];
+    }
+
+    return { ...updated, changeLog };
+  });
+};
+
+// ============================================
+// マスタバリデーション
+// ============================================
+export const validateResults = (
+  results: AIAnalysisResult[],
+  onLog?: LogFunction
+): AIAnalysisResult[] => {
+  return results.map(res => {
+    const changeLog = res.changeLog || [];
+    const { validatedWorkType, validatedVariety, validatedDetail, warnings } =
+      validateAgainstMaster(res.workType, res.variety, res.detail, res.remarks);
+
+    if (warnings.length > 0) {
+      onLog?.(`[MASTER警告] ${res.fileName}: ${warnings.join(', ')}`, "error");
+    }
+
+    trackFieldChange(changeLog, 'workType', 'master_validation', res.workType || '', validatedWorkType, 'マスタに存在しない値を修正');
+    trackFieldChange(changeLog, 'variety', 'master_validation', res.variety || '', validatedVariety, 'マスタに存在しない値を修正');
+    trackFieldChange(changeLog, 'detail', 'master_validation', res.detail || '', validatedDetail, 'マスタに存在しない値を修正');
+
+    if (res.remarks?.match(/[^着手完]工/) && !res.remarks.includes('施工')) {
+      onLog?.(`🚨 [AI創作検出] ${res.fileName}: 備考「${res.remarks}」に「〜工」が含まれています`, "error");
+    }
+
+    let finalRemarks = res.remarks;
+    let finalRemarksCategory = res.remarksCategory;
+    let finalMeasurements = res.measurements;
+
+    if (res.remarksCategory && isQualityManagementPhoto(res.remarksCategory)) {
+      const tempValidation = validateTemperatureRemarks(res.remarksCategory || '', res.measurements || '');
+
+      if (!tempValidation.isValid) {
+        tempValidation.warnings.forEach(w => onLog?.(`[温度バリデーション] ${res.fileName}: ${w}`, "error"));
+
+        if (tempValidation.correctedCategory) {
+          trackFieldChange(changeLog, 'remarksCategory', 'temperature_validation', res.remarksCategory || '', tempValidation.correctedCategory, '温度バリデーションで修正');
+          finalRemarksCategory = tempValidation.correctedCategory;
+          trackFieldChange(changeLog, 'remarks', 'temperature_validation', res.remarks || '', finalRemarksCategory, '温度バリデーションで修正');
+          finalRemarks = finalRemarksCategory;
+        }
+        if (tempValidation.correctedValue) {
+          trackFieldChange(changeLog, 'measurements', 'temperature_validation', res.measurements || '', tempValidation.correctedValue, '温度バリデーションで修正');
+          finalMeasurements = tempValidation.correctedValue;
+        }
+      }
+    }
+
+    return {
+      ...res,
+      workType: validatedWorkType,
+      variety: validatedVariety,
+      detail: validatedDetail,
+      remarks: finalRemarks,
+      remarksCategory: finalRemarksCategory,
+      measurements: finalMeasurements,
+      changeLog
+    };
+  });
+};
