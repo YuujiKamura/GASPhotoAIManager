@@ -52,6 +52,12 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
     onClose();
   };
 
+  // 確定して閉じる
+  const handleAccept = () => {
+    acceptAnalysis();
+    onClose();
+  };
+
   // テキスト送信
   const handleSend = () => {
     if (state.inputText.trim()) {
@@ -237,7 +243,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
             {txt.close}
           </button>
           <button
-            onClick={acceptAnalysis}
+            onClick={handleAccept}
             disabled={!analysis || state.isProcessing}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
           >

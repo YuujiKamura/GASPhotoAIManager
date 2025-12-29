@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T01:19:25.823Z",
+  "generatedAt": "2025-12-29T01:37:59.589Z",
   "totalFiles": 124,
-  "totalLines": 29813,
+  "totalLines": 29819,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -64,7 +64,7 @@
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
       "components/GitHubSyncPanel.tsx (341行)",
-      "components/InteractiveAnalysisDialog/index.tsx (288行)",
+      "components/InteractiveAnalysisDialog/index.tsx (294行)",
       "components/InteractiveAnalysisDialog/types.ts (116行)",
       "components/InteractiveAnalysisDialog/useInteractiveAnalysis.ts (242行)",
       "components/LimitModal.tsx (74行)",
