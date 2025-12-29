@@ -14,7 +14,7 @@ import { createCanvas } from 'canvas';
 import ExcelJS from 'exceljs';
 
 // 本番のレイアウト設定をインポート
-import { LAYOUT_FIELDS, ROWS_PER_PHOTO, DIMENSION } from '../utils/layoutConfig';
+import { LAYOUT_FIELDS, ROWS_PER_PHOTO, DIMENSION, getLayoutConfig as getLayoutConfigFromLib, PDF_LAYOUT, CONVERSION } from '../utils/layoutConfig';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,25 +49,20 @@ const LABELS: Record<string, string> = {
 };
 
 // ===========================================
-// 本番と同じレイアウト定数を使用
+// 本番と同じレイアウト定数を使用（layoutConfigから取得）
 // ===========================================
 function getLayoutConfig(photosPerPage: 2 | 3) {
-  const isTwoUp = photosPerPage === 2;
-
-  // 本番 excelGenerator.ts と同じ値
-  const COL_A_WIDTH = isTwoUp ? 80 : 65;
-  const COL_B_WIDTH = isTwoUp ? 6 : DIMENSION.LABEL_WIDTH_EXCEL;
-  const COL_C_WIDTH = isTwoUp ? 14 : 25;
-  const rowsPerBlock = isTwoUp ? 18 : ROWS_PER_PHOTO;
+  const config = getLayoutConfigFromLib(photosPerPage);
 
   return {
-    COL_A_WIDTH,
-    COL_B_WIDTH,
-    COL_C_WIDTH,
-    rowsPerBlock,
-    ROW_HEIGHT_PTS: DIMENSION.ROW_HEIGHT_PT,
-    PIXELS_PER_COL_UNIT: DIMENSION.PIXELS_PER_COL_UNIT,
-    PT_TO_PX: DIMENSION.PT_TO_PX,
+    COL_A_WIDTH: config.colAWidth,
+    COL_B_WIDTH: config.colBWidth,
+    COL_C_WIDTH: config.colCWidth,
+    rowsPerBlock: config.rowsPerBlock,
+    ROW_HEIGHT_PTS: config.rowHeightPt,
+    PIXELS_PER_COL_UNIT: CONVERSION.PX_PER_EXCEL_COL,
+    PT_TO_PX: CONVERSION.PT_TO_PX,
+    PT_PER_COL: CONVERSION.PT_PER_EXCEL_COL,
   };
 }
 

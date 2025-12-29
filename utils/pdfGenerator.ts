@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
+import { PDF_LAYOUT } from './layoutConfig';
 
 // PDF.js worker setup
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -11,11 +12,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 // ========== 定数 ==========
 const SESSION_MARKER = 'GASPM_SESSION_V1:';
-const A4_WIDTH = 595.28;
-const A4_HEIGHT = 841.89;
-const MARGIN = 20;
-const HEADER_HEIGHT = 40;
-const PHOTO_INFO_GAP = 5;
+
+// layoutConfigから共有値を使用
+const A4_WIDTH = PDF_LAYOUT.PAGE_WIDTH;
+const A4_HEIGHT = PDF_LAYOUT.PAGE_HEIGHT;
+const MARGIN = PDF_LAYOUT.MARGIN;
+const HEADER_HEIGHT = PDF_LAYOUT.HEADER_HEIGHT;
+const PHOTO_INFO_GAP = PDF_LAYOUT.GAP;
 
 // フィールドパターン（共通定義）
 const FIELD_PATTERNS: Record<string, RegExp> = {
