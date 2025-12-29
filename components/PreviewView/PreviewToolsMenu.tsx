@@ -1,0 +1,199 @@
+import React, { useRef, useEffect, ReactNode } from 'react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Replace, Wand2, Star, Settings, RefreshCw, Github } from 'lucide-react';
+
+interface MenuSection {
+  label: { ja: string; en: string };
+  items: MenuItem[];
+}
+
+interface MenuItem {
+  icon: ReactNode;
+  iconColor: string;
+  hoverBg: string;
+  label: { ja: string; en: string };
+  onClick: () => void;
+  show?: boolean;
+  title?: { ja: string; en: string };
+}
+
+interface PreviewToolsMenuProps {
+  lang: 'en' | 'ja';
+  isProcessing: boolean;
+  onAutoPair: () => void;
+  onManualPair: () => void;
+  onEnterReorderMode: () => void;
+  onRefine: () => void;
+  onShowHistory: () => void;
+  onOpenStationReplace?: () => void;
+  onOpenMasterEditor?: () => void;
+  onApplyAliases?: () => { modifiedCount: number };
+  onOpenGitHubSync?: () => void;
+}
+
+const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
+  lang,
+  isProcessing,
+  onAutoPair,
+  onManualPair,
+  onEnterReorderMode,
+  onRefine,
+  onShowHistory,
+  onOpenStationReplace,
+  onOpenMasterEditor,
+  onApplyAliases,
+  onOpenGitHubSync
+}) => {
+  const [showMenu, setShowMenu] = React.useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
+
+  const handleApplyAliases = () => {
+    if (onApplyAliases) {
+      const result = onApplyAliases();
+      setShowMenu(false);
+      if (result.modifiedCount === 0) {
+        alert(lang === 'ja'
+          ? 'エイリアスの適用対象がありませんでした。\n設定でエイリアスを有効にし、変換ルールを追加してください。'
+          : 'No aliases to apply. Enable aliases and add mappings in settings.');
+      }
+    }
+  };
+
+  const menuSections: MenuSection[] = [
+    {
+      label: { ja: 'ペアリング', en: 'Pairing' },
+      items: [
+        {
+          icon: <GitCompare className="w-4 h-4 text-blue-400" />,
+          iconColor: 'text-blue-400',
+          hoverBg: 'hover:bg-blue-600',
+          label: { ja: 'AIペアリング', en: 'AI Pairing' },
+          onClick: () => { onAutoPair(); setShowMenu(false); }
+        },
+        {
+          icon: <MousePointer className="w-4 h-4 text-amber-400" />,
+          iconColor: 'text-amber-400',
+          hoverBg: 'hover:bg-amber-600',
+          label: { ja: '手動ペアリング', en: 'Manual Pairing' },
+          onClick: () => { onManualPair(); setShowMenu(false); }
+        }
+      ]
+    },
+    {
+      label: { ja: '編集', en: 'Edit' },
+      items: [
+        {
+          icon: <ArrowUpDown className="w-4 h-4 text-orange-400" />,
+          iconColor: 'text-orange-400',
+          hoverBg: 'hover:bg-orange-600',
+          label: { ja: '並べ替え', en: 'Reorder' },
+          onClick: () => { onEnterReorderMode(); setShowMenu(false); }
+        },
+        {
+          icon: <Replace className="w-4 h-4 text-cyan-400" />,
+          iconColor: 'text-cyan-400',
+          hoverBg: 'hover:bg-cyan-600',
+          label: { ja: '測点の一括置換', en: 'Replace Stations' },
+          onClick: () => { onOpenStationReplace?.(); setShowMenu(false); },
+          show: !!onOpenStationReplace
+        },
+        {
+          icon: <Wand2 className="w-4 h-4 text-purple-400" />,
+          iconColor: 'text-purple-400',
+          hoverBg: 'hover:bg-purple-600',
+          label: { ja: '再解析', en: 'Refine' },
+          onClick: () => { onRefine(); setShowMenu(false); }
+        }
+      ]
+    },
+    {
+      label: { ja: '設定', en: 'Settings' },
+      items: [
+        {
+          icon: <Star className="w-4 h-4 text-amber-400" />,
+          iconColor: 'text-amber-400',
+          hoverBg: 'hover:bg-amber-600',
+          label: { ja: '履歴・お手本管理', en: 'History & Examples' },
+          onClick: () => { onShowHistory(); setShowMenu(false); }
+        },
+        {
+          icon: <Settings className="w-4 h-4 text-slate-400" />,
+          iconColor: 'text-slate-400',
+          hoverBg: 'hover:bg-slate-600',
+          label: { ja: 'マスタ管理', en: 'Master Data' },
+          onClick: () => { onOpenMasterEditor?.(); setShowMenu(false); },
+          show: !!onOpenMasterEditor
+        },
+        {
+          icon: <RefreshCw className="w-4 h-4 text-cyan-400" />,
+          iconColor: 'text-cyan-400',
+          hoverBg: 'hover:bg-cyan-600',
+          label: { ja: 'エイリアス適用', en: 'Apply Aliases' },
+          title: { ja: '設定済みのエイリアスを適用します', en: 'Apply configured aliases' },
+          onClick: handleApplyAliases,
+          show: !!onApplyAliases
+        },
+        {
+          icon: <Github className="w-4 h-4 text-purple-400" />,
+          iconColor: 'text-purple-400',
+          hoverBg: 'hover:bg-purple-600',
+          label: { ja: 'GitHub同期', en: 'GitHub Sync' },
+          title: { ja: '学習データをGitHubと同期', en: 'Sync learned data with GitHub' },
+          onClick: () => { onOpenGitHubSync?.(); setShowMenu(false); },
+          show: !!onOpenGitHubSync
+        }
+      ]
+    }
+  ];
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setShowMenu(!showMenu)}
+        className={`p-2 rounded text-sm font-medium flex items-center gap-1 transition-colors ${
+          showMenu ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+        }`}
+        disabled={isProcessing}
+        title={lang === 'ja' ? 'ツール' : 'Tools'}
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+
+      {showMenu && (
+        <div className="absolute right-0 top-full mt-1 w-56 bg-slate-800 rounded-lg shadow-xl border border-slate-600 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+          {menuSections.map((section, sectionIndex) => (
+            <React.Fragment key={section.label.en}>
+              <div className={`px-3 py-1.5 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700 ${sectionIndex > 0 ? 'border-t mt-1' : ''}`}>
+                {section.label[lang]}
+              </div>
+              {section.items.filter(item => item.show !== false).map((item) => (
+                <button
+                  key={item.label.en}
+                  onClick={item.onClick}
+                  className={`w-full px-3 py-2 text-sm text-left text-slate-200 ${item.hoverBg} flex items-center gap-2 transition-colors`}
+                  title={item.title?.[lang]}
+                >
+                  {item.icon}
+                  {item.label[lang]}
+                </button>
+              ))}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PreviewToolsMenu;

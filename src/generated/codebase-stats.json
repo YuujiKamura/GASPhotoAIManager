@@ -1,22 +1,12 @@
 {
-  "generatedAt": "2025-12-29T04:10:54.786Z",
-  "totalFiles": 130,
-  "totalLines": 28677,
+  "generatedAt": "2025-12-29T04:15:19.297Z",
+  "totalFiles": 134,
+  "totalLines": 28372,
   "largeFiles": [
     {
       "path": "hooks/useAnalysisHandlers.ts",
       "lines": 684,
       "size": 28145
-    },
-    {
-      "path": "components/PreviewView.tsx",
-      "lines": 645,
-      "size": 29192
-    },
-    {
-      "path": "services/githubSync.ts",
-      "lines": 617,
-      "size": 17419
     },
     {
       "path": "components/UploadView.tsx",
@@ -52,10 +42,20 @@
       "path": "services/gemini/analysis.ts",
       "lines": 509,
       "size": 20805
+    },
+    {
+      "path": "utils/constructionMaster.ts",
+      "lines": 488,
+      "size": 21809
+    },
+    {
+      "path": "utils/pdfGenerator.ts",
+      "lines": 479,
+      "size": 18378
     }
   ],
   "components": {
-    "count": 31,
+    "count": 34,
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
@@ -79,15 +79,18 @@
       "components/PhotoAlbumView/IssueReportModal.tsx (115行)",
       "components/PhotoAlbumView/ReasoningModal.tsx (130行)",
       "components/PhotoAlbumView.tsx (199行)",
-      "components/PreviewView.tsx (645行)",
+      "components/PreviewView/index.ts (3行)",
+      "components/PreviewView/PreviewToolsMenu.tsx (200行)",
+      "components/PreviewView/ReorderModeView.tsx (181行)",
+      "components/PreviewView.tsx (253行)",
       "components/RefineModal.tsx (523行)",
       "components/SessionHistoryPanel.tsx (404行)",
+      "components/shared/EditableField.tsx (93行)",
       "components/SimplePairingMode.tsx (130行)",
       "components/StationReplaceModal.tsx (525行)",
       "components/UploadView.tsx (555行)",
       "components/UsagePanel.tsx (127行)",
-      "components/WorkTypeConfirmModal.tsx (132行)",
-      "components/shared/EditableField.tsx (93行)"
+      "components/WorkTypeConfirmModal.tsx (132行)"
     ]
   },
   "services": {
@@ -105,7 +108,7 @@
       "services/gemini/systemPrompts.ts (282行)",
       "services/gemini/workTypeSelector.ts (119行)",
       "services/geminiService.ts (12行)",
-      "services/githubSync.ts (617行)",
+      "services/githubSync.ts (178行)",
       "services/learningService.ts (462行)",
       "services/optimizedSpatialPairingService.ts (384行)",
       "services/personalStorage.ts (538行)",
@@ -119,7 +122,7 @@
     ]
   },
   "hooks": {
-    "count": 19,
+    "count": 20,
     "files": [
       "hooks/index.ts (18行)",
       "hooks/useAnalysisHandlers.ts (684行)",
@@ -139,6 +142,7 @@
       "hooks/usePhotosState.ts (177行)",
       "hooks/useProcessingState.ts (95行)",
       "hooks/useProjectHandlers.ts (77行)",
+      "hooks/useReorderMode.ts (142行)",
       "hooks/useStartProcessingFlow.ts (94行)"
     ]
   },
@@ -198,7 +202,7 @@
     {
       "name": "TypeScript",
       "status": "error",
-      "count": 64,
+      "count": 71,
       "details": [
         "components/CodebaseHealthDashboard.tsx(170,28): error TS2339: Property 'env' doe",
         "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
@@ -218,9 +222,9 @@
     {
       "name": "jscpd",
       "status": "ok",
-      "count": 43,
+      "count": 41,
       "details": [
-        "重複: 2.1% (43箇所)"
+        "重複: 2.0% (41箇所)"
       ]
     },
     {
@@ -228,11 +232,11 @@
       "status": "warning",
       "count": 221,
       "details": [
-        "Unused files (27)",
-        "components/ExamplesModal.tsx                ",
-        "components/NormalizationPresetsPanel.tsx    ",
-        "components/PersonalStorageSetup.tsx         ",
-        "components/SimplePairingMode.tsx            "
+        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "scripts/analyze-folder.ts                   ",
+        "scripts/analyze-pdf.ts                      ",
+        "scripts/create-test-pdf-with-images.ts      ",
+        "scripts/extract-pdf-images.ts               "
       ]
     }
   ],
@@ -245,24 +249,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 384
-    },
-    {
-      "id": "refactor-components-PreviewView-tsx",
-      "title": "components/PreviewView.tsx をリファクタ",
-      "description": "645行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/PreviewView.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 345
-    },
-    {
-      "id": "refactor-services-githubSync-ts",
-      "title": "services/githubSync.ts をリファクタ",
-      "description": "617行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "services/githubSync.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 317
     },
     {
       "id": "refactor-components-UploadView-tsx",
@@ -330,7 +316,7 @@
     {
       "id": "apply-hooks",
       "title": "カスタムフックをApp.tsxに適用",
-      "description": "hooks/ の 19 個のフックをApp.tsxで使用して状態管理を整理",
+      "description": "hooks/ の 20 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
       "status": "done",
