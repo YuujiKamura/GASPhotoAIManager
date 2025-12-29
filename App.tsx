@@ -69,7 +69,7 @@ export default function App() {
 
   // Photos State (unified state management with auto-save)
   const photosState = usePhotosState(processing.addLog);
-  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats } = photosState;
+  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, replaceStations } = photosState;
 
   // Analysis Handlers
   const analysisHandlers = useAnalysisHandlers({
@@ -111,9 +111,9 @@ export default function App() {
     addLog: processing.addLog, setShowNormalizationModal: modals.setShowNormalizationModal, resetNormalization: normalization.resetNormalization,
   });
 
-  // Photo Management
+  // Photo Management (エイリアス適用のみ - 他はusePhotosStateに統合)
   const photoManagement = usePhotoManagement({
-    lang, photos, setPhotos, setStats, addLog: processing.addLog, setSuccessMsg: processing.setSuccessMsg,
+    photos, setPhotos, addLog: processing.addLog,
   });
 
   // Project Handlers
@@ -191,14 +191,14 @@ export default function App() {
           fsCacheStats={fsCacheState.fsCacheStats} onClearLogs={processing.clearLogs}
           onGoHome={() => { analysisHandlers.shouldAbortRef.current = true; setShowPreview(false); setInitialLayout(3); }}
           onCloseProject={projectHandlers.handleCloseProject} onRefine={() => modals.setShowRefineModal(true)}
-          onExportExcel={(layout) => generateExcel(photos, appMode, layout)} onUpdatePhoto={photoManagement.handleUpdatePhoto}
-          onDeletePhoto={photoManagement.handleDeletePhoto} onAutoPair={analysisHandlers.handleAutoPair}
+          onExportExcel={(layout) => generateExcel(photos, appMode, layout)} onUpdatePhoto={updatePhoto}
+          onDeletePhoto={deletePhoto} onAutoPair={analysisHandlers.handleAutoPair}
           onManualPair={() => { pending.setManualPairingPhotos(photos); modals.setShowManualPairing(true); }}
           onSortByDate={analysisHandlers.handleSmartSort} onSendInstruction={projectHandlers.handleConsoleInstruction}
           onSelectCacheFolder={cacheHandlers.handleSelectCacheFolder} onClearFileSystemCache={cacheHandlers.handleClearFileSystemCache}
           onReanalyzePhoto={projectHandlers.handleInteractiveAnalysis}
           onAbort={() => { analysisHandlers.shouldAbortRef.current = true; processing.addLog("解析を中断しています...", 'info'); }}
-          onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onReorderPhotos={photoManagement.handleReorderPhotos}
+          onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onReorderPhotos={reorderPhotos}
           onOpenStationReplace={() => modals.setShowStationReplace(true)} onApplyAliases={photoManagement.handleApplyAliases}
           onOpenGitHubSync={() => modals.setShowGitHubSync(true)}
         />
@@ -225,7 +225,7 @@ export default function App() {
 
       {modals.showStationReplace && (
         <Suspense fallback={<LoadingFallback />}>
-          <StationReplaceModal photos={photos} lang={lang} onClose={() => modals.setShowStationReplace(false)} onReplace={photoManagement.handleStationReplace} />
+          <StationReplaceModal photos={photos} lang={lang} onClose={() => modals.setShowStationReplace(false)} onReplace={replaceStations} />
         </Suspense>
       )}
 

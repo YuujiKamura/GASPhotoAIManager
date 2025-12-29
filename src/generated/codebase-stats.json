@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T03:35:02.713Z",
+  "generatedAt": "2025-12-29T03:40:16.515Z",
   "totalFiles": 124,
-  "totalLines": 29814,
+  "totalLines": 29766,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -130,7 +130,7 @@
       "hooks/useNormalizationHandlers.ts (53行)",
       "hooks/usePdfHandlers.ts (100行)",
       "hooks/usePendingState.ts (76行)",
-      "hooks/usePhotoManagement.ts (84行)",
+      "hooks/usePhotoManagement.ts (36行)",
       "hooks/usePhotosState.ts (177行)",
       "hooks/useProcessingState.ts (95行)",
       "hooks/useProjectHandlers.ts (77行)",
@@ -192,7 +192,7 @@
     {
       "name": "TypeScript",
       "status": "error",
-      "count": 65,
+      "count": 63,
       "details": [
         "components/CodebaseHealthDashboard.tsx(170,28): error TS2339: Property 'env' doe",
         "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
