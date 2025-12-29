@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { FileText, FolderOpen, Loader2, AlertTriangle, X, Upload } from 'lucide-react';
-import { isSmartPdf, hasIndividualImages } from '../utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 
 interface PdfLoadDialogProps {
   isOpen: boolean;
@@ -45,6 +45,10 @@ const PdfLoadDialog: React.FC<PdfLoadDialogProps> = ({ isOpen, onClose, onLoad, 
 
     try {
       pushLog('PDFを解析中...');
+
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { isSmartPdf, hasIndividualImages } = await import('../utils/pdfGenerator');
+
       const isSmart = await isSmartPdf(file);
       const hasImages = await hasIndividualImages(file);
 

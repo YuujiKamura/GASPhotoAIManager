@@ -6,7 +6,7 @@ import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
 import { generateZip } from '../utils/zipGenerator';
-import { generatePdfWithImages } from '../utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 
 // Declare saveAs (html2pdf is no longer used)
 declare const saveAs: any;
@@ -241,6 +241,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
 
     try {
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { generatePdfWithImages } = await import('../utils/pdfGenerator');
+
       // pdf-libを使って個別画像埋め込みPDFを生成
       // これにより、PDFから個別の写真を抽出可能になる
       const pdfBlob = await generatePdfWithImages(photos, photosPerPage, '工事写真帳');

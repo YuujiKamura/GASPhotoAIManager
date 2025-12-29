@@ -4,7 +4,7 @@ import { getPhotoDate } from './utils/imageUtils';
 import { applyNormalizationCorrections, NormalizationCorrection, getApiKey, setApiKey as saveApiKey } from './services/geminiService';
 import { generateExcel } from './utils/excelGenerator';
 import { clearAnalysisCache, exportDataToJson, importDataFromJson } from './utils/storage';
-import { extractSessionFromPdf, isSmartPdf, hasIndividualImages, extractImagesFromPdf } from './utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 import { fsCache } from './utils/fileSystemCache';
 import { TRANS } from './utils/translations';
 import { loadAliasSettings, hasAliases, applyAliasesToRecords } from './utils/workTypeAliases';
@@ -33,9 +33,10 @@ import ApiKeySetup from './components/ApiKeySetup';
 import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
 import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
-import PdfLoadDialog from './components/PdfLoadDialog';
+// PdfLoadDialog is lazy-loaded to reduce initial bundle size
 
 // Lazy-loaded components
+const PdfLoadDialog = lazy(() => import('./components/PdfLoadDialog'));
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
 const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
@@ -283,6 +284,9 @@ export default function App() {
     log(`PDF読み込み: ${pdfFile.name}`);
 
     try {
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { isSmartPdf, hasIndividualImages, extractImagesFromPdf, extractSessionFromPdf } = await import('./utils/pdfGenerator');
+
       let images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
       let captionData: Record<string, any> | null = null;
       const isSmart = await isSmartPdf(pdfFile);
@@ -412,12 +416,16 @@ export default function App() {
   // Render
   return (
     <>
-      <PdfLoadDialog
-        isOpen={modals.showPdfLoadDialog}
-        onClose={() => { modals.setShowPdfLoadDialog(false); if (photos.length > 0) setShowPreview(true); }}
-        onLoad={handlePdfLoad}
-        lang={lang}
-      />
+      {modals.showPdfLoadDialog && (
+        <Suspense fallback={<LoadingFallback />}>
+          <PdfLoadDialog
+            isOpen={modals.showPdfLoadDialog}
+            onClose={() => { modals.setShowPdfLoadDialog(false); if (photos.length > 0) setShowPreview(true); }}
+            onLoad={handlePdfLoad}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {modals.showApiKeySetup && (
         <ApiKeySetup
