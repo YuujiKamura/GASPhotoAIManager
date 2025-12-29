@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-12-29T00:41:23.346Z",
+  "generatedAt": "2025-12-29T00:51:37.483Z",
   "totalFiles": 124,
   "totalLines": 30072,
   "largeFiles": [
@@ -314,7 +314,7 @@
       "description": "hooks/ の 18 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 500
     },
     {

@@ -143,9 +143,9 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
         },
         {
           name: lang === 'ja' ? 'カスタムフック' : 'Custom Hooks',
-          status: 'warning',
-          message: lang === 'ja' ? '作成済み・未使用' : 'Created but unused',
-          details: lang === 'ja' ? 'hooks/に5個作成済み' : '5 hooks in hooks/'
+          status: 'ok',
+          message: lang === 'ja' ? '適用済み' : 'Applied',
+          details: lang === 'ja' ? '18フック作成、App.tsxで14フック使用中' : '18 hooks created, 14 used in App.tsx'
         }
       ];
 
@@ -491,12 +491,12 @@ ${task.id}`;
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white/20 rounded-lg p-4">
-                  <div className="text-2xl mb-2">1️⃣</div>
-                  <p className="font-medium">
-                    {lang === 'ja' ? 'カスタムフックを適用' : 'Apply Custom Hooks'}
+                  <div className="text-2xl mb-2">✅</div>
+                  <p className="font-medium text-green-300">
+                    {lang === 'ja' ? 'カスタムフック適用完了' : 'Custom Hooks Applied'}
                   </p>
                   <p className="text-sm text-white/80 mt-1">
-                    {lang === 'ja' ? 'hooks/の5個をApp.tsxで使用' : 'Use 5 hooks from hooks/ in App.tsx'}
+                    {lang === 'ja' ? 'App.tsx: 14フック使用、263行に最適化' : 'App.tsx: 14 hooks used, optimized to 263 lines'}
                   </p>
                 </div>
                 <div className="bg-white/20 rounded-lg p-4">
