@@ -1,13 +1,8 @@
 {
-  "generatedAt": "2025-12-29T03:58:18.151Z",
-  "totalFiles": 124,
-  "totalLines": 28970,
+  "generatedAt": "2025-12-29T04:01:19.648Z",
+  "totalFiles": 130,
+  "totalLines": 29051,
   "largeFiles": [
-    {
-      "path": "components/PhotoAlbumView.tsx",
-      "lines": 715,
-      "size": 31320
-    },
     {
       "path": "hooks/useAnalysisHandlers.ts",
       "lines": 684,
@@ -52,10 +47,15 @@
       "path": "components/RefineModal.tsx",
       "lines": 523,
       "size": 22211
+    },
+    {
+      "path": "services/projectStorage.ts",
+      "lines": 513,
+      "size": 12242
     }
   ],
   "components": {
-    "count": 27,
+    "count": 31,
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
@@ -75,10 +75,14 @@
       "components/NormalizationPreviewModal.tsx (228行)",
       "components/PdfLoadDialog.tsx (230行)",
       "components/PersonalStorageSetup.tsx (396行)",
-      "components/PhotoAlbumView.tsx (715行)",
+      "components/PhotoAlbumView/ContextMenu.tsx (63行)",
+      "components/PhotoAlbumView/IssueReportModal.tsx (115行)",
+      "components/PhotoAlbumView/ReasoningModal.tsx (130行)",
+      "components/PhotoAlbumView.tsx (199行)",
       "components/PreviewView.tsx (645行)",
       "components/RefineModal.tsx (523行)",
       "components/SessionHistoryPanel.tsx (404行)",
+      "components/shared/EditableField.tsx (93行)",
       "components/SimplePairingMode.tsx (130行)",
       "components/StationReplaceModal.tsx (525行)",
       "components/UploadView.tsx (555行)",
@@ -115,7 +119,7 @@
     ]
   },
   "hooks": {
-    "count": 18,
+    "count": 19,
     "files": [
       "hooks/index.ts (18行)",
       "hooks/useAnalysisHandlers.ts (684行)",
@@ -130,6 +134,7 @@
       "hooks/useNormalizationHandlers.ts (53行)",
       "hooks/usePdfHandlers.ts (100行)",
       "hooks/usePendingState.ts (76行)",
+      "hooks/usePhotoContextMenu.ts (172行)",
       "hooks/usePhotoManagement.ts (36行)",
       "hooks/usePhotosState.ts (177行)",
       "hooks/useProcessingState.ts (95行)",
@@ -138,11 +143,12 @@
     ]
   },
   "utils": {
-    "count": 30,
+    "count": 31,
     "files": [
       "utils/analysisRules.ts (330行)",
       "utils/constructionMaster.ts (488行)",
       "utils/crypto.ts (149行)",
+      "utils/displayLabels.ts (24行)",
       "utils/excelGenerator.ts (243行)",
       "utils/fileHandlers.ts (95行)",
       "utils/fileSystemCache.ts (355行)",
@@ -192,7 +198,7 @@
     {
       "name": "TypeScript",
       "status": "error",
-      "count": 63,
+      "count": 64,
       "details": [
         "components/CodebaseHealthDashboard.tsx(170,28): error TS2339: Property 'env' doe",
         "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
@@ -220,7 +226,7 @@
     {
       "name": "knip",
       "status": "warning",
-      "count": 219,
+      "count": 220,
       "details": [
         "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
         "components/ExamplesModal.tsx                ",
@@ -231,15 +237,6 @@
     }
   ],
   "tasks": [
-    {
-      "id": "refactor-components-PhotoAlbumView-tsx",
-      "title": "components/PhotoAlbumView.tsx をリファクタ",
-      "description": "715行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/PhotoAlbumView.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 415
-    },
     {
       "id": "refactor-hooks-useAnalysisHandlers-ts",
       "title": "hooks/useAnalysisHandlers.ts をリファクタ",
@@ -342,7 +339,7 @@
     {
       "id": "apply-hooks",
       "title": "カスタムフックをApp.tsxに適用",
-      "description": "hooks/ の 18 個のフックをApp.tsxで使用して状態管理を整理",
+      "description": "hooks/ の 19 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
       "status": "done",
