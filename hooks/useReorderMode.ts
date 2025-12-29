@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PhotoRecord } from '../types';
 
 export type PhotoGroup = { detail: string; photos: PhotoRecord[] };

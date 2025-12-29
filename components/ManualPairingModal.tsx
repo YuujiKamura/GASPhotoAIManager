@@ -96,19 +96,13 @@ const ManualPairingModal: React.FC<Props> = ({ photos, onComplete, onCancel, lan
     });
   };
 
-  const PhotoThumbnail = ({
-    photo,
-    isSelected,
-    onClick,
-    onMove,
-    moveLabel
-  }: {
+  const PhotoThumbnail: React.FC<{
     photo: PhotoRecord;
     isSelected: boolean;
     onClick: () => void;
     onMove: () => void;
     moveLabel: string;
-  }) => (
+  }> = ({ photo, isSelected, onClick, onMove, moveLabel }) => (
     <div
       className={`relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
         isSelected ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 hover:border-gray-400'

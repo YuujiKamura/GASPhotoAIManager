@@ -69,6 +69,8 @@ export interface PhotoRecord extends PhotoMetadata {
   status: 'pending' | 'processing' | 'done' | 'error';
   date?: number; // Capture timestamp
   fromCache?: boolean; // Indicates if the analysis came from local IndexedDB
+  sceneId?: string; // Scene/group identifier for PDF generation
+  phase?: string; // Phase information for PDF generation
 }
 
 export interface ProcessingStats {
@@ -93,7 +95,8 @@ export type SortPolicy =
   | 'chronological_safety_last'  // 時系列（安全管理を末尾に）
   | 'by_detail'                  // 細別ごとにグループ化（時系列）
   | 'by_detail_safety_first'     // 安全管理先頭 + 細別順
-  | 'by_detail_safety_last';     // 細別順 + 安全管理末尾
+  | 'by_detail_safety_last'      // 細別順 + 安全管理末尾
+  | 'by_worktype';               // 工種ごとにグループ化
 
 export const SORT_POLICIES: { id: SortPolicy; name: string; description: string }[] = [
   { id: 'chronological', name: '時系列', description: '撮影順に並べる' },

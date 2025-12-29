@@ -116,7 +116,7 @@ const StationReplaceModal: React.FC<StationReplaceModalProps> = ({ photos, lang,
       if (replaceText) addStationToHistory(replaceText);
     } else {
       previewReplacements.filter(r => selectedStations.has(r.original)).forEach(r => r.fileNames.forEach(fn => replacements.push({ fileName: fn, newStation: r.replaced })));
-      [...new Set(previewReplacements.map(r => r.replaced))].forEach(r => r && addStationToHistory(r));
+      (Array.from(new Set(previewReplacements.map(r => r.replaced))) as string[]).forEach(r => r && addStationToHistory(r));
     }
     if (replacements.length > 0) { onReplace(replacements); onClose(); }
   };

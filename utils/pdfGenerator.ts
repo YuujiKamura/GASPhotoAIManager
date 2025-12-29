@@ -447,7 +447,7 @@ export const extractImagesFromPdf = async (
 
       for (let i = 0; i < operatorList.fnArray.length; i++) {
         const op = operatorList.fnArray[i];
-        if (op !== OPS.paintImageXObject && op !== OPS.paintJpegXObject) continue;
+        if (op !== OPS.paintImageXObject && op !== (OPS as any).paintJpegXObject) continue;
 
         const imgName = operatorList.argsArray[i][0];
         if (processedNames.has(imgName)) continue;

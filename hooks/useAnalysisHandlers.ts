@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisHistoryEntry } from '../types';
 import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, assignSceneIds, getSelectedModel, NormalizationCorrection } from '../services/geminiService';

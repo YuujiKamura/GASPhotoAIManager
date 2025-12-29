@@ -21,13 +21,15 @@ import { getRelevantExamples, getActiveSession } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
 import { hasApiKey } from './apiKey';
-import { getSelectedModel, PRIMARY_MODEL, FALLBACK_MODEL } from './models';
+import { getSelectedModel, PRIMARY_MODEL, FALLBACK_MODEL, ModelType } from './models';
 
 // Re-export from submodules for backward compatibility
-export { AbortChecker, checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, LogFunction, sleep, MAX_RETRIES, RETRY_DELAY_MS } from './helpers';
+export { checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, sleep, MAX_RETRIES, RETRY_DELAY_MS } from './helpers';
+export type { AbortChecker, LogFunction } from './helpers';
 export { getSystemInstruction, REMARKS_CATEGORIES } from './systemPrompts';
 export { selectWorkTypes, getFilteredHierarchy } from './workTypeSelector';
-export { InteractiveMessage, InteractiveAnalysisResult, analyzePhotoInteractive } from './interactiveAnalysis';
+export { analyzePhotoInteractive } from './interactiveAnalysis';
+export type { InteractiveMessage, InteractiveAnalysisResult } from './interactiveAnalysis';
 
 // Import from submodules
 import {
@@ -297,13 +299,13 @@ async function streamAPIResponse(
   return { text: fullText, apiTime: performance.now() - apiStartTime, chunkCount };
 }
 
-function handleQuotaError(currentModel: string, onLog?: LogFunction): string {
+function handleQuotaError(currentModel: ModelType, onLog?: LogFunction): ModelType {
   if (currentModel === FALLBACK_MODEL) {
     onLog?.(`Rate Limit on fallback model. Waiting...`, "info");
     return FALLBACK_MODEL;
   }
 
-  const nextModel = currentModel === 'gemini-2.5-pro' ? 'gemini-2.5-flash' : FALLBACK_MODEL;
+  const nextModel: ModelType = currentModel === 'gemini-2.5-pro' ? 'gemini-2.5-flash' : FALLBACK_MODEL;
   onLog?.(`Rate Limit hit on ${currentModel}. Switching to: ${nextModel}`, "info");
   return nextModel;
 }

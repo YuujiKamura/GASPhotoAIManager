@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
 import { exportDataToJson, importDataFromJson } from '../utils/storage';
 

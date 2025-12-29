@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
 // pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 import { loadImagesFromFolder } from '../utils/fileHandlers';
