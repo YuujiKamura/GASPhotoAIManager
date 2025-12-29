@@ -1,20 +1,23 @@
 /**
  * Excel出力レイアウトのデモ/テストスクリプト
  *
+ * 本番の layoutConfig.ts からレイアウト定数をインポートして使用
+ *
  * 使用方法: npx tsx scripts/test-excel-export.ts
- * 出力: test-output/excel-demo.xlsx
+ * 出力: test-output/excel-demo-*.xlsx
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createCanvas } from 'canvas';
+import ExcelJS from 'exceljs';
+
+// 本番のレイアウト設定をインポート
+import { LAYOUT_FIELDS, ROWS_PER_PHOTO, DIMENSION } from '../utils/layoutConfig';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ExcelJSをNode.jsで使用
-import ExcelJS from 'exceljs';
 
 // 型定義
 interface AIAnalysisResult {
@@ -34,26 +37,7 @@ interface PhotoRecord {
   analysis?: AIAnalysisResult;
 }
 
-// レイアウト定数
-const DIMENSION = {
-  ROW_HEIGHT_PT: 21,
-  PT_TO_PX: 96 / 72,
-  PIXELS_PER_COL_UNIT: 7.1,
-  LABEL_WIDTH_EXCEL: 8,
-};
-
-const LAYOUT_FIELDS = [
-  { key: 'date', labelKey: 'labelDate', rowSpan: 1 },
-  { key: 'workType', labelKey: 'labelWorkType', rowSpan: 1 },
-  { key: 'variety', labelKey: 'labelVariety', rowSpan: 1 },
-  { key: 'detail', labelKey: 'labelDetail', rowSpan: 1 },
-  { key: 'station', labelKey: 'labelStation', rowSpan: 1 },
-  { key: 'remarks', labelKey: 'labelRemarks', rowSpan: 2 },
-  { key: 'measurements', labelKey: 'labelMeasurements', rowSpan: 3 },
-];
-
-const ROWS_PER_PHOTO = 12;
-
+// ラベル（本番はTRANSから取得するが、テスト用に直接定義）
 const LABELS: Record<string, string> = {
   labelDate: '撮影日時',
   labelWorkType: '工種',
@@ -64,6 +48,29 @@ const LABELS: Record<string, string> = {
   labelMeasurements: '寸法',
 };
 
+// ===========================================
+// 本番と同じレイアウト定数を使用
+// ===========================================
+function getLayoutConfig(photosPerPage: 2 | 3) {
+  const isTwoUp = photosPerPage === 2;
+
+  // 本番 excelGenerator.ts と同じ値
+  const COL_A_WIDTH = isTwoUp ? 80 : 65;
+  const COL_B_WIDTH = isTwoUp ? 6 : DIMENSION.LABEL_WIDTH_EXCEL;
+  const COL_C_WIDTH = isTwoUp ? 14 : 25;
+  const rowsPerBlock = isTwoUp ? 18 : ROWS_PER_PHOTO;
+
+  return {
+    COL_A_WIDTH,
+    COL_B_WIDTH,
+    COL_C_WIDTH,
+    rowsPerBlock,
+    ROW_HEIGHT_PTS: DIMENSION.ROW_HEIGHT_PT,
+    PIXELS_PER_COL_UNIT: DIMENSION.PIXELS_PER_COL_UNIT,
+    PT_TO_PX: DIMENSION.PT_TO_PX,
+  };
+}
+
 // CALS規格サイズ（1280x960）のサンプル画像を生成
 function createCALSImage(index: number, workType: string, station: string): Buffer {
   const width = 1280;
@@ -71,16 +78,16 @@ function createCALSImage(index: number, workType: string, station: string): Buff
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
 
-  // 背景（工事現場っぽいグレー/茶色系グラデーション）
+  // 背景（工事現場っぽいグラデーション）
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, '#87CEEB');  // 空色
-  gradient.addColorStop(0.3, '#B0C4DE'); // 明るいグレー
-  gradient.addColorStop(0.5, '#808080'); // グレー（道路）
-  gradient.addColorStop(1, '#696969');   // ダークグレー
+  gradient.addColorStop(0.3, '#B0C4DE');
+  gradient.addColorStop(0.5, '#808080'); // 道路
+  gradient.addColorStop(1, '#696969');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
-  // 道路っぽい線を描画
+  // 道路の白線
   ctx.strokeStyle = '#FFFFFF';
   ctx.lineWidth = 8;
   ctx.setLineDash([40, 20]);
@@ -88,28 +95,23 @@ function createCALSImage(index: number, workType: string, station: string): Buff
   ctx.moveTo(width * 0.4, height * 0.5);
   ctx.lineTo(width * 0.6, height);
   ctx.stroke();
-
   ctx.beginPath();
   ctx.moveTo(width * 0.6, height * 0.5);
   ctx.lineTo(width * 0.4, height);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // 黒板風のエリア（右下）
+  // 黒板（右下）
   const boardX = width - 350;
   const boardY = height - 250;
   const boardW = 320;
   const boardH = 220;
 
-  // 黒板の枠
   ctx.fillStyle = '#8B4513';
   ctx.fillRect(boardX - 10, boardY - 10, boardW + 20, boardH + 20);
-
-  // 黒板本体
   ctx.fillStyle = '#228B22';
   ctx.fillRect(boardX, boardY, boardW, boardH);
 
-  // 黒板テキスト
   ctx.fillStyle = '#FFFFFF';
   ctx.font = 'bold 24px sans-serif';
   ctx.fillText('工事名: サンプル舗装工事', boardX + 15, boardY + 40);
@@ -121,7 +123,7 @@ function createCALSImage(index: number, workType: string, station: string): Buff
   ctx.fillText(`写真 No.${index + 1}`, boardX + 15, boardY + 170);
   ctx.fillText('施工: サンプル建設(株)', boardX + 15, boardY + 195);
 
-  // 画像番号を大きく表示（デバッグ用）
+  // 写真番号（大）
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.font = 'bold 200px sans-serif';
   ctx.fillText(`${index + 1}`, 50, 250);
@@ -129,7 +131,7 @@ function createCALSImage(index: number, workType: string, station: string): Buff
   return canvas.toBuffer('image/jpeg', { quality: 0.85 });
 }
 
-// サンプルデータを生成
+// サンプルデータ
 function createSampleRecords(): PhotoRecord[] {
   const records: PhotoRecord[] = [
     {
@@ -212,7 +214,6 @@ function createSampleRecords(): PhotoRecord[] {
     },
   ];
 
-  // 各レコードにCALS画像を生成して追加
   return records.map((record, index) => ({
     ...record,
     base64: 'data:image/jpeg;base64,' + createCALSImage(
@@ -224,6 +225,9 @@ function createSampleRecords(): PhotoRecord[] {
 }
 
 async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 3): Promise<void> {
+  const layout = getLayoutConfig(photosPerPage);
+  const isTwoUp = photosPerPage === 2;
+
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('工事写真帳', {
     pageSetup: {
@@ -235,39 +239,39 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
     views: [{ showGridLines: false }]
   });
 
-  const isTwoUp = photosPerPage === 2;
-  const COL_A_WIDTH = isTwoUp ? 80 : 65;
-  const COL_B_WIDTH = isTwoUp ? 6 : DIMENSION.LABEL_WIDTH_EXCEL;
-  const COL_C_WIDTH = isTwoUp ? 14 : 25;
-  const rowsPerBlock = photosPerPage === 2 ? 18 : ROWS_PER_PHOTO;
-  const ROW_HEIGHT_PTS = DIMENSION.ROW_HEIGHT_PT;
-
+  // 本番と同じ列幅
   sheet.columns = [
-    { width: COL_A_WIDTH },
-    { width: COL_B_WIDTH },
-    { width: COL_C_WIDTH }
+    { width: layout.COL_A_WIDTH },
+    { width: layout.COL_B_WIDTH },
+    { width: layout.COL_C_WIDTH }
   ];
+
+  console.log(`  レイアウト: ${photosPerPage}枚/ページ`);
+  console.log(`    A列幅: ${layout.COL_A_WIDTH} (${Math.round(layout.COL_A_WIDTH * layout.PIXELS_PER_COL_UNIT)}px)`);
+  console.log(`    B列幅: ${layout.COL_B_WIDTH}`);
+  console.log(`    C列幅: ${layout.COL_C_WIDTH}`);
+  console.log(`    行数/ブロック: ${layout.rowsPerBlock}`);
 
   let currentRow = 1;
 
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
 
-    // Page Break
+    // ページブレーク
     if (i > 0 && i % photosPerPage === 0) {
       sheet.getRow(currentRow).addPageBreak();
       currentRow++;
     }
 
     const startRow = currentRow;
-    const endRow = startRow + rowsPerBlock - 1;
+    const endRow = startRow + layout.rowsPerBlock - 1;
 
-    // Set row heights
+    // 行高さ設定
     for (let r = startRow; r <= endRow; r++) {
-      sheet.getRow(r).height = ROW_HEIGHT_PTS;
+      sheet.getRow(r).height = layout.ROW_HEIGHT_PTS;
     }
 
-    // Image cell (Column A)
+    // 画像セル（A列）
     sheet.mergeCells(startRow, 1, endRow, 1);
     const imgCell = sheet.getCell(startRow, 1);
     imgCell.border = {
@@ -277,7 +281,7 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
       bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } }
     };
 
-    // 画像を追加
+    // 画像追加
     if (record.base64) {
       const base64Data = record.base64.split(',')[1];
       const imageId = workbook.addImage({
@@ -285,21 +289,14 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
         extension: 'jpeg',
       });
 
-      // 画像サイズ計算（セル内に収まるように）
-      const BOX_WIDTH_PX = COL_A_WIDTH * DIMENSION.PIXELS_PER_COL_UNIT;
-      const BOX_HEIGHT_PX = rowsPerBlock * ROW_HEIGHT_PTS * DIMENSION.PT_TO_PX;
+      const BOX_WIDTH_PX = layout.COL_A_WIDTH * layout.PIXELS_PER_COL_UNIT;
+      const BOX_HEIGHT_PX = layout.rowsPerBlock * layout.ROW_HEIGHT_PTS * layout.PT_TO_PX;
 
-      // CALS画像は4:3なのでアスペクト比を維持
-      const imgW = 1280;
-      const imgH = 960;
-      const scaleW = (BOX_WIDTH_PX * 0.95) / imgW;
-      const scaleH = (BOX_HEIGHT_PX * 0.95) / imgH;
-      const scale = Math.min(scaleW, scaleH);
-
+      // アスペクト比維持でフィット
+      const imgW = 1280, imgH = 960;
+      const scale = Math.min((BOX_WIDTH_PX * 0.95) / imgW, (BOX_HEIGHT_PX * 0.95) / imgH);
       const finalW = imgW * scale;
       const finalH = imgH * scale;
-      const xOffset = (BOX_WIDTH_PX - finalW) / 2;
-      const yOffset = (BOX_HEIGHT_PX - finalH) / 2;
 
       sheet.addImage(imageId, {
         tl: { col: 0.02, row: startRow - 1 + 0.1 },
@@ -308,15 +305,14 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
       });
     }
 
-    // Info fields (Columns B & C)
+    // フィールド（B・C列）
     const createField = (r: number, label: string, value: string, rowSpan: number) => {
       let finalRowSpan = rowSpan;
-      if (photosPerPage === 2) {
+      if (isTwoUp) {
         if (label === LABELS.labelStation) finalRowSpan = 2;
         if (label === LABELS.labelRemarks) finalRowSpan = 16;
       }
 
-      // Label cell
       const labelCell = sheet.getCell(r, 2);
       labelCell.value = label;
       labelCell.font = { bold: true, size: 9, color: { argb: 'FF555555' } };
@@ -329,7 +325,6 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
         bottom: { style: 'hair', color: { argb: 'FFAAAAAA' } }
       };
 
-      // Value cell
       const valueCell = sheet.getCell(r, 3);
       valueCell.value = value;
       valueCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
@@ -344,15 +339,12 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
         sheet.mergeCells(r, 2, r + finalRowSpan - 1, 2);
         sheet.mergeCells(r, 3, r + finalRowSpan - 1, 3);
       }
-
       return finalRowSpan;
     };
 
-    // Filter fields for 2-up mode
+    // 本番と同じフィールドフィルタ
     const visibleFields = LAYOUT_FIELDS.filter((field) => {
-      if (isTwoUp) {
-        return field.key === 'remarks' || field.key === 'station';
-      }
+      if (isTwoUp) return field.key === 'remarks' || field.key === 'station';
       return true;
     });
 
@@ -378,42 +370,33 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
     currentRow = endRow + 2;
   }
 
-  // Output directory
+  // 出力
   const outputDir = path.join(__dirname, '..', 'test-output');
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  // Save files
-  const filename3up = path.join(outputDir, 'excel-demo-3up.xlsx');
-  const filename2up = path.join(outputDir, 'excel-demo-2up.xlsx');
-
-  if (photosPerPage === 3) {
-    await workbook.xlsx.writeFile(filename3up);
-    console.log(`✅ 3枚/ページ: ${filename3up}`);
-  } else {
-    await workbook.xlsx.writeFile(filename2up);
-    console.log(`✅ 2枚/ページ: ${filename2up}`);
-  }
+  const filename = path.join(outputDir, `excel-demo-${photosPerPage}up.xlsx`);
+  await workbook.xlsx.writeFile(filename);
+  console.log(`  ✅ 出力: ${filename}\n`);
 }
 
 async function main() {
-  console.log('📊 Excel出力デモを生成中...\n');
-
-  const records = createSampleRecords();
-  console.log(`サンプルデータ: ${records.length}件`);
-  records.forEach((r, i) => {
-    console.log(`  ${i + 1}. ${r.fileName}: ${r.analysis?.workType} - ${r.analysis?.variety}`);
-  });
+  console.log('📊 Excel出力デモ（本番layoutConfig使用）\n');
+  console.log('=== レイアウト定数（layoutConfig.ts） ===');
+  console.log(`  ROWS_PER_PHOTO: ${ROWS_PER_PHOTO}`);
+  console.log(`  ROW_HEIGHT_PT: ${DIMENSION.ROW_HEIGHT_PT}`);
+  console.log(`  LABEL_WIDTH_EXCEL: ${DIMENSION.LABEL_WIDTH_EXCEL}`);
+  console.log(`  PIXELS_PER_COL_UNIT: ${DIMENSION.PIXELS_PER_COL_UNIT}`);
   console.log('');
 
-  // 3枚/ページ版
-  await generateExcelDemo(records, 3);
+  const records = createSampleRecords();
+  console.log(`サンプルデータ: ${records.length}件\n`);
 
-  // 2枚/ページ版
+  await generateExcelDemo(records, 3);
   await generateExcelDemo(records, 2);
 
-  console.log('\n✨ 完了！test-output/ フォルダにExcelファイルが生成されました');
+  console.log('✨ 完了');
 }
 
 main().catch(console.error);
