@@ -19,6 +19,9 @@ dist-ssr
 # Generated files (regenerated at build time)
 src/generated/codebase-stats.json
 
+# Test output
+test-output/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

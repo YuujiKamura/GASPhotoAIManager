@@ -18,14 +18,34 @@ const getImageDimensions = (base64: string): Promise<{ w: number; h: number }> =
 };
 
 export const generateExcel = async (
-  records: PhotoRecord[], 
+  records: PhotoRecord[],
   appMode: AppMode = 'construction',
   photosPerPage: 2 | 3 = 3
 ) => {
+  console.log('[ExcelExport] Starting export...', { recordCount: records.length, appMode, photosPerPage });
+
+  // Check if ExcelJS library is loaded from CDN
   if (typeof ExcelJS === 'undefined') {
-    alert("Excel generation library is not loaded.");
+    console.error('[ExcelExport] ExcelJS library not loaded');
+    alert("ExcelJS ライブラリが読み込まれていません。ページを再読み込みしてください。");
     return;
   }
+
+  // Check if FileSaver (saveAs) is loaded from CDN
+  if (typeof saveAs === 'undefined') {
+    console.error('[ExcelExport] FileSaver (saveAs) not loaded');
+    alert("FileSaver ライブラリが読み込まれていません。ページを再読み込みしてください。");
+    return;
+  }
+
+  // Check if there are records to export
+  if (!records || records.length === 0) {
+    console.warn('[ExcelExport] No records to export');
+    alert("エクスポートするデータがありません。");
+    return;
+  }
+
+  console.log('[ExcelExport] Libraries loaded, creating workbook...');
 
   // Use current language for headers, or default to JA since this is primarily Japanese layout
   const txt = TRANS['ja']; 
@@ -83,6 +103,7 @@ export const generateExcel = async (
 
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
+    console.log(`[ExcelExport] Processing record ${i + 1}/${records.length}: ${record.fileName}`);
 
     // Page Break Logic
     if (i > 0 && i % photosPerPage === 0) {
@@ -91,7 +112,7 @@ export const generateExcel = async (
     }
 
     const startRow = currentRow;
-    const endRow = startRow + rowsPerBlock - 1; 
+    const endRow = startRow + rowsPerBlock - 1;
 
     // Explicitly set row heights
     for (let r = startRow; r <= endRow; r++) {
@@ -111,10 +132,12 @@ export const generateExcel = async (
 
     const base64Data = extractBase64Data(record.base64);
     if (!base64Data) {
-      console.warn(`Skipping image for ${record.fileName}: no base64 data`);
+      console.warn(`[ExcelExport] Skipping image for ${record.fileName}: no base64 data`);
       currentRow = endRow + 2;
       continue;
     }
+
+    console.log(`[ExcelExport] Adding image for ${record.fileName}, base64 length: ${base64Data.length}`);
     const imageId = workbook.addImage({
       base64: base64Data,
       extension: 'jpeg',
@@ -237,12 +260,18 @@ export const generateExcel = async (
   }
 
   try {
+    console.log('[ExcelExport] Writing buffer...');
     const buffer = await workbook.xlsx.writeBuffer();
+    console.log('[ExcelExport] Buffer created, size:', buffer.byteLength);
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const dateStr = new Date().toISOString().slice(0, 10);
-    saveAs(blob, `PhotoAlbum_${dateStr}.xlsx`);
+    const filename = `PhotoAlbum_${dateStr}.xlsx`;
+    console.log('[ExcelExport] Saving file:', filename);
+    saveAs(blob, filename);
+    console.log('[ExcelExport] Export complete');
   } catch (error) {
-    console.error("Excel generation failed:", error);
-    alert("Excel file generation failed.");
+    console.error("[ExcelExport] Excel generation failed:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    alert(`Excel生成に失敗しました: ${errorMessage}`);
   }
 };
