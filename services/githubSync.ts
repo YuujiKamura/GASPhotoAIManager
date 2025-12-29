@@ -1,616 +1,177 @@
 /**
- * GitHub同期サービス
- *
- * アプリ内で学習したデータをGitHubにプッシュし、
- * 恒久的にコードベースに反映させる仕組み
+ * GitHub同期サービス - 学習データとコードのGitHub連携
  */
-
 import { LearnedSettings, LearnedRule, LearnedAlias } from '../types';
 
-// GitHub設定
 const GITHUB_API = 'https://api.github.com';
 const OWNER = 'YuujiKamura';
 const REPO = 'GASPhotoAIManager';
 const DATA_BRANCH = 'data/learned-settings';
-const CODE_BRANCH = 'ai/code-edit'; // AIコード編集用ブランチ（CI検証後にmainへマージ）
+const CODE_BRANCH = 'ai/code-edit';
 const DATA_PATH = 'src/data/learned-settings.json';
-
-// Token管理（sessionStorageに保存 - ブラウザ閉じたら消える）
 const TOKEN_KEY = 'github_pat';
+const BRANCH_NOT_EXISTS_KEY = 'github_data_branch_not_exists';
 
-export const getGitHubToken = (): string | null => {
-  return sessionStorage.getItem(TOKEN_KEY);
-};
+const headers = (token: string, json = false) => ({
+  Authorization: `Bearer ${token}`,
+  Accept: 'application/vnd.github.v3+json',
+  ...(json && { 'Content-Type': 'application/json' })
+});
 
-export const setGitHubToken = (token: string): void => {
-  sessionStorage.setItem(TOKEN_KEY, token);
-};
+const repoUrl = (path: string) => `${GITHUB_API}/repos/${OWNER}/${REPO}/${path}`;
 
-export const clearGitHubToken = (): void => {
-  sessionStorage.removeItem(TOKEN_KEY);
-};
-
+export const getGitHubToken = (): string | null => sessionStorage.getItem(TOKEN_KEY);
+export const setGitHubToken = (token: string): void => sessionStorage.setItem(TOKEN_KEY, token);
+export const clearGitHubToken = (): void => sessionStorage.removeItem(TOKEN_KEY);
 export const hasGitHubToken = (): boolean => {
-  const token = getGitHubToken();
-  return !!token && (token.startsWith('ghp_') || token.startsWith('github_pat_'));
+  const t = getGitHubToken();
+  return !!t && (t.startsWith('ghp_') || t.startsWith('github_pat_'));
 };
 
-/**
- * トークンの有効性を検証
- */
+const isDataBranchKnownMissing = (): boolean => sessionStorage.getItem(BRANCH_NOT_EXISTS_KEY) === 'true';
+const markDataBranchMissing = (): void => sessionStorage.setItem(BRANCH_NOT_EXISTS_KEY, 'true');
+export const clearDataBranchMissingFlag = (): void => sessionStorage.removeItem(BRANCH_NOT_EXISTS_KEY);
+
 export const validateGitHubToken = async (token: string): Promise<{ valid: boolean; username?: string; error?: string }> => {
   try {
-    const response = await fetch(`${GITHUB_API}/user`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github.v3+json'
-      }
-    });
-
-    if (response.ok) {
-      const user = await response.json();
-      return { valid: true, username: user.login };
-    } else if (response.status === 401) {
-      return { valid: false, error: 'トークンが無効です' };
-    } else {
-      return { valid: false, error: `エラー: ${response.status}` };
-    }
+    const res = await fetch(`${GITHUB_API}/user`, { headers: headers(token) });
+    if (res.ok) return { valid: true, username: (await res.json()).login };
+    return { valid: false, error: res.status === 401 ? 'トークンが無効です' : `エラー: ${res.status}` };
   } catch (e: any) {
     return { valid: false, error: e.message || 'ネットワークエラー' };
   }
 };
 
-/**
- * dataブランチが存在するか確認し、なければ作成
- */
-const ensureDataBranch = async (token: string): Promise<boolean> => {
+const ensureBranch = async (token: string, branch: string): Promise<boolean> => {
   try {
-    // ブランチの存在確認
-    const branchResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/branches/${DATA_BRANCH}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (branchResponse.ok) {
-      return true; // 既に存在
-    }
-
-    // mainブランチのSHAを取得
-    const mainResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs/heads/main`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (!mainResponse.ok) {
-      console.error('Failed to get main branch');
-      return false;
-    }
-
-    const mainData = await mainResponse.json();
-    const mainSha = mainData.object.sha;
-
-    // 新しいブランチを作成
-    const createResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ref: `refs/heads/${DATA_BRANCH}`,
-          sha: mainSha
-        })
-      }
-    );
-
-    return createResponse.ok;
-  } catch (e) {
-    console.error('ensureDataBranch error:', e);
-    return false;
-  }
+    if ((await fetch(repoUrl(`branches/${branch}`), { headers: headers(token) })).ok) return true;
+    const mainRes = await fetch(repoUrl('git/refs/heads/main'), { headers: headers(token) });
+    if (!mainRes.ok) return false;
+    const sha = (await mainRes.json()).object.sha;
+    return (await fetch(repoUrl('git/refs'), {
+      method: 'POST', headers: headers(token, true),
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha })
+    })).ok;
+  } catch (e) { console.error(`ensureBranch(${branch}) error:`, e); return false; }
 };
 
-// ブランチ存在フラグ（404を一度受け取ったらスキップ）
-const BRANCH_NOT_EXISTS_KEY = 'github_data_branch_not_exists';
-
-const isDataBranchKnownMissing = (): boolean => {
-  return sessionStorage.getItem(BRANCH_NOT_EXISTS_KEY) === 'true';
-};
-
-const markDataBranchMissing = (): void => {
-  sessionStorage.setItem(BRANCH_NOT_EXISTS_KEY, 'true');
-};
-
-export const clearDataBranchMissingFlag = (): void => {
-  sessionStorage.removeItem(BRANCH_NOT_EXISTS_KEY);
-};
-
-/**
- * 現在の学習データをGitHubから取得
- */
-export const fetchLearnedSettings = async (token: string): Promise<LearnedSettings | null> => {
-  // 既にブランチが存在しないことがわかっている場合はスキップ
-  if (isDataBranchKnownMissing()) {
-    return createEmptySettings();
-  }
-
-  try {
-    // まずdataブランチから取得を試みる
-    const response = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${DATA_PATH}?ref=${DATA_BRANCH}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (!response.ok) {
-      // ファイル/ブランチが存在しない場合
-      if (response.status === 404) {
-        markDataBranchMissing();
-        return createEmptySettings();
-      }
-      return null;
-    }
-
-    const data = await response.json();
-    const content = atob(data.content);
-    return JSON.parse(content) as LearnedSettings;
-  } catch (e) {
-    console.error('fetchLearnedSettings error:', e);
-    return null;
-  }
-};
-
-/**
- * 学習データをGitHubにプッシュ
- */
-export const pushLearnedSettings = async (
-  token: string,
-  settings: LearnedSettings,
-  commitMessage?: string
-): Promise<{ success: boolean; commitUrl?: string; error?: string }> => {
-  try {
-    // dataブランチを確認/作成
-    const branchReady = await ensureDataBranch(token);
-    if (!branchReady) {
-      return { success: false, error: 'dataブランチの作成に失敗しました' };
-    }
-
-    // 現在のファイルのSHAを取得（更新の場合に必要）
-    let sha: string | undefined;
-    const currentFileResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${DATA_PATH}?ref=${DATA_BRANCH}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (currentFileResponse.ok) {
-      const currentData = await currentFileResponse.json();
-      sha = currentData.sha;
-    }
-
-    // 設定を更新
-    const updatedSettings: LearnedSettings = {
-      ...settings,
-      version: settings.version + 1,
-      updatedAt: new Date().toISOString()
-    };
-
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(updatedSettings, null, 2))));
-    const message = commitMessage || `chore: update learned settings (v${updatedSettings.version})`;
-
-    // ファイルを更新/作成
-    const response = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${DATA_PATH}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message,
-          content,
-          branch: DATA_BRANCH,
-          ...(sha && { sha })
-        })
-      }
-    );
-
-    if (response.ok) {
-      const result = await response.json();
-      return {
-        success: true,
-        commitUrl: result.commit.html_url
-      };
-    } else {
-      const error = await response.json();
-      return {
-        success: false,
-        error: error.message || `HTTP ${response.status}`
-      };
-    }
-  } catch (e: any) {
-    return {
-      success: false,
-      error: e.message || 'プッシュに失敗しました'
-    };
-  }
-};
-
-/**
- * 空の設定を作成
- */
 export const createEmptySettings = (): LearnedSettings => ({
-  version: 0,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  rules: [],
-  aliases: [],
-  examples: []
+  version: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  rules: [], aliases: [], examples: []
 });
 
-/**
- * ローカルのIndexedDBからLearnedSettingsを構築
- */
+export const fetchLearnedSettings = async (token: string): Promise<LearnedSettings | null> => {
+  if (isDataBranchKnownMissing()) return createEmptySettings();
+  try {
+    const res = await fetch(repoUrl(`contents/${DATA_PATH}?ref=${DATA_BRANCH}`), { headers: headers(token) });
+    if (!res.ok) { if (res.status === 404) { markDataBranchMissing(); return createEmptySettings(); } return null; }
+    return JSON.parse(atob((await res.json()).content)) as LearnedSettings;
+  } catch (e) { console.error('fetchLearnedSettings error:', e); return null; }
+};
+
+export const pushLearnedSettings = async (
+  token: string, settings: LearnedSettings, commitMessage?: string
+): Promise<{ success: boolean; commitUrl?: string; error?: string }> => {
+  try {
+    if (!await ensureBranch(token, DATA_BRANCH)) return { success: false, error: 'dataブランチの作成に失敗しました' };
+    const fileRes = await fetch(repoUrl(`contents/${DATA_PATH}?ref=${DATA_BRANCH}`), { headers: headers(token) });
+    const sha = fileRes.ok ? (await fileRes.json()).sha : undefined;
+    const updated: LearnedSettings = { ...settings, version: settings.version + 1, updatedAt: new Date().toISOString() };
+    const res = await fetch(repoUrl(`contents/${DATA_PATH}`), {
+      method: 'PUT', headers: headers(token, true),
+      body: JSON.stringify({
+        message: commitMessage || `chore: update learned settings (v${updated.version})`,
+        content: btoa(unescape(encodeURIComponent(JSON.stringify(updated, null, 2)))),
+        branch: DATA_BRANCH, ...(sha && { sha })
+      })
+    });
+    if (res.ok) return { success: true, commitUrl: (await res.json()).commit.html_url };
+    return { success: false, error: (await res.json()).message || `HTTP ${res.status}` };
+  } catch (e: any) { return { success: false, error: e.message || 'プッシュに失敗しました' }; }
+};
+
 export const buildLearnedSettingsFromLocal = async (): Promise<LearnedSettings> => {
-  // storage.tsの関数をインポートして使用
   const { getAnalysisIssues, getExamples } = await import('../utils/storage');
   const { loadRuleSettings, ANALYSIS_RULES } = await import('../utils/analysisRules');
+  const [issues, examples, ruleSettings] = await Promise.all([getAnalysisIssues(), getExamples(), Promise.resolve(loadRuleSettings())]);
 
-  const issues = await getAnalysisIssues();
-  const examples = await getExamples();
-  const ruleSettings = loadRuleSettings();
+  const rules: LearnedRule[] = issues.filter(i => i.status === 'resolved' && i.expectedValues).map(i => ({
+    id: `rule_${i.id}`, description: i.issueDescription,
+    condition: { workType: i.actualAnalysis.workType, remarks: i.actualAnalysis.remarks },
+    correction: i.expectedValues!, createdAt: new Date(i.createdAt).toISOString(), source: 'issue' as const
+  }));
 
-  // 問題ケースからルールを抽出
-  const rulesFromIssues: LearnedRule[] = issues
-    .filter(issue => issue.status === 'resolved' && issue.expectedValues)
-    .map(issue => ({
-      id: `rule_${issue.id}`,
-      description: issue.issueDescription,
-      condition: {
-        workType: issue.actualAnalysis.workType,
-        remarks: issue.actualAnalysis.remarks
-      },
-      correction: issue.expectedValues!,
-      createdAt: new Date(issue.createdAt).toISOString(),
-      source: 'issue' as const
+  const aliases: LearnedAlias[] = issues
+    .filter(i => i.status === 'resolved' && i.expectedValues?.remarks && i.actualAnalysis.remarks !== i.expectedValues.remarks)
+    .map(i => ({
+      id: `alias_${i.id}`, from: i.actualAnalysis.remarks, to: i.expectedValues!.remarks!,
+      context: i.actualAnalysis.workType, createdAt: new Date(i.createdAt).toISOString()
     }));
 
-  // エイリアスを抽出（例: 「温度測定」→「到着温度」のマッピング）
-  const aliasesFromIssues: LearnedAlias[] = issues
-    .filter(issue =>
-      issue.status === 'resolved' &&
-      issue.expectedValues?.remarks &&
-      issue.actualAnalysis.remarks !== issue.expectedValues.remarks
-    )
-    .map(issue => ({
-      id: `alias_${issue.id}`,
-      from: issue.actualAnalysis.remarks,
-      to: issue.expectedValues!.remarks!,
-      context: issue.actualAnalysis.workType,
-      createdAt: new Date(issue.createdAt).toISOString()
-    }));
-
-  // お手本をエクスポート形式に変換
-  const exportedExamples = examples.map(ex => ({
-    id: ex.id,
-    name: ex.name,
-    analysis: {
-      workType: ex.analysis.workType,
-      variety: ex.analysis.variety,
-      detail: ex.analysis.detail,
-      station: ex.analysis.station,
-      remarks: ex.analysis.remarks,
-      description: ex.analysis.description
-    },
-    category: ex.category,
-    tags: ex.tags,
-    createdAt: new Date(ex.createdAt).toISOString()
+  const exs = examples.map(e => ({
+    id: e.id, name: e.name, category: e.category, tags: e.tags, createdAt: new Date(e.createdAt).toISOString(),
+    analysis: { workType: e.analysis.workType, variety: e.analysis.variety, detail: e.analysis.detail,
+      station: e.analysis.station, remarks: e.analysis.remarks, description: e.analysis.description }
   }));
 
   return {
-    version: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rules: rulesFromIssues,
-    aliases: aliasesFromIssues,
-    examples: exportedExamples,
+    version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    rules, aliases, examples: exs,
     ruleSettings: Object.entries(ruleSettings)
-      .filter(([id, enabled]) => {
-        const rule = ANALYSIS_RULES.find(r => r.id === id);
-        return rule && enabled !== rule.defaultEnabled;
-      })
-      .reduce((acc, [id, enabled]) => ({ ...acc, [id]: enabled }), {})
+      .filter(([id, en]) => { const r = ANALYSIS_RULES.find(r => r.id === id); return r && en !== r.defaultEnabled; })
+      .reduce((a, [id, en]) => ({ ...a, [id]: en }), {})
   };
 };
 
-/**
- * GitHubからの設定をローカルにマージ
- */
 export const mergeSettingsToLocal = async (settings: LearnedSettings): Promise<void> => {
-  // TODO: 将来的にはここでIndexedDBにマージする処理を実装
-  // 現在はローカルの設定が優先される
   console.log('Merging settings from GitHub:', settings);
 };
 
-/**
- * 同期ステータス
- */
-export interface SyncStatus {
-  lastSynced: string | null;
-  localVersion: number;
-  remoteVersion: number;
-  hasLocalChanges: boolean;
-}
+export interface SyncStatus { lastSynced: string | null; localVersion: number; remoteVersion: number; hasLocalChanges: boolean; }
 
-/**
- * 同期ステータスを取得
- */
 export const getSyncStatus = async (token: string): Promise<SyncStatus> => {
-  const local = await buildLearnedSettingsFromLocal();
-  const remote = await fetchLearnedSettings(token);
-
-  return {
-    lastSynced: remote?.updatedAt || null,
-    localVersion: local.version,
-    remoteVersion: remote?.version || 0,
-    hasLocalChanges: local.version > (remote?.version || 0)
-  };
+  const [local, remote] = await Promise.all([buildLearnedSettingsFromLocal(), fetchLearnedSettings(token)]);
+  return { lastSynced: remote?.updatedAt || null, localVersion: local.version,
+    remoteVersion: remote?.version || 0, hasLocalChanges: local.version > (remote?.version || 0) };
 };
 
-// ============================================================
-// コード編集機能（AIによる自己書き換え用）
-// ============================================================
-
-/**
- * GitHubからコードファイルを取得
- */
-export const fetchCodeFile = async (
-  token: string,
-  filePath: string,
-  branch: string = 'main'
-): Promise<{ content: string; sha: string } | null> => {
+export const fetchCodeFile = async (token: string, filePath: string, branch = 'main'): Promise<{ content: string; sha: string } | null> => {
   try {
-    const response = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${filePath}?ref=${branch}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null; // ファイルが存在しない
-      }
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = decodeURIComponent(escape(atob(data.content)));
-    return { content, sha: data.sha };
-  } catch (e) {
-    console.error('fetchCodeFile error:', e);
-    return null;
-  }
+    const res = await fetch(repoUrl(`contents/${filePath}?ref=${branch}`), { headers: headers(token) });
+    if (!res.ok) return res.status === 404 ? null : (() => { throw new Error(`HTTP ${res.status}`); })();
+    const d = await res.json();
+    return { content: decodeURIComponent(escape(atob(d.content))), sha: d.sha };
+  } catch (e) { console.error('fetchCodeFile error:', e); return null; }
 };
 
-/**
- * リポジトリのディレクトリ一覧を取得
- */
-export const listDirectory = async (
-  token: string,
-  dirPath: string = '',
-  branch: string = 'main'
-): Promise<Array<{ name: string; path: string; type: 'file' | 'dir' }> | null> => {
+export const listDirectory = async (token: string, dirPath = '', branch = 'main'): Promise<Array<{ name: string; path: string; type: 'file' | 'dir' }> | null> => {
   try {
-    const url = dirPath
-      ? `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${dirPath}?ref=${branch}`
-      : `${GITHUB_API}/repos/${OWNER}/${REPO}/contents?ref=${branch}`;
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github.v3+json'
-      }
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    return data.map((item: any) => ({
-      name: item.name,
-      path: item.path,
-      type: item.type === 'dir' ? 'dir' : 'file'
-    }));
-  } catch (e) {
-    console.error('listDirectory error:', e);
-    return null;
-  }
-};
-
-/**
- * コードファイルをGitHubにプッシュ（更新または新規作成）
- */
-/**
- * ai/code-editブランチが存在するか確認し、なければmainから作成
- */
-const ensureCodeBranch = async (token: string): Promise<boolean> => {
-  try {
-    const branchResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/branches/${CODE_BRANCH}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (branchResponse.ok) {
-      return true;
-    }
-
-    // mainブランチのSHAを取得して新規作成
-    const mainResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs/heads/main`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (!mainResponse.ok) {
-      return false;
-    }
-
-    const mainData = await mainResponse.json();
-    const createResponse = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/git/refs`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ref: `refs/heads/${CODE_BRANCH}`,
-          sha: mainData.object.sha
-        })
-      }
-    );
-
-    return createResponse.ok;
-  } catch (e) {
-    console.error('ensureCodeBranch error:', e);
-    return false;
-  }
+    const url = dirPath ? repoUrl(`contents/${dirPath}?ref=${branch}`) : repoUrl(`contents?ref=${branch}`);
+    const res = await fetch(url, { headers: headers(token) });
+    if (!res.ok) return null;
+    return (await res.json()).map((i: any) => ({ name: i.name, path: i.path, type: i.type === 'dir' ? 'dir' : 'file' }));
+  } catch (e) { console.error('listDirectory error:', e); return null; }
 };
 
 export const pushCodeEdit = async (
-  token: string,
-  filePath: string,
-  newContent: string,
-  commitMessage: string,
-  branch: string = CODE_BRANCH // デフォルトはAI用ブランチ（CI検証される）
+  token: string, filePath: string, newContent: string, commitMessage: string, branch = CODE_BRANCH
 ): Promise<{ success: boolean; commitUrl?: string; error?: string }> => {
   try {
-    // AI用ブランチの場合は存在確認/作成
-    if (branch === CODE_BRANCH) {
-      const branchReady = await ensureCodeBranch(token);
-      if (!branchReady) {
-        return { success: false, error: 'ai/code-editブランチの作成に失敗しました' };
-      }
-    }
-
-    // 現在のファイルのSHAを取得（更新の場合に必要）
-    let sha: string | undefined;
-    const currentFile = await fetchCodeFile(token, filePath, branch);
-    if (currentFile) {
-      sha = currentFile.sha;
-    }
-
-    // Base64エンコード（UTF-8対応）
-    const content = btoa(unescape(encodeURIComponent(newContent)));
-
-    // ファイルを更新/作成
-    const response = await fetch(
-      `${GITHUB_API}/repos/${OWNER}/${REPO}/contents/${filePath}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message: commitMessage,
-          content,
-          branch,
-          ...(sha && { sha })
-        })
-      }
-    );
-
-    if (response.ok) {
-      const result = await response.json();
-      return {
-        success: true,
-        commitUrl: result.commit.html_url
-      };
-    } else {
-      const error = await response.json();
-      return {
-        success: false,
-        error: error.message || `HTTP ${response.status}`
-      };
-    }
-  } catch (e: any) {
-    return {
-      success: false,
-      error: e.message || 'コードのプッシュに失敗しました'
-    };
-  }
+    if (branch === CODE_BRANCH && !await ensureBranch(token, CODE_BRANCH)) return { success: false, error: 'ai/code-editブランチの作成に失敗しました' };
+    const cur = await fetchCodeFile(token, filePath, branch);
+    const res = await fetch(repoUrl(`contents/${filePath}`), {
+      method: 'PUT', headers: headers(token, true),
+      body: JSON.stringify({ message: commitMessage, content: btoa(unescape(encodeURIComponent(newContent))), branch, ...(cur && { sha: cur.sha }) })
+    });
+    if (res.ok) return { success: true, commitUrl: (await res.json()).commit.html_url };
+    return { success: false, error: (await res.json()).message || `HTTP ${res.status}` };
+  } catch (e: any) { return { success: false, error: e.message || 'コードのプッシュに失敗しました' }; }
 };
 
-/**
- * ファイル検索（リポジトリ内のコードを検索）
- */
-export const searchCode = async (
-  token: string,
-  query: string
-): Promise<Array<{ path: string; matchLines: string[] }> | null> => {
+export const searchCode = async (token: string, query: string): Promise<Array<{ path: string; matchLines: string[] }> | null> => {
   try {
-    const response = await fetch(
-      `${GITHUB_API}/search/code?q=${encodeURIComponent(query)}+repo:${OWNER}/${REPO}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json'
-        }
-      }
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    return data.items.map((item: any) => ({
-      path: item.path,
-      matchLines: item.text_matches?.map((m: any) => m.fragment) || []
-    }));
-  } catch (e) {
-    console.error('searchCode error:', e);
-    return null;
-  }
+    const res = await fetch(`${GITHUB_API}/search/code?q=${encodeURIComponent(query)}+repo:${OWNER}/${REPO}`, { headers: headers(token) });
+    if (!res.ok) return null;
+    return (await res.json()).items.map((i: any) => ({ path: i.path, matchLines: i.text_matches?.map((m: any) => m.fragment) || [] }));
+  } catch (e) { console.error('searchCode error:', e); return null; }
 };
