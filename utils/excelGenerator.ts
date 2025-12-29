@@ -146,37 +146,36 @@ export const generateExcel = async (
     try {
       // 1. Get Actual Image Dimensions to preserve Aspect Ratio
       const { w: imgW, h: imgH } = await getImageDimensions(record.base64);
-      
+      console.log(`[ExcelExport] Image dimensions: ${imgW}x${imgH}`);
+
       // 2. Calculate Scale to Fit Box (Contain)
-      const scaleW = (BOX_WIDTH_PX * 0.96) / imgW; // 96% to leave small padding
-      const scaleH = (BOX_HEIGHT_PX * 0.96) / imgH;
-      const scale = Math.min(scaleW, scaleH); // Contain logic
+      const scaleW = (BOX_WIDTH_PX * 0.95) / imgW;
+      const scaleH = (BOX_HEIGHT_PX * 0.95) / imgH;
+      const scale = Math.min(scaleW, scaleH);
 
       const finalW = imgW * scale;
       const finalH = imgH * scale;
+      console.log(`[ExcelExport] Scaled size: ${Math.round(finalW)}x${Math.round(finalH)}`);
 
-      // 3. Calculate Centering Offsets (in Pixels)
-      const xOffsetPx = (BOX_WIDTH_PX - finalW) / 2;
-      const yOffsetPx = (BOX_HEIGHT_PX - finalH) / 2;
-
-      // 4. Place Image using Absolute Positioning (Pixels)
-      const absX = xOffsetPx; // Column A starts at 0px
-      const absY = ((startRow - 1) * ROW_HEIGHT_PTS * PIXELS_PER_PT) + yOffsetPx;
+      // 3. Use tl/ext format (more compatible with CDN version of ExcelJS)
+      // Calculate column offset for centering (as fraction of column width)
+      const colOffset = (BOX_WIDTH_PX - finalW) / 2 / PIXELS_PER_COL_UNIT / COL_A_WIDTH;
+      // Calculate row offset for centering (as fraction of rows)
+      const rowOffset = (BOX_HEIGHT_PX - finalH) / 2 / (ROW_HEIGHT_PTS * PIXELS_PER_PT) / rowsPerBlock;
 
       sheet.addImage(imageId, {
-        x: absX,
-        y: absY,
-        width: finalW,
-        height: finalH,
-        editAs: 'absolute'
+        tl: { col: Math.max(0, colOffset), row: startRow - 1 + Math.max(0, rowOffset * rowsPerBlock) },
+        ext: { width: finalW, height: finalH },
+        editAs: 'oneCell'
       });
 
     } catch (e) {
-      console.warn("Could not calculate image dimensions, falling back.", e);
+      console.warn("[ExcelExport] Could not calculate image dimensions, using fallback.", e);
+      // Fallback: place image with fixed size
       sheet.addImage(imageId, {
-        tl: { col: 0.05, row: startRow - 1 + 0.5 },
-        ext: { width: 400, height: 300 }, 
-        editAs: 'oneCell' 
+        tl: { col: 0.02, row: startRow - 1 + 0.1 },
+        ext: { width: 400, height: 300 },
+        editAs: 'oneCell'
       });
     }
 
