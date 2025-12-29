@@ -85,6 +85,8 @@ export const processImageForAI = (file: File, maxDimension: number = 1600): Prom
   });
 };
 
-export const extractBase64Data = (dataUrl: string): string => {
-  return dataUrl.split(',')[1];
+export const extractBase64Data = (dataUrl: string | undefined): string => {
+  if (!dataUrl) return '';
+  const parts = dataUrl.split(',');
+  return parts.length > 1 ? parts[1] : '';
 };

@@ -110,6 +110,11 @@ export const generateExcel = async (
     };
 
     const base64Data = extractBase64Data(record.base64);
+    if (!base64Data) {
+      console.warn(`Skipping image for ${record.fileName}: no base64 data`);
+      currentRow = endRow + 2;
+      continue;
+    }
     const imageId = workbook.addImage({
       base64: base64Data,
       extension: 'jpeg',
