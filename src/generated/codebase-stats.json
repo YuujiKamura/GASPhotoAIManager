@@ -1,13 +1,8 @@
 {
-  "generatedAt": "2025-12-29T00:41:23.346Z",
+  "generatedAt": "2025-12-29T00:50:38.514Z",
   "totalFiles": 124,
-  "totalLines": 30072,
+  "totalLines": 29624,
   "largeFiles": [
-    {
-      "path": "utils/pdfGenerator.ts",
-      "lines": 927,
-      "size": 31630
-    },
     {
       "path": "utils/constructionMaster.ts",
       "lines": 818,
@@ -52,6 +47,11 @@
       "path": "services/personalStorage.ts",
       "lines": 538,
       "size": 13343
+    },
+    {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 531,
+      "size": 23420
     }
   ],
   "components": {
@@ -151,7 +151,7 @@
       "utils/learnedSortOrder.ts (89行)",
       "utils/locationUtils.ts (43行)",
       "utils/masterEditorStorage.ts (165行)",
-      "utils/pdfGenerator.ts (927行)",
+      "utils/pdfGenerator.ts (479行)",
       "utils/sortingUtils.ts (276行)",
       "utils/storage/analysisCache.ts (103行)",
       "utils/storage/dbCore.ts (68行)",
@@ -173,15 +173,6 @@
     ]
   },
   "tasks": [
-    {
-      "id": "refactor-utils-pdfGenerator-ts",
-      "title": "utils/pdfGenerator.ts をリファクタ",
-      "description": "927行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "utils/pdfGenerator.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 627
-    },
     {
       "id": "refactor-utils-constructionMaster-ts",
       "title": "utils/constructionMaster.ts をリファクタ",
