@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T03:00:44.675Z",
+  "generatedAt": "2025-12-29T03:02:28.980Z",
   "totalFiles": 124,
-  "totalLines": 29850,
+  "totalLines": 29853,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -50,8 +50,8 @@
     },
     {
       "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 531,
-      "size": 23834
+      "lines": 534,
+      "size": 24001
     }
   ],
   "components": {
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (531行)",
+      "components/CodebaseHealthDashboard.tsx (534行)",
       "components/ConsolePanel.tsx (171行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
@@ -192,13 +192,13 @@
     {
       "name": "TypeScript",
       "status": "error",
-      "count": 64,
+      "count": 65,
       "details": [
+        "components/CodebaseHealthDashboard.tsx(171,28): error TS2339: Property 'env' doe",
         "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
         "components/ManualPairingModal.tsx(197,21): error TS2322: Type '{ key: any; photo",
         "components/MasterEditorModal.tsx(305,61): error TS2339: Property 'name' does not",
-        "components/MasterEditorModal.tsx(306,76): error TS2339: Property 'name' does not",
-        "components/MasterEditorModal.tsx(309,32): error TS2339: Property 'name' does not"
+        "components/MasterEditorModal.tsx(306,76): error TS2339: Property 'name' does not"
       ]
     },
     {
@@ -315,11 +315,11 @@
     {
       "id": "refactor-components-CodebaseHealthDashboard-tsx",
       "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "531行。重複削除・ロジック整理で300行以下を目指す",
+      "description": "534行。重複削除・ロジック整理で300行以下を目指す",
       "file": "components/CodebaseHealthDashboard.tsx",
       "priority": "low",
       "status": "todo",
-      "estimatedLines": 231
+      "estimatedLines": 234
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",

@@ -167,14 +167,17 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={runAnalysis}
-                disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                {txt.refresh}
-              </button>
+              {/* 更新ボタン: devサーバーのみ表示（本番では非表示） */}
+              {import.meta.env.DEV && (
+                <button
+                  onClick={runAnalysis}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  {txt.refresh}
+                </button>
+              )}
 
               {/* Three-dot menu */}
               <div className="relative">
