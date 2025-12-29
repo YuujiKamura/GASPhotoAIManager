@@ -43,7 +43,9 @@
       "Bash(unzip:*)",
       "Bash(npx depcheck)",
       "Bash(npx knip:*)",
-      "Bash(npx depcheck --json)"
+      "Bash(npx depcheck --json)",
+      "Bash(npx depcheck --help:*)",
+      "Bash(npx depcheck:*)"
     ]
   }
 }

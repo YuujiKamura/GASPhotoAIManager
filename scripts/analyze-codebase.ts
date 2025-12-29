@@ -116,16 +116,18 @@ async function runHealthChecks(): Promise<HealthCheck[]> {
     async (): Promise<HealthCheck> => {
       try {
         // depcheckは問題を見つけると非0を返すのでcatchでも処理
+        // ビルドツールで使われるパッケージは誤検知されるので除外
+        const ignores = '@tailwindcss/postcss,postcss,tailwindcss,jscpd,knip,typescript';
         let output = '';
         try {
-          output = execSync('npx depcheck --json', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+          output = execSync(`npx depcheck --json --ignores="${ignores}"`, { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
         } catch (e: any) {
           output = e.stdout || '';
         }
         if (!output) return { name: 'depcheck', status: 'warning', count: 0, details: ['解析失敗'] };
         const data = JSON.parse(output);
         const unused = [...(data.dependencies || []), ...(data.devDependencies || [])];
-        return { name: 'depcheck', status: unused.length > 3 ? 'warning' : 'ok', count: unused.length, details: unused.length ? [`未使用: ${unused.slice(0, 5).join(', ')}`] : ['問題なし'] };
+        return { name: 'depcheck', status: unused.length > 0 ? 'warning' : 'ok', count: unused.length, details: unused.length ? [`未使用: ${unused.slice(0, 5).join(', ')}`] : ['問題なし'] };
       } catch { return { name: 'depcheck', status: 'warning', count: 0, details: ['解析失敗'] }; }
     },
     // 3. TypeScript
