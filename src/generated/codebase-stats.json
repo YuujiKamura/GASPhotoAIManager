@@ -1,13 +1,8 @@
 {
-  "generatedAt": "2025-12-29T04:01:19.648Z",
+  "generatedAt": "2025-12-29T04:12:53.446Z",
   "totalFiles": 130,
-  "totalLines": 29051,
+  "totalLines": 28544,
   "largeFiles": [
-    {
-      "path": "hooks/useAnalysisHandlers.ts",
-      "lines": 684,
-      "size": 28145
-    },
     {
       "path": "components/PreviewView.tsx",
       "lines": 645,
@@ -52,6 +47,11 @@
       "path": "services/projectStorage.ts",
       "lines": 513,
       "size": 12242
+    },
+    {
+      "path": "services/gemini/analysis.ts",
+      "lines": 509,
+      "size": 20805
     }
   ],
   "components": {
@@ -82,12 +82,12 @@
       "components/PreviewView.tsx (645行)",
       "components/RefineModal.tsx (523行)",
       "components/SessionHistoryPanel.tsx (404行)",
-      "components/shared/EditableField.tsx (93行)",
       "components/SimplePairingMode.tsx (130行)",
       "components/StationReplaceModal.tsx (525行)",
       "components/UploadView.tsx (555行)",
       "components/UsagePanel.tsx (127行)",
-      "components/WorkTypeConfirmModal.tsx (132行)"
+      "components/WorkTypeConfirmModal.tsx (132行)",
+      "components/shared/EditableField.tsx (93行)"
     ]
   },
   "services": {
@@ -122,7 +122,7 @@
     "count": 19,
     "files": [
       "hooks/index.ts (18行)",
-      "hooks/useAnalysisHandlers.ts (684行)",
+      "hooks/useAnalysisHandlers.ts (177行)",
       "hooks/useApiKey.ts (60行)",
       "hooks/useAppModals.ts (90行)",
       "hooks/useCacheHandlers.ts (76行)",
@@ -226,9 +226,9 @@
     {
       "name": "knip",
       "status": "warning",
-      "count": 220,
+      "count": 222,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "Unused files (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -237,15 +237,6 @@
     }
   ],
   "tasks": [
-    {
-      "id": "refactor-hooks-useAnalysisHandlers-ts",
-      "title": "hooks/useAnalysisHandlers.ts をリファクタ",
-      "description": "684行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "hooks/useAnalysisHandlers.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 384
-    },
     {
       "id": "refactor-components-PreviewView-tsx",
       "title": "components/PreviewView.tsx をリファクタ",
