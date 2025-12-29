@@ -1,13 +1,8 @@
 {
-  "generatedAt": "2025-12-29T03:52:49.033Z",
+  "generatedAt": "2025-12-29T03:58:18.151Z",
   "totalFiles": 124,
-  "totalLines": 29300,
+  "totalLines": 28970,
   "largeFiles": [
-    {
-      "path": "utils/constructionMaster.ts",
-      "lines": 818,
-      "size": 26474
-    },
     {
       "path": "components/PhotoAlbumView.tsx",
       "lines": 715,
@@ -52,6 +47,11 @@
       "path": "components/StationReplaceModal.tsx",
       "lines": 525,
       "size": 22102
+    },
+    {
+      "path": "components/RefineModal.tsx",
+      "lines": 523,
+      "size": 22211
     }
   ],
   "components": {
@@ -141,7 +141,7 @@
     "count": 30,
     "files": [
       "utils/analysisRules.ts (330行)",
-      "utils/constructionMaster.ts (818行)",
+      "utils/constructionMaster.ts (488行)",
       "utils/crypto.ts (149行)",
       "utils/excelGenerator.ts (243行)",
       "utils/fileHandlers.ts (95行)",
@@ -212,9 +212,9 @@
     {
       "name": "jscpd",
       "status": "ok",
-      "count": 46,
+      "count": 43,
       "details": [
-        "重複: 2.2% (46箇所)"
+        "重複: 2.1% (43箇所)"
       ]
     },
     {
@@ -222,7 +222,7 @@
       "status": "warning",
       "count": 219,
       "details": [
-        "Unused files (27)",
+        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -231,15 +231,6 @@
     }
   ],
   "tasks": [
-    {
-      "id": "refactor-utils-constructionMaster-ts",
-      "title": "utils/constructionMaster.ts をリファクタ",
-      "description": "818行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "utils/constructionMaster.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 518
-    },
     {
       "id": "refactor-components-PhotoAlbumView-tsx",
       "title": "components/PhotoAlbumView.tsx をリファクタ",
