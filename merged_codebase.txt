@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 09:42:08
+生成日時: 2025-12-29 09:46:24
 ================================================================================
 
 === ファイル一覧 ===
@@ -1267,7 +1267,6 @@ ${task.estimatedLines ? `- 目標: ${task.estimatedLines}行以上削減` : '- �
 ## タスクID
 ${task.id}`;
                             navigator.clipboard.writeText(prompt);
-                            alert('📋 クリップボードにコピーしました！\n\n新しいClaudeチャットに貼り付けてください');
                           }}
                           className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 whitespace-nowrap"
                         >
