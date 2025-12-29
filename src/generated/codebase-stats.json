@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T03:18:11.528Z",
+  "generatedAt": "2025-12-29T03:22:18.295Z",
   "totalFiles": 124,
-  "totalLines": 29862,
+  "totalLines": 29809,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -222,7 +222,7 @@
       "status": "warning",
       "count": 219,
       "details": [
-        "Unused files (27)",
+        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
