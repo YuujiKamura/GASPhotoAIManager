@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:08:48.324Z",
-  "totalFiles": 117,
-  "totalLines": 30004,
+  "generatedAt": "2025-12-29T00:18:48.838Z",
+  "totalFiles": 124,
+  "totalLines": 30261,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -115,19 +115,26 @@
     ]
   },
   "hooks": {
-    "count": 11,
+    "count": 18,
     "files": [
-      "hooks/index.ts (11行)",
+      "hooks/index.ts (18行)",
       "hooks/useAnalysisHandlers.ts (684行)",
       "hooks/useApiKey.ts (60行)",
       "hooks/useAppModals.ts (90行)",
+      "hooks/useCacheHandlers.ts (76行)",
+      "hooks/useExportHandlers.ts (45行)",
       "hooks/useFsCache.ts (66行)",
       "hooks/useMasterEditorAlias.ts (145行)",
       "hooks/useMasterEditorState.ts (151行)",
       "hooks/useNormalizationFlow.ts (46行)",
+      "hooks/useNormalizationHandlers.ts (53行)",
+      "hooks/usePdfHandlers.ts (97行)",
       "hooks/usePendingState.ts (76行)",
+      "hooks/usePhotoManagement.ts (84行)",
       "hooks/usePhotosState.ts (171行)",
-      "hooks/useProcessingState.ts (95行)"
+      "hooks/useProcessingState.ts (95行)",
+      "hooks/useProjectHandlers.ts (77行)",
+      "hooks/useStartProcessingFlow.ts (94行)"
     ]
   },
   "utils": {
@@ -257,15 +264,6 @@
       "estimatedLines": 255
     },
     {
-      "id": "refactor-App-tsx",
-      "title": "App.tsx をリファクタ",
-      "description": "539行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "App.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 239
-    },
-    {
       "id": "refactor-services-personalStorage-ts",
       "title": "services/personalStorage.ts をリファクタ",
       "description": "538行。重複削除・ロジック整理で300行以下を目指す",
@@ -313,7 +311,7 @@
     {
       "id": "apply-hooks",
       "title": "カスタムフックをApp.tsxに適用",
-      "description": "hooks/ の 11 個のフックをApp.tsxで使用して状態管理を整理",
+      "description": "hooks/ の 18 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
       "status": "todo",
