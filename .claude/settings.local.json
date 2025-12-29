@@ -37,7 +37,8 @@
       "Bash(gh pr list:*)",
       "Bash(time npm run analyze:*)",
       "WebFetch(domain:api.github.com)",
-      "Bash(npm run analyze:*)"
+      "Bash(npm run analyze:*)",
+      "Bash(git rm:*)"
     ]
   }
 }
