@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:57:44.322Z",
+  "generatedAt": "2025-12-29T01:02:11.994Z",
   "totalFiles": 124,
-  "totalLines": 30237,
+  "totalLines": 30240,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -128,7 +128,7 @@
       "hooks/useMasterEditorState.ts (151行)",
       "hooks/useNormalizationFlow.ts (46行)",
       "hooks/useNormalizationHandlers.ts (53行)",
-      "hooks/usePdfHandlers.ts (97行)",
+      "hooks/usePdfHandlers.ts (100行)",
       "hooks/usePendingState.ts (76行)",
       "hooks/usePhotoManagement.ts (84行)",
       "hooks/usePhotosState.ts (171行)",

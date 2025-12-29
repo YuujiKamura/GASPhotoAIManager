@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
-import { extractSessionFromPdf, isSmartPdf, hasIndividualImages, extractImagesFromPdf } from '../utils/pdfGenerator';
+// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 import { loadImagesFromFolder } from '../utils/fileHandlers';
 
 interface UsePdfHandlersProps {
@@ -31,6 +31,9 @@ export function usePdfHandlers({
     log(`PDF読み込み: ${pdfFile.name}`);
 
     try {
+      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
+      const { isSmartPdf, hasIndividualImages, extractImagesFromPdf, extractSessionFromPdf } = await import('../utils/pdfGenerator');
+
       let images: Array<{ fileName: string; base64: string; mimeType: string }> = [];
       let captionData: Record<string, any> | null = null;
       const isSmart = await isSmartPdf(pdfFile);
