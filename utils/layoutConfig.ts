@@ -152,8 +152,8 @@ export const ROWS_PER_PHOTO = DIMENSION.ROWS_PER_BLOCK_3UP;
 
 export const pxToPt = (px: number): number => Math.round(px * CONVERSION.PX_TO_PT);
 export const ptToPx = (pt: number): number => Math.round(pt * CONVERSION.PT_TO_PX);
-export const ptToExcelCol = (pt: number): number => Math.round(pt / CONVERSION.PT_PER_EXCEL_COL);
-export const excelColToPt = (units: number): number => Math.round(units * CONVERSION.PT_PER_EXCEL_COL);
+const ptToExcelCol = (pt: number): number => Math.round(pt / CONVERSION.PT_PER_EXCEL_COL);
+const excelColToPt = (units: number): number => Math.round(units * CONVERSION.PT_PER_EXCEL_COL);
 export const pxToExcelWidth = (px: number): number =>
   Math.round((px - CONVERSION.EXCEL_COL_OFFSET_PX) / CONVERSION.PX_PER_EXCEL_COL);
 export const excelWidthToPx = (units: number): number =>

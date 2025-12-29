@@ -111,7 +111,7 @@ export const estimateImageTokens = (imageCount: number): number => {
 /**
  * Base64画像のサイズを取得
  */
-export const getBase64Size = (base64: string): number => {
+const getBase64Size = (base64: string): number => {
   // data:image/jpeg;base64, の部分を除去
   const data = base64.includes(',') ? base64.split(',')[1] : base64;
   // Base64は3バイトを4文字で表現
@@ -168,7 +168,7 @@ export const trackUsage = (
 /**
  * 画像サイズを追加（別途トラッキング）
  */
-export const trackImageSize = (sizeBytes: number) => {
+const trackImageSize = (sizeBytes: number) => {
   usageSummary.totalImageSizeBytes += sizeBytes;
   notifyListeners();
 };
@@ -237,7 +237,7 @@ export interface CostEstimate {
  * @param imageCount 画像枚数
  * @param mode 処理モード (auto, landscape, construction)
  */
-export const estimateAnalysisCost = (
+const estimateAnalysisCost = (
   imageCount: number,
   mode: 'auto' | 'landscape' | 'construction' = 'auto'
 ): CostEstimate => {

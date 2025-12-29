@@ -40,7 +40,7 @@ export const hasRegisteredPasskey = (): boolean => {
 };
 
 // 保存されているAPIキーを取得（生体認証後に使用）
-export const getProtectedApiKey = (): string | null => {
+const getProtectedApiKey = (): string | null => {
   return localStorage.getItem(PROTECTED_API_KEY);
 };
 

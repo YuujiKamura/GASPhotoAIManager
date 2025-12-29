@@ -289,5 +289,3 @@ const ChoiceButton: React.FC<{ choice: DialogChoice; onClick: () => void }> = ({
     </button>
   );
 };
-
-export default InteractiveAnalysisDialog;

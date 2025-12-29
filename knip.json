@@ -7,25 +7,14 @@
     ".claude/**",
     "src/generated/**"
   ],
+  "ignoreExportsUsedInFile": true,
+  "ignoreWorkspaces": [],
   "ignoreDependencies": [
-    "fontkit",
     "puppeteer",
-    "@fontsource/noto-sans-jp",
-    "@testing-library/react",
     "@types/adm-zip",
     "adm-zip",
-    "autoprefixer",
-    "depcheck",
-    "dotenv",
     "exceljs",
-    "jscpd",
-    "@pdf-lib/fontkit",
-    "@webcontainer/api",
-    "lucide-react",
-    "pdf-lib",
-    "pdfjs-dist",
-    "react",
-    "react-dom"
+    "jscpd"
   ],
   "ignoreBinaries": ["tsx"]
 }

@@ -456,7 +456,7 @@ export function isQualityManagementPhoto(remarksCategory: string): boolean {
     remarksCategory.includes('温度') || remarksCategory.includes('密度');
 }
 
-export function inferPhotoCategory(remarkText: string): PhotoCategoryType {
+function inferPhotoCategory(remarkText: string): PhotoCategoryType {
   if (remarkText.includes("着手前") || remarkText.includes("完成") || remarkText.includes("竣工")) return "着手前及び完成写真";
   if (remarkText.includes("品質") || remarkText.includes("温度") || remarkText.includes("密度")) return "品質管理写真";
   if (remarkText.includes("出来形") || remarkText.includes("測定")) return "出来形管理写真";

@@ -135,9 +135,6 @@ export const getFilteredMaster = (): any => {
   return { "直接工事費": root };
 };
 
-// 互換性のためにgetMergedMasterをエクスポート
-export const getMergedMaster = getFilteredMaster;
-
 // 工種をカテゴリ別に並べ替えるための定数
 export const UNCATEGORIZED_ORDER = 100;
 export const WORK_TYPE_CATEGORY_ORDER: Record<string, number> = {

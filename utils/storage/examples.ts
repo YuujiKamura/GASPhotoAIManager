@@ -86,7 +86,7 @@ export const getExamples = async (): Promise<AnalysisExample[]> => {
 /**
  * Get examples by category
  */
-export const getExamplesByCategory = async (category: PhotoCategory): Promise<AnalysisExample[]> => {
+const getExamplesByCategory = async (category: PhotoCategory): Promise<AnalysisExample[]> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_EXAMPLES, 'readonly');
@@ -101,7 +101,7 @@ export const getExamplesByCategory = async (category: PhotoCategory): Promise<An
 /**
  * Update example
  */
-export const updateExample = async (example: AnalysisExample): Promise<void> => {
+const updateExample = async (example: AnalysisExample): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
@@ -115,7 +115,7 @@ export const updateExample = async (example: AnalysisExample): Promise<void> => 
 /**
  * Delete example
  */
-export const deleteExample = async (id: string): Promise<void> => {
+const deleteExample = async (id: string): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
@@ -129,7 +129,7 @@ export const deleteExample = async (id: string): Promise<void> => {
 /**
  * Clear all examples
  */
-export const clearExamples = async (): Promise<void> => {
+const clearExamples = async (): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');

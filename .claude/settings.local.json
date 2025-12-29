@@ -40,7 +40,10 @@
       "Bash(npm run analyze:*)",
       "Bash(git rm:*)",
       "Bash(npm test:*)",
-      "Bash(unzip:*)"
+      "Bash(unzip:*)",
+      "Bash(npx depcheck)",
+      "Bash(npx knip:*)",
+      "Bash(npx depcheck --json)"
     ]
   }
 }

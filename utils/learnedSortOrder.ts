@@ -69,7 +69,7 @@ export function getLearnedOrderValue(detail: string): number {
 /**
  * 学習済み順序をクリア
  */
-export function clearLearnedOrder(): void {
+function clearLearnedOrder(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
@@ -80,7 +80,7 @@ export function clearLearnedOrder(): void {
 /**
  * 学習済み順序の一覧を取得（デバッグ用）
  */
-export function getLearnedOrderList(): string[] {
+function getLearnedOrderList(): string[] {
   const learned = getLearnedOrder();
   return Object.entries(learned.detailOrder)
     .sort((a, b) => a[1] - b[1])

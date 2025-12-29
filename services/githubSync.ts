@@ -30,7 +30,7 @@ export const hasGitHubToken = (): boolean => {
 
 const isDataBranchKnownMissing = (): boolean => sessionStorage.getItem(BRANCH_NOT_EXISTS_KEY) === 'true';
 const markDataBranchMissing = (): void => sessionStorage.setItem(BRANCH_NOT_EXISTS_KEY, 'true');
-export const clearDataBranchMissingFlag = (): void => sessionStorage.removeItem(BRANCH_NOT_EXISTS_KEY);
+const clearDataBranchMissingFlag = (): void => sessionStorage.removeItem(BRANCH_NOT_EXISTS_KEY);
 
 export const validateGitHubToken = async (token: string): Promise<{ valid: boolean; username?: string; error?: string }> => {
   try {
@@ -123,7 +123,7 @@ export const buildLearnedSettingsFromLocal = async (): Promise<LearnedSettings> 
   };
 };
 
-export const mergeSettingsToLocal = async (settings: LearnedSettings): Promise<void> => {
+const mergeSettingsToLocal = async (settings: LearnedSettings): Promise<void> => {
   console.log('Merging settings from GitHub:', settings);
 };
 

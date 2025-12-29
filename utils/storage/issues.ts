@@ -77,7 +77,7 @@ export const getIssuesByStatus = async (status: IssueStatus): Promise<AnalysisIs
 /**
  * Update issue
  */
-export const updateAnalysisIssue = async (
+const updateAnalysisIssue = async (
   id: string,
   updates: Partial<Omit<AnalysisIssue, 'id' | 'createdAt'>>
 ): Promise<AnalysisIssue | null> => {
@@ -111,7 +111,7 @@ export const updateAnalysisIssue = async (
 /**
  * Delete issue
  */
-export const deleteAnalysisIssue = async (id: string): Promise<void> => {
+const deleteAnalysisIssue = async (id: string): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_ISSUES, 'readwrite');
@@ -125,7 +125,7 @@ export const deleteAnalysisIssue = async (id: string): Promise<void> => {
 /**
  * Get open issue count
  */
-export const getOpenIssueCount = async (): Promise<number> => {
+const getOpenIssueCount = async (): Promise<number> => {
   const issues = await getIssuesByStatus('open');
   return issues.length;
 };

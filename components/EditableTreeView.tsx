@@ -199,5 +199,3 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
     </div>
   );
 };
-
-export default EditableTreeView;

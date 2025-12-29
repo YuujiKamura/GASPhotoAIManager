@@ -18,21 +18,12 @@ export {
   detectPhotoCategory,
   saveExample,
   getExamples,
-  getExamplesByCategory,
-  updateExample,
-  deleteExample,
-  clearExamples,
   getRelevantExamples
 } from './examples';
 
 // Sessions
 export {
-  saveCurrentSessionAsExample,
-  getSessions,
   getSession,
-  deleteSession,
-  clearSessions,
-  setActiveSession,
   getActiveSessionId,
   clearActiveSession,
   getActiveSession
@@ -41,9 +32,7 @@ export {
 // Station History
 export {
   getStationHistory,
-  addStationToHistory,
-  addStationsToHistory,
-  clearStationHistory
+  addStationToHistory
 } from './stationHistory';
 
 // Export/Import
@@ -57,25 +46,19 @@ export {
 // History
 export {
   saveAnalysisHistory,
-  addToHistoryIfNew,
   getAnalysisHistory,
   getAnalysisHistoryEntry,
   deleteAnalysisHistory,
   clearAnalysisHistory,
   toggleHistoryAsExample,
   updateHistoryName,
-  getExampleHistoryEntries,
   setActiveExampleHistory,
-  getActiveExampleHistoryId,
-  getActiveExampleHistory
+  getActiveExampleHistoryId
 } from './history';
 
 // Issues
 export {
   saveAnalysisIssue,
   getAnalysisIssues,
-  getIssuesByStatus,
-  updateAnalysisIssue,
-  deleteAnalysisIssue,
-  getOpenIssueCount
+  getIssuesByStatus
 } from './issues';

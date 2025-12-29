@@ -118,7 +118,7 @@ export const hashPassword = async (password: string): Promise<string> => {
 /**
  * マスターパスワードを検証
  */
-export const verifyPassword = async (
+const verifyPassword = async (
   password: string,
   storedHash: string
 ): Promise<boolean> => {
@@ -129,7 +129,7 @@ export const verifyPassword = async (
 /**
  * 暗号化されたJSONオブジェクトを保存/復元するヘルパー
  */
-export const encryptObject = async <T>(
+const encryptObject = async <T>(
   obj: T,
   password: string
 ): Promise<{ encrypted: string; iv: string; salt: string }> => {
@@ -137,7 +137,7 @@ export const encryptObject = async <T>(
   return encrypt(json, password);
 };
 
-export const decryptObject = async <T>(
+const decryptObject = async <T>(
   encrypted: string,
   password: string,
   iv: string,

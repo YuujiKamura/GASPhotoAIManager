@@ -262,7 +262,7 @@ export interface LearnedSettings {
 /**
  * プロジェクト設定（リポジトリ共有）
  */
-export interface ProjectConfig {
+interface ProjectConfig {
   version: number;
   projectName?: string;
   defaultInstruction?: string;
@@ -273,7 +273,7 @@ export interface ProjectConfig {
 /**
  * 個人設定（別リポジトリ）
  */
-export interface PersonalConfig {
+interface PersonalConfig {
   version: number;
   theme?: 'light' | 'dark' | 'system';
   language?: 'ja' | 'en';
@@ -284,7 +284,7 @@ export interface PersonalConfig {
 /**
  * 暗号化された認証情報
  */
-export interface EncryptedCredentials {
+interface EncryptedCredentials {
   geminiApiKey?: string;      // 暗号化済み
   githubToken?: string;       // 暗号化済み
   personalRepoUrl?: string;   // 個人リポジトリURL（平文）
@@ -295,7 +295,7 @@ export interface EncryptedCredentials {
 /**
  * セッションデータ（作業履歴）
  */
-export interface SessionData {
+interface SessionData {
   id: string;
   projectId: string;
   createdAt: string;
@@ -309,7 +309,7 @@ export interface SessionData {
 /**
  * 同期結果
  */
-export interface SyncResult {
+interface SyncResult {
   success: boolean;
   pushed: number;
   pulled: number;
@@ -330,7 +330,7 @@ export interface ConflictInfo {
 /**
  * ストレージ設定状態
  */
-export interface StorageState {
+interface StorageState {
   projectConfigured: boolean;
   personalConfigured: boolean;
   personalRepoUrl?: string;

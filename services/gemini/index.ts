@@ -37,9 +37,7 @@ export {
   validateApiKey,
   validateAllModels,
   getBestAvailableModel,
-  getPrimaryModel,
   PRIMARY_MODEL,
-  COMPLEX_MODEL,
   FALLBACK_MODEL,
   SELECTOR_MODEL,
 } from './models';
@@ -74,12 +72,9 @@ export {
   // 正規化関数
   getNormalizationProposals,
   applyNormalizationCorrections,
-  normalizeDataConsistency,
 
   // シーン割当
   assignSceneIds,
-  refinePairContext,
-  sortPhotosByScene,
 
   // Types
   type NormalizationCorrection,

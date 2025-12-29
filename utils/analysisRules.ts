@@ -260,7 +260,7 @@ export interface RuleViolation {
  * @param settings 有効なルール設定
  * @returns 違反リスト
  */
-export const checkRuleViolations = (
+const checkRuleViolations = (
   result: { photoCategory?: string; remarksCategory?: string; remarksValue?: string; detail?: string },
   settings: RuleSettings
 ): RuleViolation[] => {

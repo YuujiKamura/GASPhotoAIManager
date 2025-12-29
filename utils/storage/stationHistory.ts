@@ -30,7 +30,7 @@ export const addStationToHistory = (station: string): void => {
 /**
  * Add multiple stations to history
  */
-export const addStationsToHistory = (stations: string[]): void => {
+const addStationsToHistory = (stations: string[]): void => {
   const validStations = stations.filter(s => s && s.trim() !== '');
   if (validStations.length === 0) return;
 
@@ -43,6 +43,6 @@ export const addStationsToHistory = (stations: string[]): void => {
 /**
  * Clear station history
  */
-export const clearStationHistory = (): void => {
+const clearStationHistory = (): void => {
   localStorage.removeItem(KEY_STATION_HISTORY);
 };

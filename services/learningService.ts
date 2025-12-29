@@ -290,7 +290,7 @@ export const rulesToPromptText = (settings: LearnedSettings): string => {
 /**
  * 同期状態を取得
  */
-export const getSyncState = (): {
+const getSyncState = (): {
   hasPendingChanges: boolean;
   rulesCount: number;
   aliasesCount: number;
@@ -305,7 +305,7 @@ export const getSyncState = (): {
 /**
  * 即座に同期を強制
  */
-export const forcePush = async (): Promise<{ success: boolean; error?: string }> => {
+const forcePush = async (): Promise<{ success: boolean; error?: string }> => {
   if (autoPushTimer) {
     clearTimeout(autoPushTimer);
     autoPushTimer = null;
@@ -329,7 +329,7 @@ export const initLearningService = async (): Promise<void> => {
  * AIにルールの最適化を提案させる
  * 蓄積された修正パターンを分析し、より汎用的なルールを生成
  */
-export const suggestOptimizedRules = async (
+const suggestOptimizedRules = async (
   apiKey: string,
   onLog?: (msg: string) => void
 ): Promise<{ suggestedRules: LearnedRule[]; suggestedAliases: LearnedAlias[] }> => {
@@ -434,7 +434,7 @@ ${JSON.stringify(settings.aliases, null, 2)}
 /**
  * 提案されたルールを適用
  */
-export const applyOptimizedRules = async (
+const applyOptimizedRules = async (
   rules: LearnedRule[],
   aliases: LearnedAlias[],
   replaceExisting: boolean = false

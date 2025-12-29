@@ -7,7 +7,7 @@ import { detectPhotoCategory } from "./examples";
 /**
  * Save current session as example session
  */
-export const saveCurrentSessionAsExample = async (
+const saveCurrentSessionAsExample = async (
   records: PhotoRecord[],
   name: string,
   description?: string
@@ -52,7 +52,7 @@ export const saveCurrentSessionAsExample = async (
 /**
  * Get all sessions
  */
-export const getSessions = async (): Promise<AnalysisSession[]> => {
+const getSessions = async (): Promise<AnalysisSession[]> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_SESSIONS, 'readonly');
@@ -84,7 +84,7 @@ export const getSession = async (id: string): Promise<AnalysisSession | null> =>
 /**
  * Delete session
  */
-export const deleteSession = async (id: string): Promise<void> => {
+const deleteSession = async (id: string): Promise<void> => {
   const db = await openDB();
   if (getActiveSessionId() === id) {
     clearActiveSession();
@@ -101,7 +101,7 @@ export const deleteSession = async (id: string): Promise<void> => {
 /**
  * Clear all sessions
  */
-export const clearSessions = async (): Promise<void> => {
+const clearSessions = async (): Promise<void> => {
   clearActiveSession();
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -116,7 +116,7 @@ export const clearSessions = async (): Promise<void> => {
 /**
  * Set active session
  */
-export const setActiveSession = (sessionId: string): void => {
+const setActiveSession = (sessionId: string): void => {
   localStorage.setItem(KEY_ACTIVE_SESSION, sessionId);
 };
 

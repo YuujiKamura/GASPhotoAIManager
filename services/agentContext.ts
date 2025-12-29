@@ -63,7 +63,7 @@ export interface LearnedPattern {
 
 // エージェントプロバイダーのインターフェース
 // 将来、Claude/Gemini/その他を差し替え可能にする
-export interface AgentProvider {
+interface AgentProvider {
   name: string;
 
   // 会話
@@ -167,11 +167,11 @@ export const contextToPrompt = (context: AgentContext): string => {
 };
 
 // 将来のエージェント移動に備えたエクスポート
-export const exportContext = (context: AgentContext): string => {
+const exportContext = (context: AgentContext): string => {
   return JSON.stringify(context, null, 2);
 };
 
-export const importContext = (json: string): AgentContext | null => {
+const importContext = (json: string): AgentContext | null => {
   try {
     return JSON.parse(json);
   } catch {

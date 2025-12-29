@@ -202,7 +202,7 @@ export const runAIAgent = async (userRequest: string, onLog?: (log: string) => v
   return '処理が完了しませんでした（最大反復回数に達しました）';
 };
 
-export const requestCodeEdit = async (description: string, onLog?: (log: string) => void): Promise<{ success: boolean; message: string; commitUrl?: string }> => {
+const requestCodeEdit = async (description: string, onLog?: (log: string) => void): Promise<{ success: boolean; message: string; commitUrl?: string }> => {
   try {
     onLog?.('[Agent] コード編集リクエストを処理中...');
     const result = await runAIAgent(description, onLog);

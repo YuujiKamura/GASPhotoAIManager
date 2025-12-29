@@ -7,7 +7,7 @@ import { useMasterEditorAlias } from '../hooks/useMasterEditorAlias';
 import { EditableTreeView } from './EditableTreeView';
 
 // Re-export for backwards compatibility
-export { getFilteredMaster, getMergedMaster } from '../utils/masterEditorStorage';
+export { getFilteredMaster } from '../utils/masterEditorStorage';
 
 interface Props {
   onClose: () => void;

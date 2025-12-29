@@ -257,7 +257,7 @@ export const applyNormalizationCorrections = (
 /**
  * 後方互換性のため残す（内部で新しい関数を使用）
  */
-export const normalizeDataConsistency = async (
+const normalizeDataConsistency = async (
   records: PhotoRecord[],
   apiKey: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void,
@@ -431,7 +431,7 @@ export const assignSceneIds = async (
  * ペアコンテキストを改善
  * Logic remains similar but now relies on Scene IDs if available
  */
-export const refinePairContext = async (
+const refinePairContext = async (
   sortedRecords: PhotoRecord[],
   apiKey: string,
   onLog?: (msg: string, type: 'info' | 'success' | 'error' | 'json', details?: any) => void
@@ -441,4 +441,4 @@ export const refinePairContext = async (
 };
 
 // Deprecated old sorting function, kept as stub if needed or removed
-export const sortPhotosByScene = async () => [];
+const sortPhotosByScene = async () => [];

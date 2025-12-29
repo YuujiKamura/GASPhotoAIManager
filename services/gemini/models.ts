@@ -142,8 +142,8 @@ export const getBestAvailableModel = (availabilities: ModelAvailability[]): Mode
 // モデル設定定数
 // ============================================
 
-export const getPrimaryModel = () => getSelectedModel();
+const getPrimaryModel = () => getSelectedModel();
 export const PRIMARY_MODEL: ModelType = 'gemini-3.0-flash';
-export const COMPLEX_MODEL: ModelType = 'gemini-3.0-flash';
+const COMPLEX_MODEL: ModelType = 'gemini-3.0-flash';
 export const FALLBACK_MODEL: ModelType = 'gemini-2.5-flash';
 export const SELECTOR_MODEL: ModelType = 'gemini-2.5-flash';

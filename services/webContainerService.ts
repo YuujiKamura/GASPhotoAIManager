@@ -227,7 +227,7 @@ export const isWebContainerSupported = (): boolean => {
 /**
  * WebContainerの状態
  */
-export const getWebContainerStatus = (): 'not-supported' | 'not-booted' | 'booting' | 'ready' => {
+const getWebContainerStatus = (): 'not-supported' | 'not-booted' | 'booting' | 'ready' => {
   if (!isWebContainerSupported()) return 'not-supported';
   if (isBooting) return 'booting';
   if (webcontainerInstance) return 'ready';

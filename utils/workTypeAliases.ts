@@ -124,7 +124,7 @@ export function applyVarietyAlias(variety: string, settings?: AliasSettings): st
 /**
  * 細別名をエイリアスに変換
  */
-export function applyDetailAlias(detail: string, settings?: AliasSettings): string {
+function applyDetailAlias(detail: string, settings?: AliasSettings): string {
   const s = settings || loadAliasSettings();
   if (!s.enabled) return detail;
   return s.mappings.detail[detail] || detail;
@@ -153,7 +153,7 @@ export function applyAliases(
 /**
  * カスタムエイリアスを追加
  */
-export function addCustomAlias(
+function addCustomAlias(
   type: 'workType' | 'variety' | 'detail',
   original: string,
   alias: string
@@ -168,7 +168,7 @@ export function addCustomAlias(
 /**
  * カスタムエイリアスを削除
  */
-export function removeCustomAlias(
+function removeCustomAlias(
   type: 'workType' | 'variety' | 'detail',
   original: string
 ): AliasSettings {
@@ -181,7 +181,7 @@ export function removeCustomAlias(
 /**
  * エイリアスの有効/無効を切り替え
  */
-export function toggleAliasEnabled(enabled: boolean): AliasSettings {
+function toggleAliasEnabled(enabled: boolean): AliasSettings {
   const settings = loadAliasSettings();
   settings.enabled = enabled;
   saveAliasSettings(settings);
@@ -203,7 +203,7 @@ export function hasAliases(settings?: AliasSettings): boolean {
 /**
  * エイリアスの逆変換（エイリアス→元の名前）
  */
-export function reverseAlias(
+function reverseAlias(
   aliasName: string,
   type: 'workType' | 'variety' | 'detail',
   settings?: AliasSettings
@@ -271,7 +271,7 @@ export function applyAliasesToRecords<T extends { analysis?: { workType: string;
 /**
  * 文字列置換を一括実行（直接指定）
  */
-export function batchReplaceInRecords<T extends { analysis?: { workType: string; variety?: string; detail?: string } }>(
+function batchReplaceInRecords<T extends { analysis?: { workType: string; variety?: string; detail?: string } }>(
   records: T[],
   replacements: { from: string; to: string; field: 'workType' | 'variety' | 'detail' }[]
 ): { modifiedCount: number; records: T[] } {

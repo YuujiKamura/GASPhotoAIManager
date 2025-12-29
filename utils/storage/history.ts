@@ -68,7 +68,7 @@ export const saveAnalysisHistory = async (
 /**
  * Add to history if new (with duplicate check)
  */
-export const addToHistoryIfNew = async (
+const addToHistoryIfNew = async (
   photos: PhotoRecord[],
   instruction: string = '',
   modelUsed?: string
@@ -229,7 +229,7 @@ export const updateHistoryName = async (id: string, name: string): Promise<void>
 /**
  * Get history entries marked as examples
  */
-export const getExampleHistoryEntries = async (): Promise<AnalysisHistoryEntry[]> => {
+const getExampleHistoryEntries = async (): Promise<AnalysisHistoryEntry[]> => {
   const all = await getAnalysisHistory();
   return all.filter(entry => entry.isExampleSession);
 };
@@ -249,7 +249,7 @@ export const getActiveExampleHistoryId = (): string | null => {
   return localStorage.getItem(KEY_ACTIVE_EXAMPLE_HISTORY);
 };
 
-export const getActiveExampleHistory = async (): Promise<AnalysisHistoryEntry | null> => {
+const getActiveExampleHistory = async (): Promise<AnalysisHistoryEntry | null> => {
   const id = getActiveExampleHistoryId();
   if (!id) return null;
   return getAnalysisHistoryEntry(id);

@@ -222,7 +222,7 @@ ${customInstruction ? `\nUSER OVERRIDE INSTRUCTION: ${customInstruction}` : ""}
 /**
  * 対話型解析用システムプロンプト
  */
-export const INTERACTIVE_SYSTEM_PROMPT = `あなたは工事写真の解析アシスタントです。
+const INTERACTIVE_SYSTEM_PROMPT = `あなたは工事写真の解析アシスタントです。
 MGS2の無線通信のように、簡潔でプロフェッショナルに対話してください。
 
 ## スタイル

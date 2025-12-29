@@ -27,7 +27,7 @@ export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void =
 // ============================================
 // 定数
 // ============================================
-export const COMPLEX_MODEL = 'gemini-3.0-flash';
+const COMPLEX_MODEL = 'gemini-3.0-flash';
 export const MAX_RETRIES = 3;
 export const RETRY_DELAY_MS = 2000;
 
@@ -92,7 +92,7 @@ ${exampleTexts.join('\n\n')}
 /**
  * エラーメッセージからAPIキーを除去
  */
-export const sanitizeApiKeyFromMessage = (message: string, apiKey?: string): string => {
+const sanitizeApiKeyFromMessage = (message: string, apiKey?: string): string => {
   if (!message) return message;
   let sanitized = message;
   if (apiKey) {

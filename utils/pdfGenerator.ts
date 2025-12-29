@@ -197,7 +197,7 @@ export const generatePdfWithImages = async (
 };
 
 /** html2pdfで生成されたPDFにセッションデータを埋め込む */
-export const embedSessionInPdf = async (pdfBlob: Blob, photos: PhotoRecord[]): Promise<Blob> => {
+const embedSessionInPdf = async (pdfBlob: Blob, photos: PhotoRecord[]): Promise<Blob> => {
   try {
     const pdfDoc = await PDFDocument.load(await pdfBlob.arrayBuffer());
     pdfDoc.setSubject(SESSION_MARKER + encodeSessionData(photos));
@@ -283,11 +283,11 @@ export const extractTextFromPdf = async (
 };
 
 /** 位置情報付きテキスト抽出（後方互換性） */
-export const extractTextWithPositions = (pdfFile: File | Blob) =>
+const extractTextWithPositions = (pdfFile: File | Blob) =>
   extractTextFromPdf(pdfFile, true) as Promise<{ pageNum: number; items: { text: string; y: number; x: number }[] }[]>;
 
 /** テキストからPhotoRecord形式に変換 */
-export const parseTextToPhotoRecords = (
+const parseTextToPhotoRecords = (
   pageTexts: { pageNum: number; texts: string[] }[],
   imageCount: number,
   photosPerPage: 2 | 3 = 3
@@ -330,7 +330,7 @@ export const parseTextToPhotoRecords = (
 };
 
 /** 位置情報付きテキストから写真ごとのデータを抽出 */
-export const parsePositionedTextToRecords = (
+const parsePositionedTextToRecords = (
   pageData: { pageNum: number; items: { text: string; y: number; x: number }[] }[],
   imageCount: number,
   photosPerPage: 2 | 3 = 3
