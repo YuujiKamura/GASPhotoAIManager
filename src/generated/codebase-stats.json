@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T03:40:16.515Z",
+  "generatedAt": "2025-12-29T03:43:38.652Z",
   "totalFiles": 124,
-  "totalLines": 29766,
+  "totalLines": 29777,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -363,7 +363,7 @@
       "description": "hooks/ の 18 個のフックをApp.tsxで使用して状態管理を整理",
       "file": "App.tsx",
       "priority": "high",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 500
     },
     {
@@ -371,7 +371,7 @@
       "title": "PDF機能を遅延読込",
       "description": "pdfGenerator.ts, PdfLoadDialog.tsx を動的importに変更",
       "priority": "medium",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 0
     }
   ]

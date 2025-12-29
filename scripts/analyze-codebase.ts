@@ -236,31 +236,42 @@ function generateTasks(largeFiles: FileStats[], hooks: FileStats[]): Task[] {
     });
   }
 
-  // hooks が作成済みなら適用タスク
+  // hooks が作成済みなら適用タスク（usePhotosStateの使用を検出して完了判定）
   if (hooks.length >= 5) {
     const id = 'apply-hooks';
     const existing = existingTasks.get(id);
+    // App.tsxでusePhotosStateを使っていれば完了
+    let isApplied = false;
+    try {
+      const appContent = fs.readFileSync(path.join(ROOT, 'App.tsx'), 'utf-8');
+      isApplied = appContent.includes('usePhotosState') && appContent.includes('photosState');
+    } catch { /* ignore */ }
     tasks.push({
       id,
       title: 'カスタムフックをApp.tsxに適用',
       description: `hooks/ の ${hooks.length} 個のフックをApp.tsxで使用して状態管理を整理`,
       file: 'App.tsx',
       priority: 'high',
-      status: existing?.status || 'todo',
+      status: isApplied ? 'done' : (existing?.status || 'todo'),
       assignee: existing?.assignee,
       estimatedLines: 500
     });
   }
 
-  // バンドルサイズ改善タスク（固定）
+  // バンドルサイズ改善タスク（lazy importを検出して完了判定）
   const bundleTaskId = 'lazy-load-pdf';
   const bundleExisting = existingTasks.get(bundleTaskId);
+  let isPdfLazy = false;
+  try {
+    const appContent = fs.readFileSync(path.join(ROOT, 'App.tsx'), 'utf-8');
+    isPdfLazy = appContent.includes("lazy(() => import('./components/PdfLoadDialog')");
+  } catch { /* ignore */ }
   tasks.push({
     id: bundleTaskId,
     title: 'PDF機能を遅延読込',
     description: 'pdfGenerator.ts, PdfLoadDialog.tsx を動的importに変更',
     priority: 'medium',
-    status: bundleExisting?.status || 'todo',
+    status: isPdfLazy ? 'done' : (bundleExisting?.status || 'todo'),
     assignee: bundleExisting?.assignee,
     estimatedLines: 0
   });

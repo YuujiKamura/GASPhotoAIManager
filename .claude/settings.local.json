@@ -36,7 +36,8 @@
       "Bash(npx tsc:*)",
       "Bash(gh pr list:*)",
       "Bash(time npm run analyze:*)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(npm run analyze:*)"
     ]
   }
 }
