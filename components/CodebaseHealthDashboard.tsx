@@ -67,6 +67,78 @@ ${task.estimatedLines ? `- 目標: ${task.estimatedLines}行以上削減` : '- �
 ## タスクID
 ${task.id}`;
 
+const HEALTH_FIX_PROMPTS: Record<string, string> = {
+  TypeScript: `# TypeScript型エラー修正
+
+## 実行コマンド
+\`\`\`bash
+npx tsc --noEmit
+\`\`\`
+
+## 修正手順
+1. エラー箇所を特定
+2. エラーの種類を判断:
+   - \`import.meta.env\` → vite-env.d.ts の型定義確認
+   - \`Property 'X' does not exist\` → 型定義の追加または修正
+3. 修正を適用
+4. \`npx tsc --noEmit\` で再確認
+5. エラーがなくなるまで繰り返す
+
+## 完了条件
+- \`npx tsc --noEmit\` がエラー0で完了
+- \`npm run build\` が成功`,
+
+  knip: `# 未使用ファイル整理
+
+## 実行コマンド
+\`\`\`bash
+npx knip --reporter compact
+\`\`\`
+
+## 修正手順
+1. 未使用ファイル一覧を取得
+2. 各ファイルを分類:
+   - 削除可能: 本当に使われていない古いコード
+   - 除外設定: 手動実行スクリプト、設定ファイル等
+3. 削除可能なファイルは \`git rm\` で削除
+4. 除外設定が必要なファイルは knip.json に追加
+
+## 除外すべきパターン
+- scripts/ - 手動実行ユーティリティ
+- .claude/ - Claude Code設定
+- *.config.* - 設定ファイル
+
+## 完了条件
+- \`npx knip\` の警告が妥当な範囲
+- \`npm run build\` が成功`,
+
+  depcheck: `# 未使用依存関係の整理
+
+## 実行コマンド
+\`\`\`bash
+npx depcheck
+\`\`\`
+
+## 修正手順
+1. 未使用と報告された依存関係を確認
+2. 本当に使われていないか確認（動的importに注意）
+3. 不要なら \`npm uninstall パッケージ名\`
+4. 必要なら .depcheckrc で除外設定
+
+## 完了条件
+- depcheck の警告が妥当な範囲
+- \`npm run build\` が成功`
+};
+
+const generateHealthFixPrompt = (check: { name: string; details: string[] }) => {
+  const base = HEALTH_FIX_PROMPTS[check.name];
+  if (!base) return null;
+  return `${base}
+
+## 現在のエラー詳細
+${check.details.join('\n')}`;
+};
+
 const TaskCard: React.FC<{ task: any }> = ({ task }) => {
   const style = PRIORITY_STYLES[task.priority as Priority] || PRIORITY_STYLES.low;
   return (
@@ -274,6 +346,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {healthChecks.map((check, i) => {
                     const style = STATUS_STYLES[check.status as Status];
+                    const fixPrompt = generateHealthFixPrompt(check);
                     return (
                       <div key={i} className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>
                         <div className="flex items-center justify-between mb-2">
@@ -284,6 +357,14 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                           {check.count > 0 && <span className={`text-xs font-bold px-2 py-0.5 rounded ${style.countBg}`}>{check.count}</span>}
                         </div>
                         {check.details.map((d: string, j: number) => <p key={j} className="text-xs text-gray-600 truncate" title={d}>{d}</p>)}
+                        {fixPrompt && check.status !== 'ok' && (
+                          <button
+                            onClick={() => navigator.clipboard.writeText(fixPrompt)}
+                            className="mt-2 text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                          >
+                            📋 {t('修正指示をコピー', 'Copy fix instructions')}
+                          </button>
+                        )}
                       </div>
                     );
                   })}
