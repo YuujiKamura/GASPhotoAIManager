@@ -30,8 +30,6 @@ import ApiKeySetup from './components/ApiKeySetup';
 import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
 import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
-import PdfLoadDialog from './components/PdfLoadDialog';
-
 // Lazy-loaded components
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
@@ -41,6 +39,7 @@ const SessionHistoryPanel = lazy(() => import('./components/SessionHistoryPanel'
 const GitHubSyncPanel = lazy(() => import('./components/GitHubSyncPanel'));
 const CodebaseHealthDashboard = lazy(() => import('./components/CodebaseHealthDashboard'));
 const InteractiveAnalysisDialog = lazy(() => import('./components/InteractiveAnalysisDialog').then(m => ({ default: m.InteractiveAnalysisDialog })));
+const PdfLoadDialog = lazy(() => import('./components/PdfLoadDialog'));
 
 const MAX_PHOTOS = 30;
 
@@ -146,12 +145,16 @@ export default function App() {
   // Render
   return (
     <>
-      <PdfLoadDialog
-        isOpen={modals.showPdfLoadDialog}
-        onClose={() => { modals.setShowPdfLoadDialog(false); if (photos.length > 0) setShowPreview(true); }}
-        onLoad={pdfHandlers.handlePdfLoad}
-        lang={lang}
-      />
+      {modals.showPdfLoadDialog && (
+        <Suspense fallback={<LoadingFallback />}>
+          <PdfLoadDialog
+            isOpen={modals.showPdfLoadDialog}
+            onClose={() => { modals.setShowPdfLoadDialog(false); if (photos.length > 0) setShowPreview(true); }}
+            onLoad={pdfHandlers.handlePdfLoad}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {modals.showApiKeySetup && (
         <ApiKeySetup onComplete={handleApiKeyInput} onCancel={() => modals.setShowApiKeySetup(false)}
