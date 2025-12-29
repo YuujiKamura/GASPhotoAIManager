@@ -224,22 +224,26 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
   const isTwoUp = photosPerPage === 2;
 
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('工事写真帳', {
+
+  // シート設定
+  const createSheetOptions = () => ({
     pageSetup: {
       paperSize: 9, // A4
-      orientation: 'portrait',
-      fitToPage: false,
-      margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 }
+      orientation: 'portrait' as const,
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1,
+      margins: {
+        left: PDF_LAYOUT.MARGIN / 72,
+        right: PDF_LAYOUT.MARGIN / 72,
+        top: PDF_LAYOUT.MARGIN / 72,
+        bottom: PDF_LAYOUT.MARGIN / 72,
+        header: 0.2,
+        footer: 0.2
+      }
     },
     views: [{ showGridLines: false }]
   });
-
-  // 本番と同じ列幅
-  sheet.columns = [
-    { width: layout.COL_A_WIDTH },
-    { width: layout.COL_B_WIDTH },
-    { width: layout.COL_C_WIDTH }
-  ];
 
   console.log(`  レイアウト: ${photosPerPage}枚/ページ`);
   console.log(`    A列幅: ${layout.COL_A_WIDTH} (${Math.round(layout.COL_A_WIDTH * layout.PIXELS_PER_COL_UNIT)}px)`);
@@ -247,122 +251,161 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
   console.log(`    C列幅: ${layout.COL_C_WIDTH}`);
   console.log(`    行数/ブロック: ${layout.rowsPerBlock}`);
 
-  let currentRow = 1;
+  // ページ数を計算
+  const totalPages = Math.ceil(records.length / photosPerPage);
+  console.log(`    シート数: ${totalPages}`);
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
+  // ページごとにシートを作成
+  for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+    const pageRecords = records.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
+    const sheetName = `${pageNum + 1}`;
 
-    // ページブレーク
-    if (i > 0 && i % photosPerPage === 0) {
-      sheet.getRow(currentRow).addPageBreak();
-      currentRow++;
-    }
+    const sheet = workbook.addWorksheet(sheetName, createSheetOptions());
 
-    const startRow = currentRow;
-    const endRow = startRow + layout.rowsPerBlock - 1;
+    // 列幅設定
+    sheet.columns = [
+      { width: layout.COL_A_WIDTH },
+      { width: layout.COL_B_WIDTH },
+      { width: layout.COL_C_WIDTH }
+    ];
 
-    // 行高さ設定
-    for (let r = startRow; r <= endRow; r++) {
-      sheet.getRow(r).height = layout.ROW_HEIGHT_PTS;
-    }
+    let currentRow = 1;
 
-    // 画像セル（A列）
-    sheet.mergeCells(startRow, 1, endRow, 1);
-    const imgCell = sheet.getCell(startRow, 1);
-    imgCell.border = {
-      top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-      left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-      right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-      bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } }
-    };
+    // このページの写真を配置
+    for (let i = 0; i < pageRecords.length; i++) {
+      const record = pageRecords[i];
 
-    // 画像追加
-    if (record.base64) {
-      const base64Data = record.base64.split(',')[1];
-      const imageId = workbook.addImage({
-        base64: base64Data,
-        extension: 'jpeg',
-      });
+      const startRow = currentRow;
+      const endRow = startRow + layout.rowsPerBlock - 1;
 
-      const BOX_WIDTH_PX = layout.COL_A_WIDTH * layout.PIXELS_PER_COL_UNIT;
-      const BOX_HEIGHT_PX = layout.rowsPerBlock * layout.ROW_HEIGHT_PTS * layout.PT_TO_PX;
-
-      // アスペクト比維持でフィット
-      const imgW = 1280, imgH = 960;
-      const scale = Math.min((BOX_WIDTH_PX * 0.95) / imgW, (BOX_HEIGHT_PX * 0.95) / imgH);
-      const finalW = imgW * scale;
-      const finalH = imgH * scale;
-
-      sheet.addImage(imageId, {
-        tl: { col: 0.02, row: startRow - 1 + 0.1 },
-        ext: { width: finalW, height: finalH },
-        editAs: 'oneCell'
-      });
-    }
-
-    // フィールド（B・C列）
-    const createField = (r: number, label: string, value: string, rowSpan: number) => {
-      let finalRowSpan = rowSpan;
-      if (isTwoUp) {
-        if (label === LABELS.labelStation) finalRowSpan = 2;
-        if (label === LABELS.labelRemarks) finalRowSpan = 16;
+      // 行高さ設定
+      for (let r = startRow; r <= endRow; r++) {
+        sheet.getRow(r).height = layout.ROW_HEIGHT_PTS;
       }
 
-      const labelCell = sheet.getCell(r, 2);
-      labelCell.value = label;
-      labelCell.font = { bold: true, size: 9, color: { argb: 'FF555555' } };
-      labelCell.alignment = { vertical: 'middle', horizontal: 'center' };
-      labelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
-      labelCell.border = {
-        top: { style: 'hair', color: { argb: 'FFAAAAAA' } },
-        left: { style: 'hair', color: { argb: 'FFAAAAAA' } },
-        right: { style: 'hair', color: { argb: 'FFAAAAAA' } },
-        bottom: { style: 'hair', color: { argb: 'FFAAAAAA' } }
+      // 画像セル（A列）
+      sheet.mergeCells(startRow, 1, endRow, 1);
+      const imgCell = sheet.getCell(startRow, 1);
+      imgCell.border = {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } }
       };
 
-      const valueCell = sheet.getCell(r, 3);
-      valueCell.value = value;
-      valueCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-      valueCell.font = { size: 11 };
-      valueCell.border = {
-        top: { style: 'hair', color: { argb: 'FFCCCCCC' } },
-        right: { style: 'hair', color: { argb: 'FFCCCCCC' } },
-        bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } }
+      // 画像追加
+      if (record.base64) {
+        const base64Data = record.base64.split(',')[1];
+        const imageId = workbook.addImage({
+          base64: base64Data,
+          extension: 'jpeg',
+        });
+
+        // pt単位で計算
+        const boxWidthPt = layout.COL_A_WIDTH * layout.PT_PER_COL;
+        const boxHeightPt = layout.rowsPerBlock * layout.ROW_HEIGHT_PTS;
+
+        // CALS画像 (1280x960) をptに変換
+        const imgW = 1280, imgH = 960;
+        const imgWPt = imgW * CONVERSION.PX_TO_PT;
+        const imgHPt = imgH * CONVERSION.PX_TO_PT;
+
+        // スケール計算
+        const scaleW = (boxWidthPt * 0.95) / imgWPt;
+        const scaleH = (boxHeightPt * 0.95) / imgHPt;
+        const scale = Math.min(scaleW, scaleH);
+
+        const finalWPt = imgWPt * scale;
+        const finalHPt = imgHPt * scale;
+
+        // セル位置計算（中央配置）
+        const paddingWPt = (boxWidthPt - finalWPt) / 2;
+        const paddingHPt = (boxHeightPt - finalHPt) / 2;
+
+        const colOffset = paddingWPt / boxWidthPt;
+        const rowOffset = paddingHPt / boxHeightPt * layout.rowsPerBlock;
+
+        const tlCol = Math.max(0.02, colOffset);
+        const tlRow = startRow - 1 + Math.max(0.1, rowOffset);
+
+        const imgCols = finalWPt / boxWidthPt;
+        const imgRows = finalHPt / boxHeightPt * layout.rowsPerBlock;
+
+        const brCol = tlCol + imgCols;
+        const brRow = tlRow + imgRows;
+
+        // absolute配置
+        sheet.addImage(imageId, {
+          tl: { col: tlCol, row: tlRow },
+          br: { col: brCol, row: brRow },
+          editAs: 'absolute'
+        });
+      }
+
+      // フィールド（B・C列）
+      const createField = (r: number, label: string, value: string, rowSpan: number) => {
+        let finalRowSpan = rowSpan;
+        if (isTwoUp) {
+          if (label === LABELS.labelStation) finalRowSpan = 2;
+          if (label === LABELS.labelRemarks) finalRowSpan = 16;
+        }
+
+        const labelCell = sheet.getCell(r, 2);
+        labelCell.value = label;
+        labelCell.font = { bold: true, size: 9, color: { argb: 'FF555555' } };
+        labelCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        labelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+        labelCell.border = {
+          top: { style: 'hair', color: { argb: 'FFAAAAAA' } },
+          left: { style: 'hair', color: { argb: 'FFAAAAAA' } },
+          right: { style: 'hair', color: { argb: 'FFAAAAAA' } },
+          bottom: { style: 'hair', color: { argb: 'FFAAAAAA' } }
+        };
+
+        const valueCell = sheet.getCell(r, 3);
+        valueCell.value = value;
+        valueCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        valueCell.font = { size: 11 };
+        valueCell.border = {
+          top: { style: 'hair', color: { argb: 'FFCCCCCC' } },
+          right: { style: 'hair', color: { argb: 'FFCCCCCC' } },
+          bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } }
+        };
+
+        if (finalRowSpan > 1) {
+          sheet.mergeCells(r, 2, r + finalRowSpan - 1, 2);
+          sheet.mergeCells(r, 3, r + finalRowSpan - 1, 3);
+        }
+        return finalRowSpan;
       };
 
-      if (finalRowSpan > 1) {
-        sheet.mergeCells(r, 2, r + finalRowSpan - 1, 2);
-        sheet.mergeCells(r, 3, r + finalRowSpan - 1, 3);
-      }
-      return finalRowSpan;
-    };
+      // 本番と同じフィールドフィルタ
+      const visibleFields = LAYOUT_FIELDS.filter((field) => {
+        if (isTwoUp) return field.key === 'remarks' || field.key === 'station';
+        return true;
+      });
 
-    // 本番と同じフィールドフィルタ
-    const visibleFields = LAYOUT_FIELDS.filter((field) => {
-      if (isTwoUp) return field.key === 'remarks' || field.key === 'station';
-      return true;
-    });
+      let currentFieldRow = startRow;
+      for (const field of visibleFields) {
+        let val = "";
+        if (field.key === 'date') {
+          val = record.date
+            ? new Date(record.date).toLocaleString('ja-JP', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+              })
+            : "";
+        } else if (record.analysis) {
+          val = (record.analysis as any)[field.key] || "";
+        }
 
-    let currentFieldRow = startRow;
-    for (const field of visibleFields) {
-      let val = "";
-      if (field.key === 'date') {
-        val = record.date
-          ? new Date(record.date).toLocaleString('ja-JP', {
-              year: 'numeric', month: '2-digit', day: '2-digit',
-              hour: '2-digit', minute: '2-digit'
-            })
-          : "";
-      } else if (record.analysis) {
-        val = (record.analysis as any)[field.key] || "";
+        const label = LABELS[field.labelKey] || field.key;
+        const usedSpan = createField(currentFieldRow, label, val, field.rowSpan);
+        currentFieldRow += usedSpan;
       }
 
-      const label = LABELS[field.labelKey] || field.key;
-      const usedSpan = createField(currentFieldRow, label, val, field.rowSpan);
-      currentFieldRow += usedSpan;
+      currentRow = endRow + 1; // シート内なのでギャップなし
     }
-
-    currentRow = endRow + 2;
   }
 
   // 出力
