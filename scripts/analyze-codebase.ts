@@ -115,9 +115,16 @@ async function runHealthChecks(): Promise<HealthCheck[]> {
     // 2. depcheck
     async (): Promise<HealthCheck> => {
       try {
-        const result = execSync('npx depcheck --json', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
-        const data = JSON.parse(result);
-        const unused = Object.keys(data.dependencies || {});
+        // depcheckは問題を見つけると非0を返すのでcatchでも処理
+        let output = '';
+        try {
+          output = execSync('npx depcheck --json', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+        } catch (e: any) {
+          output = e.stdout || '';
+        }
+        if (!output) return { name: 'depcheck', status: 'warning', count: 0, details: ['解析失敗'] };
+        const data = JSON.parse(output);
+        const unused = [...(data.dependencies || []), ...(data.devDependencies || [])];
         return { name: 'depcheck', status: unused.length > 3 ? 'warning' : 'ok', count: unused.length, details: unused.length ? [`未使用: ${unused.slice(0, 5).join(', ')}`] : ['問題なし'] };
       } catch { return { name: 'depcheck', status: 'warning', count: 0, details: ['解析失敗'] }; }
     },
