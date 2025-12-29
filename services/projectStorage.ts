@@ -1,512 +1,241 @@
 /**
  * プロジェクトストレージ
- *
  * プロジェクトリポジトリ内の .gaspm/ ディレクトリにデータを保存
- * GitHub APIを通じて同期
  */
 
 import {
   ProjectConfig,
   LearnedRule,
   LearnedAlias,
-  LearnedSettings,
   SyncResult,
 } from '../types';
 
-// GitHub API設定
 const GASPM_DIR = '.gaspm';
 const FILES = {
   config: `${GASPM_DIR}/project-config.json`,
   rules: `${GASPM_DIR}/learned-rules.json`,
   aliases: `${GASPM_DIR}/aliases.json`,
-};
+} as const;
 
-// IndexedDB設定
+type DataType = keyof typeof FILES;
+
 const DB_NAME = 'GASPMProjectStorage';
 const DB_VERSION = 1;
 const STORE_NAME = 'projectData';
 
-// メモリキャッシュ
-let cachedConfig: ProjectConfig | null = null;
-let cachedRules: LearnedRule[] | null = null;
-let cachedAliases: LearnedAlias[] | null = null;
+// 統一キャッシュ
+const cache: { config: ProjectConfig | null; rules: LearnedRule[] | null; aliases: LearnedAlias[] | null } = {
+  config: null, rules: null, aliases: null,
+};
 let pendingChanges = false;
 
-/**
- * IndexedDBを開く
- */
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
+// IndexedDB操作
+const openDB = (): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-      }
+    request.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: 'key' });
     };
-
-    request.onsuccess = (event) => {
-      resolve((event.target as IDBOpenDBRequest).result);
-    };
-
-    request.onerror = (event) => {
-      reject((event.target as IDBOpenDBRequest).error);
-    };
+    request.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+    request.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
   });
-};
 
-/**
- * ローカルに保存
- */
 const saveLocal = async <T>(key: string, data: T): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put({ key, data, updatedAt: new Date().toISOString() });
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    const store = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME);
+    const req = store.put({ key, data, updatedAt: new Date().toISOString() });
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
   });
 };
 
-/**
- * ローカルから読み込み
- */
 const loadLocal = async <T>(key: string): Promise<T | null> => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.get(key);
-      request.onsuccess = () => {
-        resolve(request.result?.data || null);
-      };
-      request.onerror = () => reject(request.error);
+      const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
+      req.onsuccess = () => resolve(req.result?.data || null);
+      req.onerror = () => reject(req.error);
     });
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 };
 
-/**
- * GitHub APIでファイルを取得
- */
-const fetchFromGitHub = async <T>(
-  token: string,
-  owner: string,
-  repo: string,
-  path: string
-): Promise<{ data: T; sha: string } | null> => {
-  try {
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-        },
-      }
-    );
+// GitHub API
+const getGitHubToken = (): string | null => localStorage.getItem('github_token');
 
-    if (response.status === 404) {
-      return null;
-    }
-
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const content = atob(result.content);
-    return {
-      data: JSON.parse(content) as T,
-      sha: result.sha,
-    };
-  } catch (e) {
-    console.warn(`[ProjectStorage] Failed to fetch ${path}:`, e);
-    return null;
-  }
-};
-
-/**
- * GitHub APIでファイルを保存
- */
-const saveToGitHub = async <T>(
-  token: string,
-  owner: string,
-  repo: string,
-  path: string,
-  data: T,
-  message: string,
-  sha?: string
-): Promise<{ success: boolean; sha?: string }> => {
-  try {
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-
-    const body: Record<string, unknown> = {
-      message,
-      content,
-      branch: 'main',
-    };
-
-    if (sha) {
-      body.sha = sha;
-    }
-
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || `GitHub API error: ${response.status}`);
-    }
-
-    const result = await response.json();
-    return { success: true, sha: result.content.sha };
-  } catch (e: any) {
-    console.error(`[ProjectStorage] Failed to save ${path}:`, e);
-    return { success: false };
-  }
-};
-
-/**
- * リポジトリ情報を取得
- */
 const getRepoInfo = (): { owner: string; repo: string } | null => {
-  // 現在のページURLからリポジトリ情報を推測
-  // または設定から取得
-  const stored = localStorage.getItem('gaspm_project_repo');
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  }
-  return null;
+  try { return JSON.parse(localStorage.getItem('gaspm_project_repo') || 'null'); }
+  catch { return null; }
 };
 
-/**
- * リポジトリ情報を設定
- */
 export const setProjectRepo = (owner: string, repo: string): void => {
   localStorage.setItem('gaspm_project_repo', JSON.stringify({ owner, repo }));
 };
 
-/**
- * GitHubトークンを取得
- */
-const getGitHubToken = (): string | null => {
-  return localStorage.getItem('github_token');
+const githubFetch = async <T>(path: string): Promise<{ data: T; sha: string } | null> => {
+  const token = getGitHubToken(), repoInfo = getRepoInfo();
+  if (!token || !repoInfo) return null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${path}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+    const result = await res.json();
+    return { data: JSON.parse(atob(result.content)) as T, sha: result.sha };
+  } catch (e) { console.warn(`[ProjectStorage] Failed to fetch ${path}:`, e); return null; }
 };
 
-// ============================================
-// 公開API
-// ============================================
+const githubSave = async <T>(path: string, data: T, message: string, sha?: string): Promise<{ success: boolean; sha?: string }> => {
+  const token = getGitHubToken(), repoInfo = getRepoInfo();
+  if (!token || !repoInfo) return { success: false };
+  try {
+    const body: Record<string, unknown> = { message, content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))), branch: 'main' };
+    if (sha) body.sha = sha;
+    const res = await fetch(`https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${path}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || `GitHub API error: ${res.status}`);
+    return { success: true, sha: (await res.json()).content?.sha };
+  } catch (e) { console.error(`[ProjectStorage] Failed to save ${path}:`, e); return { success: false }; }
+};
 
-/**
- * プロジェクト設定を取得
- */
-export const getProjectConfig = async (): Promise<ProjectConfig> => {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
-
-  // ローカルから読み込み
-  let config = await loadLocal<ProjectConfig>('config');
-
-  // GitHubから読み込み
-  const token = getGitHubToken();
-  const repoInfo = getRepoInfo();
-
-  if (token && repoInfo) {
-    const remote = await fetchFromGitHub<ProjectConfig>(
-      token,
-      repoInfo.owner,
-      repoInfo.repo,
-      FILES.config
-    );
-
-    if (remote && (!config || remote.data.version > config.version)) {
-      config = remote.data;
-      await saveLocal('config', config);
+// ヘルパー
+const mergeArraysById = <T extends { id: string; createdAt?: string }>(local: T[], remote: T[]): T[] => {
+  const map = new Map<string, T>();
+  local.forEach(item => map.set(item.id, item));
+  remote.forEach(item => {
+    const existing = map.get(item.id);
+    if (!existing || (item.createdAt && existing.createdAt && item.createdAt > existing.createdAt)) {
+      map.set(item.id, item);
     }
-  }
-
-  cachedConfig = config || createDefaultConfig();
-  return cachedConfig;
+  });
+  return Array.from(map.values());
 };
 
-/**
- * プロジェクト設定を保存
- */
+const createDefaultConfig = (): ProjectConfig => ({ version: 0, updatedAt: new Date().toISOString() });
+
+// 汎用データ取得
+const getData = async <T>(type: DataType, merge: (local: T, remote: T) => T, defaultVal: T): Promise<T> => {
+  if (cache[type]) return cache[type] as T;
+  let data = await loadLocal<T>(type);
+  const remote = await githubFetch<T>(FILES[type]);
+  if (remote) {
+    data = merge(data || defaultVal, remote.data);
+    await saveLocal(type, data);
+  }
+  cache[type] = data || defaultVal;
+  return cache[type] as T;
+};
+
+// 公開API
+export const getProjectConfig = async (): Promise<ProjectConfig> =>
+  getData('config', (local, remote) => remote.version > local.version ? remote : local, createDefaultConfig());
+
 export const saveProjectConfig = async (config: ProjectConfig): Promise<void> => {
   config.version++;
   config.updatedAt = new Date().toISOString();
-
-  cachedConfig = config;
+  cache.config = config;
   await saveLocal('config', config);
   pendingChanges = true;
 };
 
-/**
- * 学習ルールを取得
- */
-export const getProjectRules = async (): Promise<LearnedRule[]> => {
-  if (cachedRules) {
-    return cachedRules;
-  }
+export const getProjectRules = async (): Promise<LearnedRule[]> =>
+  getData('rules', mergeArraysById, []);
 
-  let rules = await loadLocal<LearnedRule[]>('rules');
-
-  const token = getGitHubToken();
-  const repoInfo = getRepoInfo();
-
-  if (token && repoInfo) {
-    const remote = await fetchFromGitHub<LearnedRule[]>(
-      token,
-      repoInfo.owner,
-      repoInfo.repo,
-      FILES.rules
-    );
-
-    if (remote) {
-      // マージ（IDで重複排除、新しい方を優先）
-      const merged = mergeArraysById(rules || [], remote.data);
-      rules = merged;
-      await saveLocal('rules', rules);
-    }
-  }
-
-  cachedRules = rules || [];
-  return cachedRules;
-};
-
-/**
- * 学習ルールを追加
- */
 export const addProjectRule = async (rule: LearnedRule): Promise<void> => {
   const rules = await getProjectRules();
   rules.push(rule);
-  cachedRules = rules;
+  cache.rules = rules;
   await saveLocal('rules', rules);
   pendingChanges = true;
 };
 
-/**
- * エイリアスを取得
- */
-export const getProjectAliases = async (): Promise<LearnedAlias[]> => {
-  if (cachedAliases) {
-    return cachedAliases;
-  }
+export const getProjectAliases = async (): Promise<LearnedAlias[]> =>
+  getData('aliases', mergeArraysById, []);
 
-  let aliases = await loadLocal<LearnedAlias[]>('aliases');
-
-  const token = getGitHubToken();
-  const repoInfo = getRepoInfo();
-
-  if (token && repoInfo) {
-    const remote = await fetchFromGitHub<LearnedAlias[]>(
-      token,
-      repoInfo.owner,
-      repoInfo.repo,
-      FILES.aliases
-    );
-
-    if (remote) {
-      const merged = mergeArraysById(aliases || [], remote.data);
-      aliases = merged;
-      await saveLocal('aliases', aliases);
-    }
-  }
-
-  cachedAliases = aliases || [];
-  return cachedAliases;
-};
-
-/**
- * エイリアスを追加
- */
 export const addProjectAlias = async (alias: LearnedAlias): Promise<void> => {
   const aliases = await getProjectAliases();
-  const exists = aliases.some(a => a.from === alias.from && a.to === alias.to);
-  if (!exists) {
+  if (!aliases.some(a => a.from === alias.from && a.to === alias.to)) {
     aliases.push(alias);
-    cachedAliases = aliases;
+    cache.aliases = aliases;
     await saveLocal('aliases', aliases);
     pendingChanges = true;
   }
 };
 
-/**
- * GitHubに同期
- */
-export const syncToGitHub = async (): Promise<SyncResult> => {
-  const token = getGitHubToken();
-  const repoInfo = getRepoInfo();
+// 同期
+const syncEntity = async <T>(
+  type: DataType,
+  getData: () => Promise<T>,
+  merge: (local: T, remote: T) => T,
+  shouldPush: (local: T, remote: T | undefined) => boolean,
+  message: string
+): Promise<{ pushed: boolean; pulled: boolean }> => {
+  const local = await getData();
+  const remote = await githubFetch<T>(FILES[type]);
+  const merged = remote ? merge(local, remote.data) : local;
 
-  if (!token || !repoInfo) {
-    return {
-      success: false,
-      pushed: 0,
-      pulled: 0,
-      error: 'GitHub未設定',
-    };
+  if (shouldPush(merged, remote?.data)) {
+    const result = await githubSave(FILES[type], merged, message, remote?.sha);
+    if (result.success) {
+      (cache as Record<string, unknown>)[type] = merged;
+      await saveLocal(type, merged);
+      return { pushed: true, pulled: false };
+    }
+  }
+  (cache as Record<string, unknown>)[type] = merged;
+  await saveLocal(type, merged);
+  return { pushed: false, pulled: !!remote };
+};
+
+export const syncToGitHub = async (): Promise<SyncResult> => {
+  if (!getGitHubToken() || !getRepoInfo()) {
+    return { success: false, pushed: 0, pulled: 0, error: 'GitHub未設定' };
   }
 
-  let pushed = 0;
-  let pulled = 0;
-
+  let pushed = 0, pulled = 0;
   try {
-    // 設定を同期
-    const config = await getProjectConfig();
-    const remoteConfig = await fetchFromGitHub<ProjectConfig>(
-      token,
-      repoInfo.owner,
-      repoInfo.repo,
-      FILES.config
+    // Config
+    const configResult = await syncEntity<ProjectConfig>(
+      'config', getProjectConfig,
+      (local, remote) => remote.version > local.version ? remote : local,
+      (local, remote) => !remote || local.version > remote.version,
+      '[GASPM] Update project config'
     );
+    if (configResult.pushed) pushed++; if (configResult.pulled) pulled++;
 
-    if (!remoteConfig || config.version > remoteConfig.data.version) {
-      const result = await saveToGitHub(
-        token,
-        repoInfo.owner,
-        repoInfo.repo,
-        FILES.config,
-        config,
-        '[GASPM] Update project config',
-        remoteConfig?.sha
-      );
-      if (result.success) pushed++;
-    } else if (remoteConfig.data.version > config.version) {
-      cachedConfig = remoteConfig.data;
-      await saveLocal('config', remoteConfig.data);
-      pulled++;
-    }
-
-    // ルールを同期
-    const rules = await getProjectRules();
-    const remoteRules = await fetchFromGitHub<LearnedRule[]>(
-      token,
-      repoInfo.owner,
-      repoInfo.repo,
-      FILES.rules
+    // Rules
+    const rulesResult = await syncEntity<LearnedRule[]>(
+      'rules', getProjectRules, mergeArraysById,
+      (merged, remote) => merged.length > (remote?.length || 0),
+      '[GASPM] Update learned rules'
     );
+    if (rulesResult.pushed) pushed++;
 
-    const mergedRules = mergeArraysById(rules, remoteRules?.data || []);
-    if (mergedRules.length > (remoteRules?.data?.length || 0)) {
-      const result = await saveToGitHub(
-        token,
-        repoInfo.owner,
-        repoInfo.repo,
-        FILES.rules,
-        mergedRules,
-        '[GASPM] Update learned rules',
-        remoteRules?.sha
-      );
-      if (result.success) pushed++;
-    }
-    cachedRules = mergedRules;
-    await saveLocal('rules', mergedRules);
-
-    // エイリアスを同期
-    const aliases = await getProjectAliases();
-    const remoteAliases = await fetchFromGitHub<LearnedAlias[]>(
-      token,
-      repoInfo.owner,
-      repoInfo.repo,
-      FILES.aliases
+    // Aliases
+    const aliasesResult = await syncEntity<LearnedAlias[]>(
+      'aliases', getProjectAliases, mergeArraysById,
+      (merged, remote) => merged.length > (remote?.length || 0),
+      '[GASPM] Update aliases'
     );
-
-    const mergedAliases = mergeArraysById(aliases, remoteAliases?.data || []);
-    if (mergedAliases.length > (remoteAliases?.data?.length || 0)) {
-      const result = await saveToGitHub(
-        token,
-        repoInfo.owner,
-        repoInfo.repo,
-        FILES.aliases,
-        mergedAliases,
-        '[GASPM] Update aliases',
-        remoteAliases?.sha
-      );
-      if (result.success) pushed++;
-    }
-    cachedAliases = mergedAliases;
-    await saveLocal('aliases', mergedAliases);
+    if (aliasesResult.pushed) pushed++;
 
     pendingChanges = false;
-
-    return {
-      success: true,
-      pushed,
-      pulled,
-    };
-  } catch (e: any) {
-    return {
-      success: false,
-      pushed,
-      pulled,
-      error: e.message,
-    };
+    return { success: true, pushed, pulled };
+  } catch (e: unknown) {
+    return { success: false, pushed, pulled, error: e instanceof Error ? e.message : String(e) };
   }
 };
 
-/**
- * 未同期の変更があるか
- */
-export const hasPendingChanges = (): boolean => {
-  return pendingChanges;
-};
+export const hasPendingChanges = (): boolean => pendingChanges;
 
-/**
- * キャッシュをクリア
- */
 export const clearCache = (): void => {
-  cachedConfig = null;
-  cachedRules = null;
-  cachedAliases = null;
-};
-
-// ============================================
-// ヘルパー関数
-// ============================================
-
-const createDefaultConfig = (): ProjectConfig => ({
-  version: 0,
-  updatedAt: new Date().toISOString(),
-});
-
-const mergeArraysById = <T extends { id: string; createdAt?: string }>(
-  local: T[],
-  remote: T[]
-): T[] => {
-  const map = new Map<string, T>();
-
-  // ローカルを追加
-  local.forEach((item) => map.set(item.id, item));
-
-  // リモートをマージ（新しい方を優先）
-  remote.forEach((item) => {
-    const existing = map.get(item.id);
-    if (!existing) {
-      map.set(item.id, item);
-    } else if (item.createdAt && existing.createdAt && item.createdAt > existing.createdAt) {
-      map.set(item.id, item);
-    }
-  });
-
-  return Array.from(map.values());
+  cache.config = null;
+  cache.rules = null;
+  cache.aliases = null;
 };
