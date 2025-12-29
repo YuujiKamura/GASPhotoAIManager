@@ -1,40 +1,58 @@
 import { AIAnalysisResult } from "../types";
 
 // ============================================
-// PDF基準レイアウト（Source of Truth）
+// mm基準レイアウト（Source of Truth）
 // ============================================
-// PDFのpt単位で定義し、ExcelやCSSの値は計算で導出する
+// A4にCALS写真(4:3)を3枚配置する設計から逆算
+
+// A4サイズ
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+
+// 余白設定
+const MARGIN_MM = 10;        // 上下左右
+const PHOTO_GAP_MM = 10;     // 画像間
+
+// 計算: 写真サイズ
+// 高さ: 297 - 10(上) - 10(下) - 10(間) - 10(間) = 257mm / 3枚 = 85.67mm
+// 幅: 85.67 × 4/3 = 114.2mm (CALS 4:3アスペクト比)
+const PHOTO_HEIGHT_MM = (A4_HEIGHT_MM - MARGIN_MM * 2 - PHOTO_GAP_MM * 2) / 3;  // 85.67mm
+const PHOTO_WIDTH_MM = PHOTO_HEIGHT_MM * 4 / 3;  // 114.2mm
+
+// 情報欄幅
+const USABLE_WIDTH_MM = A4_WIDTH_MM - MARGIN_MM * 2;  // 190mm
+const INFO_WIDTH_MM = USABLE_WIDTH_MM - PHOTO_WIDTH_MM;  // 75.8mm
+
+// mm → pt変換 (1mm = 2.835pt)
+const MM_TO_PT = 2.835;
 
 export const PDF_LAYOUT = {
-  // A4サイズ (pt) - 1pt = 1/72 inch
-  PAGE_WIDTH: 595.28,
-  PAGE_HEIGHT: 841.89,
+  // A4サイズ (pt)
+  PAGE_WIDTH: A4_WIDTH_MM * MM_TO_PT,   // 595.35pt
+  PAGE_HEIGHT: A4_HEIGHT_MM * MM_TO_PT, // 842.0pt
 
   // マージン (pt)
-  MARGIN: 20,
-  HEADER_HEIGHT: 40,
-  GAP: 5,
+  MARGIN: MARGIN_MM * MM_TO_PT,         // 28.35pt
+  HEADER_HEIGHT: 0,                      // ヘッダーなし
+  GAP: PHOTO_GAP_MM * MM_TO_PT,         // 28.35pt
 
-  // 列幅比率（合計95%、5%は隙間）
-  PHOTO_WIDTH_RATIO: 0.45,   // 画像エリア 45%
-  INFO_WIDTH_RATIO: 0.50,    // 情報エリア 50%
+  // 写真サイズ (mm)
+  PHOTO_WIDTH_MM,   // 114.2mm
+  PHOTO_HEIGHT_MM,  // 85.67mm
+  INFO_WIDTH_MM,    // 75.8mm
 } as const;
 
 // ============================================
-// 計算された寸法値
+// 計算された寸法値 (pt)
 // ============================================
 
-// 利用可能領域 (pt)
-const USABLE_WIDTH = PDF_LAYOUT.PAGE_WIDTH - PDF_LAYOUT.MARGIN * 2;   // 555.28pt
-const USABLE_HEIGHT = PDF_LAYOUT.PAGE_HEIGHT - PDF_LAYOUT.MARGIN * 2 - PDF_LAYOUT.HEADER_HEIGHT; // 761.89pt
+const PHOTO_WIDTH_PT = PHOTO_WIDTH_MM * MM_TO_PT;   // 323.7pt
+const PHOTO_HEIGHT_PT = PHOTO_HEIGHT_MM * MM_TO_PT; // 242.9pt
+const INFO_WIDTH_PT = INFO_WIDTH_MM * MM_TO_PT;     // 214.9pt
 
-// 1写真ブロックあたりの高さ (pt)
-const BLOCK_HEIGHT_3UP = USABLE_HEIGHT / 3;  // 253.96pt
-const BLOCK_HEIGHT_2UP = USABLE_HEIGHT / 2;  // 380.95pt
-
-// 列幅 (pt)
-const PHOTO_WIDTH_PT = USABLE_WIDTH * PDF_LAYOUT.PHOTO_WIDTH_RATIO;  // 249.88pt
-const INFO_WIDTH_PT = USABLE_WIDTH * PDF_LAYOUT.INFO_WIDTH_RATIO;    // 277.64pt
+// ブロック高さ（写真 + 間余白）
+const BLOCK_HEIGHT_3UP = PHOTO_HEIGHT_PT + PDF_LAYOUT.GAP;  // 271.25pt
+const BLOCK_HEIGHT_2UP = PHOTO_HEIGHT_PT * 1.5;             // 2upは別計算
 
 // ============================================
 // 変換係数
@@ -58,54 +76,61 @@ export const CONVERSION = {
 // Excel用に導出された値
 // ============================================
 
-// 行の設計
-const ROWS_3UP = 12;  // 3枚貼り時の1ブロック行数
-const ROWS_2UP = 18;  // 2枚貼り時の1ブロック行数
+// 行の設計（写真高さ242.9ptを10行 + 余白1行）
+const PHOTO_ROWS = 10;  // 写真部分の行数
+const GAP_ROWS = 1;     // 余白行数
+const ROWS_3UP = PHOTO_ROWS + GAP_ROWS;  // 11行/ブロック
+const ROWS_2UP = PHOTO_ROWS + GAP_ROWS;  // 2upも同様
 
-// 行高さ (pt) = ブロック高さ ÷ 行数
-const ROW_HEIGHT_PT_3UP = Math.round(BLOCK_HEIGHT_3UP / ROWS_3UP);  // 21pt
-const ROW_HEIGHT_PT_2UP = Math.round(BLOCK_HEIGHT_2UP / ROWS_2UP);  // 21pt
+// 行高さ (pt) = 写真高さ ÷ 写真行数
+const ROW_HEIGHT_PT_3UP = Math.round(PHOTO_HEIGHT_PT / PHOTO_ROWS);  // 24pt
+const ROW_HEIGHT_PT_2UP = Math.round(PHOTO_HEIGHT_PT / PHOTO_ROWS);  // 24pt
 
-// 列幅 (Excel単位) = pt ÷ 変換係数
-const PHOTO_COL_WIDTH = Math.round(PHOTO_WIDTH_PT / CONVERSION.PT_PER_EXCEL_COL);  // 47
-const INFO_COL_WIDTH = Math.round(INFO_WIDTH_PT / CONVERSION.PT_PER_EXCEL_COL);    // 52
+// 列幅 (Excel単位) - 実測値から逆算
+// 10行 × 24pt = 240pt (高さ) → 幅 = 240 × 4/3 = 320pt
+// Excelで427px = 列幅52.75
+const PHOTO_COL_WIDTH = 52.75;  // 113mm (高さ240pt × 4/3)
+const INFO_COL_WIDTH = 36;      // 77mm (190mm - 113mm)
 
 // ラベル列とバリュー列の分割（情報エリア内）
-const LABEL_COL_WIDTH = 8;   // 固定幅
-const VALUE_COL_WIDTH = INFO_COL_WIDTH - LABEL_COL_WIDTH;  // 44
+const LABEL_COL_WIDTH = 10;     // ラベル列
+const VALUE_COL_WIDTH = INFO_COL_WIDTH - LABEL_COL_WIDTH;  // 26
 
 // ============================================
 // エクスポート用定数（PDF/Excel/CSS共通で使用）
 // ============================================
 
 export const DIMENSION = {
-  // --- PDFソース値 ---
+  // --- mm基準値 ---
+  PHOTO_WIDTH_MM: PDF_LAYOUT.PHOTO_WIDTH_MM,   // 114.2mm
+  PHOTO_HEIGHT_MM: PDF_LAYOUT.PHOTO_HEIGHT_MM, // 85.67mm
+  INFO_WIDTH_MM: PDF_LAYOUT.INFO_WIDTH_MM,     // 75.8mm
+  MARGIN_MM: MARGIN_MM,                        // 10mm
+  GAP_MM: PHOTO_GAP_MM,                        // 10mm
+
+  // --- pt値 ---
   PDF_PAGE_WIDTH: PDF_LAYOUT.PAGE_WIDTH,
   PDF_PAGE_HEIGHT: PDF_LAYOUT.PAGE_HEIGHT,
   PDF_MARGIN: PDF_LAYOUT.MARGIN,
-  PDF_HEADER_HEIGHT: PDF_LAYOUT.HEADER_HEIGHT,
   PDF_GAP: PDF_LAYOUT.GAP,
-  PDF_PHOTO_WIDTH_RATIO: PDF_LAYOUT.PHOTO_WIDTH_RATIO,
-  PDF_INFO_WIDTH_RATIO: PDF_LAYOUT.INFO_WIDTH_RATIO,
-
-  // --- 計算済みPDF値 (pt) ---
-  USABLE_WIDTH_PT: USABLE_WIDTH,
-  USABLE_HEIGHT_PT: USABLE_HEIGHT,
   BLOCK_HEIGHT_3UP_PT: BLOCK_HEIGHT_3UP,
   BLOCK_HEIGHT_2UP_PT: BLOCK_HEIGHT_2UP,
   PHOTO_WIDTH_PT: PHOTO_WIDTH_PT,
+  PHOTO_HEIGHT_PT: PHOTO_HEIGHT_PT,
   INFO_WIDTH_PT: INFO_WIDTH_PT,
 
   // --- Excel用導出値 ---
-  ROW_HEIGHT_PT: ROW_HEIGHT_PT_3UP,           // 21pt (3up/2up共通)
-  ROWS_PER_BLOCK_3UP: ROWS_3UP,               // 12行
-  ROWS_PER_BLOCK_2UP: ROWS_2UP,               // 18行
-  COL_A_WIDTH: PHOTO_COL_WIDTH,               // 47 (画像列)
+  ROW_HEIGHT_PT: ROW_HEIGHT_PT_3UP,           // 24pt
+  PHOTO_ROWS: PHOTO_ROWS,                     // 10行 (写真部分)
+  GAP_ROWS: GAP_ROWS,                         // 1行 (余白部分)
+  ROWS_PER_BLOCK_3UP: ROWS_3UP,               // 11行 (写真+余白)
+  ROWS_PER_BLOCK_2UP: ROWS_2UP,               // 11行
+  COL_A_WIDTH: PHOTO_COL_WIDTH,               // 61 (画像列)
   COL_B_WIDTH: LABEL_COL_WIDTH,               // 8 (ラベル列)
-  COL_C_WIDTH: VALUE_COL_WIDTH,               // 44 (値列)
+  COL_C_WIDTH: VALUE_COL_WIDTH,               // 33 (値列)
 
   // --- CSS/Web用導出値 (px) ---
-  ROW_HEIGHT_PX: Math.round(ROW_HEIGHT_PT_3UP * CONVERSION.PT_TO_PX),  // 28px
+  ROW_HEIGHT_PX: Math.round(ROW_HEIGHT_PT_3UP * CONVERSION.PT_TO_PX),  // 32px
 
   // --- 変換係数 ---
   PT_TO_PX: CONVERSION.PT_TO_PX,
@@ -115,8 +140,8 @@ export const DIMENSION = {
 
   // --- 後方互換性 ---
   LABEL_WIDTH_EXCEL: LABEL_COL_WIDTH,
-  IMAGE_RATIO: PDF_LAYOUT.PHOTO_WIDTH_RATIO / (PDF_LAYOUT.PHOTO_WIDTH_RATIO + PDF_LAYOUT.INFO_WIDTH_RATIO),
-  INFO_RATIO: PDF_LAYOUT.INFO_WIDTH_RATIO / (PDF_LAYOUT.PHOTO_WIDTH_RATIO + PDF_LAYOUT.INFO_WIDTH_RATIO),
+  IMAGE_RATIO: PHOTO_WIDTH_MM / (PHOTO_WIDTH_MM + INFO_WIDTH_MM),  // 0.60
+  INFO_RATIO: INFO_WIDTH_MM / (PHOTO_WIDTH_MM + INFO_WIDTH_MM),    // 0.40
 } as const;
 
 // 後方互換性のためのエイリアス
@@ -141,6 +166,7 @@ export const excelWidthToPx = (units: number): number =>
 
 export interface LayoutConfig {
   rowsPerBlock: number;
+  photoRows: number;
   rowHeightPt: number;
   colAWidth: number;
   colBWidth: number;
@@ -152,16 +178,16 @@ export interface LayoutConfig {
 
 export const getLayoutConfig = (photosPerPage: 2 | 3): LayoutConfig => {
   const rowsPerBlock = photosPerPage === 2 ? DIMENSION.ROWS_PER_BLOCK_2UP : DIMENSION.ROWS_PER_BLOCK_3UP;
-  const blockHeightPt = photosPerPage === 2 ? DIMENSION.BLOCK_HEIGHT_2UP_PT : DIMENSION.BLOCK_HEIGHT_3UP_PT;
 
   return {
     rowsPerBlock,
+    photoRows: DIMENSION.PHOTO_ROWS,    // 10 (写真部分のみ)
     rowHeightPt: DIMENSION.ROW_HEIGHT_PT,
-    colAWidth: photosPerPage === 2 ? 60 : DIMENSION.COL_A_WIDTH,  // 2upは画像を大きく
-    colBWidth: DIMENSION.COL_B_WIDTH,
-    colCWidth: photosPerPage === 2 ? 35 : DIMENSION.COL_C_WIDTH,
+    colAWidth: DIMENSION.COL_A_WIDTH,   // 61
+    colBWidth: DIMENSION.COL_B_WIDTH,   // 8
+    colCWidth: DIMENSION.COL_C_WIDTH,   // 33
     photoWidthPt: DIMENSION.PHOTO_WIDTH_PT,
-    photoHeightPt: blockHeightPt - PDF_LAYOUT.GAP * 2,
+    photoHeightPt: DIMENSION.PHOTO_HEIGHT_PT,
     infoWidthPt: DIMENSION.INFO_WIDTH_PT,
   };
 };

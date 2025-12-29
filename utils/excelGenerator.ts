@@ -144,46 +144,28 @@ export const generateExcel = async (
 
       try {
         const { w: imgW, h: imgH } = await getImageDimensions(record.base64);
-        console.log(`[ExcelExport] Image dimensions: ${imgW}x${imgH}`);
+        console.log(`[ExcelExport] Image dimensions: ${imgW}x${imgH}, aspect: ${(imgW/imgH).toFixed(2)}`);
 
-        // ボックスサイズ（pt）
-        const boxWidthPt = COL_A_WIDTH * CONVERSION.PT_PER_EXCEL_COL;
-        const boxHeightPt = rowsPerBlock * ROW_HEIGHT_PT;
+        // ボックスサイズ（px）- セルサイズから計算
+        const boxWidthPx = COL_A_WIDTH * CONVERSION.PX_PER_EXCEL_COL;
+        const boxHeightPx = rowsPerBlock * ROW_HEIGHT_PT * CONVERSION.PT_TO_PX;
 
-        // 画像サイズをptに変換
-        const imgWPt = imgW * CONVERSION.PX_TO_PT;
-        const imgHPt = imgH * CONVERSION.PX_TO_PT;
-
-        // スケール計算（95%マージン）
-        const scaleW = (boxWidthPt * 0.95) / imgWPt;
-        const scaleH = (boxHeightPt * 0.95) / imgHPt;
+        // スケール計算（セルサイズに合わせる、100%フィル）
+        const scaleW = boxWidthPx / imgW;
+        const scaleH = boxHeightPx / imgH;
         const scale = Math.min(scaleW, scaleH);
 
-        const finalWPt = imgWPt * scale;
-        const finalHPt = imgHPt * scale;
+        const finalW = Math.round(imgW * scale);
+        const finalH = Math.round(imgH * scale);
 
-        console.log(`[ExcelExport] Scaled: ${finalWPt.toFixed(1)}x${finalHPt.toFixed(1)}pt`);
+        console.log(`[ExcelExport] Box: ${boxWidthPx.toFixed(0)}x${boxHeightPx.toFixed(0)}px, Image: ${finalW}x${finalH}px`);
 
-        // セル位置計算（中央配置）
-        const paddingWPt = (boxWidthPt - finalWPt) / 2;
-        const paddingHPt = (boxHeightPt - finalHPt) / 2;
-
-        const colOffset = paddingWPt / boxWidthPt;
-        const rowOffset = paddingHPt / boxHeightPt * rowsPerBlock;
-
-        const tlCol = Math.max(0.02, colOffset);
-        const tlRow = startRow - 1 + Math.max(0.1, rowOffset);
-
-        const imgCols = finalWPt / boxWidthPt;
-        const imgRows = finalHPt / boxHeightPt * rowsPerBlock;
-
-        const brCol = tlCol + imgCols;
-        const brRow = tlRow + imgRows;
-
-        // absolute配置（印刷時にセルと一緒に動かない）
+        // tl/br形式で写真行数分に配置（余白行は含まない）
+        // アスペクト比はExcelのnoChangeAspectで維持される
+        const photoRows = layout.photoRows;
         sheet.addImage(imageId, {
-          tl: { col: tlCol, row: tlRow },
-          br: { col: brCol, row: brRow },
+          tl: { col: 0, row: startRow - 1 },
+          br: { col: 1, row: startRow - 1 + photoRows },
           editAs: 'absolute'
         });
 
@@ -192,7 +174,7 @@ export const generateExcel = async (
         sheet.addImage(imageId, {
           tl: { col: 0.02, row: startRow - 1 + 0.1 },
           ext: { width: 400, height: 300 },
-          editAs: 'oneCell'
+          editAs: 'absolute'
         });
       }
 
@@ -200,8 +182,9 @@ export const generateExcel = async (
       const createField = (r: number, label: string, value: string, rowSpan: number) => {
         let finalRowSpan = rowSpan;
         if (isTwoUp) {
+          // 2upモード: station=2行, remarks=残り(rowsPerBlock-2行)
           if (label === txt.labelStation) finalRowSpan = 2;
-          if (label === txt.labelRemarks) finalRowSpan = 16;
+          if (label === txt.labelRemarks) finalRowSpan = rowsPerBlock - 2;
         }
 
         const labelCell = sheet.getCell(r, 2);

@@ -301,43 +301,27 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
           extension: 'jpeg',
         });
 
-        // pt単位で計算
-        const boxWidthPt = layout.COL_A_WIDTH * layout.PT_PER_COL;
-        const boxHeightPt = layout.rowsPerBlock * layout.ROW_HEIGHT_PTS;
+        // ボックスサイズ（px）- セルサイズから計算
+        const boxWidthPx = layout.COL_A_WIDTH * layout.PIXELS_PER_COL_UNIT;
+        const boxHeightPx = layout.rowsPerBlock * layout.ROW_HEIGHT_PTS * layout.PT_TO_PX;
 
-        // CALS画像 (1280x960) をptに変換
+        // CALS画像 (1280x960)
         const imgW = 1280, imgH = 960;
-        const imgWPt = imgW * CONVERSION.PX_TO_PT;
-        const imgHPt = imgH * CONVERSION.PX_TO_PT;
 
-        // スケール計算
-        const scaleW = (boxWidthPt * 0.95) / imgWPt;
-        const scaleH = (boxHeightPt * 0.95) / imgHPt;
+        // スケール計算（セルサイズに合わせる、100%フィル）
+        const scaleW = boxWidthPx / imgW;
+        const scaleH = boxHeightPx / imgH;
         const scale = Math.min(scaleW, scaleH);
 
-        const finalWPt = imgWPt * scale;
-        const finalHPt = imgHPt * scale;
+        const finalW = Math.round(imgW * scale);
+        const finalH = Math.round(imgH * scale);
 
-        // セル位置計算（中央配置）
-        const paddingWPt = (boxWidthPt - finalWPt) / 2;
-        const paddingHPt = (boxHeightPt - finalHPt) / 2;
-
-        const colOffset = paddingWPt / boxWidthPt;
-        const rowOffset = paddingHPt / boxHeightPt * layout.rowsPerBlock;
-
-        const tlCol = Math.max(0.02, colOffset);
-        const tlRow = startRow - 1 + Math.max(0.1, rowOffset);
-
-        const imgCols = finalWPt / boxWidthPt;
-        const imgRows = finalHPt / boxHeightPt * layout.rowsPerBlock;
-
-        const brCol = tlCol + imgCols;
-        const brRow = tlRow + imgRows;
-
-        // absolute配置
+        // tl/br形式で写真行数分に配置（余白行は含まない）
+        // アスペクト比はExcelのnoChangeAspectで維持される
+        const photoRows = layout.rowsPerBlock - 1; // 余白1行分を除く
         sheet.addImage(imageId, {
-          tl: { col: tlCol, row: tlRow },
-          br: { col: brCol, row: brRow },
+          tl: { col: 0, row: startRow - 1 },
+          br: { col: 1, row: startRow - 1 + photoRows },
           editAs: 'absolute'
         });
       }
@@ -346,8 +330,9 @@ async function generateExcelDemo(records: PhotoRecord[], photosPerPage: 2 | 3 = 
       const createField = (r: number, label: string, value: string, rowSpan: number) => {
         let finalRowSpan = rowSpan;
         if (isTwoUp) {
+          // 2upモード: station=2行, remarks=残り(11-2=9行)
           if (label === LABELS.labelStation) finalRowSpan = 2;
-          if (label === LABELS.labelRemarks) finalRowSpan = 16;
+          if (label === LABELS.labelRemarks) finalRowSpan = layout.rowsPerBlock - 2;
         }
 
         const labelCell = sheet.getCell(r, 2);
