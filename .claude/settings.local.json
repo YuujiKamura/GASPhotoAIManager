@@ -32,7 +32,8 @@
       "Bash(timeout 5 npm run dev:*)",
       "Bash(git merge:*)",
       "Bash(git ls-tree:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

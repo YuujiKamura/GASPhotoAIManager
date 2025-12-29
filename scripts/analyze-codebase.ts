@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,13 @@ interface Task {
   estimatedLines?: number;  // 削減見込み行数
 }
 
+interface HealthCheck {
+  name: string;
+  status: 'ok' | 'warning' | 'error';
+  count: number;
+  details: string[];
+}
+
 interface CodebaseStats {
   generatedAt: string;
   totalFiles: number;
@@ -39,6 +47,7 @@ interface CodebaseStats {
   hooks: { count: number; files: string[] };
   utils: { count: number; files: string[] };
   tasks: Task[];  // 自動生成タスク
+  health: HealthCheck[];  // 健全性チェック結果
 }
 
 const ROOT = path.resolve(__dirname, '..');
@@ -81,6 +90,145 @@ function walkDir(dir: string, ext: string[]): FileStats[] {
   }
 
   return results;
+}
+
+// 健全性チェックを実行
+function runHealthChecks(): HealthCheck[] {
+  const checks: HealthCheck[] = [];
+
+  // 1. npm audit - セキュリティ脆弱性
+  console.log('  📦 Running npm audit...');
+  try {
+    execSync('npm audit --json', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+    checks.push({ name: 'npm audit', status: 'ok', count: 0, details: ['脆弱性なし'] });
+  } catch (e: any) {
+    try {
+      const result = JSON.parse(e.stdout || '{}');
+      const vulns = result.metadata?.vulnerabilities || {};
+      const total = (vulns.high || 0) + (vulns.critical || 0) + (vulns.moderate || 0) + (vulns.low || 0);
+      const details: string[] = [];
+      if (vulns.critical) details.push(`critical: ${vulns.critical}`);
+      if (vulns.high) details.push(`high: ${vulns.high}`);
+      if (vulns.moderate) details.push(`moderate: ${vulns.moderate}`);
+      if (vulns.low) details.push(`low: ${vulns.low}`);
+      checks.push({
+        name: 'npm audit',
+        status: vulns.critical || vulns.high ? 'error' : total > 0 ? 'warning' : 'ok',
+        count: total,
+        details: details.length ? details : ['脆弱性なし']
+      });
+    } catch {
+      checks.push({ name: 'npm audit', status: 'warning', count: 0, details: ['解析失敗'] });
+    }
+  }
+
+  // 2. depcheck - 未使用依存関係
+  console.log('  📦 Running depcheck...');
+  try {
+    const result = execSync('npx depcheck --json', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+    const data = JSON.parse(result);
+    const unused = Object.keys(data.dependencies || {});
+    const missing = Object.keys(data.missing || {});
+    const details: string[] = [];
+    if (unused.length) details.push(`未使用: ${unused.slice(0, 5).join(', ')}${unused.length > 5 ? '...' : ''}`);
+    if (missing.length) details.push(`不足: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '...' : ''}`);
+    checks.push({
+      name: 'depcheck',
+      status: unused.length > 3 ? 'warning' : 'ok',
+      count: unused.length,
+      details: details.length ? details : ['問題なし']
+    });
+  } catch {
+    checks.push({ name: 'depcheck', status: 'warning', count: 0, details: ['解析失敗'] });
+  }
+
+  // 3. TypeScript - 型エラー
+  console.log('  📦 Running tsc...');
+  try {
+    execSync('npx tsc --noEmit', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+    checks.push({ name: 'TypeScript', status: 'ok', count: 0, details: ['型エラーなし'] });
+  } catch (e: any) {
+    const output = e.stdout || e.stderr || '';
+    const errorCount = (output.match(/error TS\d+/g) || []).length;
+    const lines = output.split('\n').filter((l: string) => l.includes('error TS')).slice(0, 5);
+    checks.push({
+      name: 'TypeScript',
+      status: errorCount > 0 ? 'error' : 'ok',
+      count: errorCount,
+      details: lines.length ? lines.map((l: string) => l.slice(0, 80)) : ['型エラーなし']
+    });
+  }
+
+  // 4. ESLint - コード品質
+  console.log('  📦 Running eslint...');
+  try {
+    execSync('npx eslint . --ext .ts,.tsx --format json --max-warnings 0', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+    checks.push({ name: 'ESLint', status: 'ok', count: 0, details: ['問題なし'] });
+  } catch (e: any) {
+    try {
+      const results = JSON.parse(e.stdout || '[]');
+      let errorCount = 0;
+      let warningCount = 0;
+      for (const file of results) {
+        errorCount += file.errorCount || 0;
+        warningCount += file.warningCount || 0;
+      }
+      checks.push({
+        name: 'ESLint',
+        status: errorCount > 0 ? 'error' : warningCount > 0 ? 'warning' : 'ok',
+        count: errorCount + warningCount,
+        details: [`errors: ${errorCount}, warnings: ${warningCount}`]
+      });
+    } catch {
+      checks.push({ name: 'ESLint', status: 'ok', count: 0, details: ['設定なし or 問題なし'] });
+    }
+  }
+
+  // 5. jscpd - 重複コード
+  console.log('  📦 Running jscpd...');
+  try {
+    const result = execSync(
+      'npx jscpd --min-tokens 50 --reporters json --output .jscpd --silent components services hooks utils',
+      { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' }
+    );
+    const reportPath = path.join(ROOT, '.jscpd', 'jscpd-report.json');
+    if (fs.existsSync(reportPath)) {
+      const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+      const clones = report.duplicates?.length || 0;
+      const percentage = report.statistics?.total?.percentage || 0;
+      checks.push({
+        name: 'jscpd',
+        status: percentage > 10 ? 'warning' : 'ok',
+        count: clones,
+        details: [`重複: ${percentage.toFixed(1)}% (${clones}箇所)`]
+      });
+      // クリーンアップ
+      fs.rmSync(path.join(ROOT, '.jscpd'), { recursive: true, force: true });
+    } else {
+      checks.push({ name: 'jscpd', status: 'ok', count: 0, details: ['重複なし'] });
+    }
+  } catch {
+    checks.push({ name: 'jscpd', status: 'ok', count: 0, details: ['解析スキップ'] });
+  }
+
+  // 6. knip - 未使用export/ファイル
+  console.log('  📦 Running knip...');
+  try {
+    execSync('npx knip --no-progress', { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe' });
+    checks.push({ name: 'knip', status: 'ok', count: 0, details: ['未使用コードなし'] });
+  } catch (e: any) {
+    const output = e.stdout || '';
+    const lines = output.split('\n').filter((l: string) => l.trim());
+    const unusedCount = lines.length;
+    checks.push({
+      name: 'knip',
+      status: unusedCount > 10 ? 'warning' : unusedCount > 0 ? 'ok' : 'ok',
+      count: unusedCount,
+      details: lines.slice(0, 5).map((l: string) => l.slice(0, 60)) || ['未使用コードなし']
+    });
+  }
+
+  return checks;
 }
 
 // 既存のタスク状態を読み込む（status/assigneeを保持するため）
@@ -193,6 +341,10 @@ function analyzeCodebase(): CodebaseStats {
   // タスク生成
   const tasks = generateTasks(largeFiles, hooks);
 
+  // 健全性チェック
+  console.log('🏥 Running health checks...');
+  const health = runHealthChecks();
+
   const stats: CodebaseStats = {
     generatedAt: new Date().toISOString(),
     totalFiles: allFiles.length,
@@ -214,6 +366,7 @@ function analyzeCodebase(): CodebaseStats {
       count: utils.length,
       files: utils.map(f => `${f.path} (${f.lines}行)`)
     },
+    health,
     tasks
   };
 
@@ -242,6 +395,13 @@ function main() {
     stats.largeFiles.slice(0, 5).forEach(f => {
       console.log(`   ${f.lines.toLocaleString().padStart(5)} lines: ${f.path}`);
     });
+  }
+
+  // 健全性チェック結果
+  console.log('\n🏥 Health checks:');
+  for (const check of stats.health) {
+    const icon = check.status === 'ok' ? '✅' : check.status === 'warning' ? '⚠️' : '❌';
+    console.log(`   ${icon} ${check.name}: ${check.details[0]}`);
   }
 }
 

@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:48:08.379Z",
+  "generatedAt": "2025-12-29T00:57:44.322Z",
   "totalFiles": 124,
-  "totalLines": 30076,
+  "totalLines": 30237,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (535行)",
+      "components/CodebaseHealthDashboard.tsx (536行)",
       "components/ConsolePanel.tsx (171行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
@@ -172,6 +172,64 @@
       "utils/zipGenerator.ts (47行)"
     ]
   },
+  "health": [
+    {
+      "name": "npm audit",
+      "status": "ok",
+      "count": 0,
+      "details": [
+        "脆弱性なし"
+      ]
+    },
+    {
+      "name": "depcheck",
+      "status": "warning",
+      "count": 0,
+      "details": [
+        "解析失敗"
+      ]
+    },
+    {
+      "name": "TypeScript",
+      "status": "error",
+      "count": 67,
+      "details": [
+        "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
+        "components/ManualPairingModal.tsx(197,21): error TS2322: Type '{ key: any; photo",
+        "components/MasterEditorModal.tsx(305,61): error TS2339: Property 'name' does not",
+        "components/MasterEditorModal.tsx(306,76): error TS2339: Property 'name' does not",
+        "components/MasterEditorModal.tsx(309,32): error TS2339: Property 'name' does not"
+      ]
+    },
+    {
+      "name": "ESLint",
+      "status": "ok",
+      "count": 0,
+      "details": [
+        "errors: 0, warnings: 0"
+      ]
+    },
+    {
+      "name": "jscpd",
+      "status": "ok",
+      "count": 48,
+      "details": [
+        "重複: 2.3% (48箇所)"
+      ]
+    },
+    {
+      "name": "knip",
+      "status": "warning",
+      "count": 221,
+      "details": [
+        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "components/ExamplesModal.tsx                ",
+        "components/NormalizationPresetsPanel.tsx    ",
+        "components/PersonalStorageSetup.tsx         ",
+        "components/SimplePairingMode.tsx            "
+      ]
+    }
+  ],
   "tasks": [
     {
       "id": "refactor-utils-pdfGenerator-ts",
@@ -266,11 +324,11 @@
     {
       "id": "refactor-components-CodebaseHealthDashboard-tsx",
       "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "535行。重複削除・ロジック整理で300行以下を目指す",
+      "description": "536行。重複削除・ロジック整理で300行以下を目指す",
       "file": "components/CodebaseHealthDashboard.tsx",
       "priority": "low",
       "status": "todo",
-      "estimatedLines": 235
+      "estimatedLines": 236
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",

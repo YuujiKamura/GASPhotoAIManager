@@ -40,8 +40,8 @@ interface DependencyInfo {
 interface HealthCheck {
   name: string;
   status: 'ok' | 'warning' | 'error';
-  message: string;
-  details?: string;
+  count: number;
+  details: string[];
 }
 
 const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang, onClose }) => {
@@ -121,33 +121,8 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
         { name: 'vitest', version: '^3.0.4', type: 'dev' }
       ];
 
-      // Health checks
-      const checks: HealthCheck[] = [
-        {
-          name: 'TypeScript',
-          status: 'ok',
-          message: lang === 'ja' ? '100% TypeScript' : '100% TypeScript',
-          details: lang === 'ja' ? '型安全性確保' : 'Type safety ensured'
-        },
-        {
-          name: lang === 'ja' ? 'ビルド' : 'Build',
-          status: 'warning',
-          message: lang === 'ja' ? 'チャンクサイズ警告' : 'Chunk size warning',
-          details: lang === 'ja' ? 'index.js 1.43MB (gzip: 521KB)' : 'index.js 1.43MB (gzip: 521KB)'
-        },
-        {
-          name: lang === 'ja' ? 'コード分割' : 'Code Splitting',
-          status: 'warning',
-          message: lang === 'ja' ? '部分的に導入' : 'Partially implemented',
-          details: lang === 'ja' ? 'React.lazy導入済み（8コンポーネント）' : 'React.lazy applied (8 components)'
-        },
-        {
-          name: lang === 'ja' ? 'カスタムフック' : 'Custom Hooks',
-          status: 'warning',
-          message: lang === 'ja' ? '作成済み・未使用' : 'Created but unused',
-          details: lang === 'ja' ? 'hooks/に5個作成済み' : '5 hooks in hooks/'
-        }
-      ];
+      // Health checks - 生成されたデータを使用
+      const checks: HealthCheck[] = (codebaseStats as any).health || [];
 
       setFileMetrics(metrics);
       setDependencies(deps);
@@ -460,10 +435,24 @@ ${task.id}`;
               >
                 {expandedSections.has('health') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 {txt.health}
+                {healthChecks.length > 0 && (
+                  <span className="ml-2 flex gap-1">
+                    {healthChecks.filter(c => c.status === 'error').length > 0 && (
+                      <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                        {healthChecks.filter(c => c.status === 'error').length}
+                      </span>
+                    )}
+                    {healthChecks.filter(c => c.status === 'warning').length > 0 && (
+                      <span className="bg-yellow-500 text-white text-xs px-2 py-0.5 rounded-full">
+                        {healthChecks.filter(c => c.status === 'warning').length}
+                      </span>
+                    )}
+                  </span>
+                )}
               </button>
 
               {expandedSections.has('health') && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {healthChecks.map((check, idx) => (
                     <div
                       key={idx}
@@ -473,14 +462,26 @@ ${task.id}`;
                         'bg-red-50 border-red-200'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-2">
-                        {getStatusIcon(check.status)}
-                        <span className="font-semibold text-gray-900 text-sm">{check.name}</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(check.status)}
+                          <span className="font-semibold text-gray-900 text-sm">{check.name}</span>
+                        </div>
+                        {check.count > 0 && (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                            check.status === 'error' ? 'bg-red-200 text-red-700' :
+                            check.status === 'warning' ? 'bg-yellow-200 text-yellow-700' :
+                            'bg-gray-200 text-gray-700'
+                          }`}>
+                            {check.count}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-gray-700">{check.message}</p>
-                      {check.details && (
-                        <p className="text-xs text-gray-500 mt-1">{check.details}</p>
-                      )}
+                      {check.details.map((detail, i) => (
+                        <p key={i} className="text-xs text-gray-600 truncate" title={detail}>
+                          {detail}
+                        </p>
+                      ))}
                     </div>
                   ))}
                 </div>
