@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:46:09.200Z",
+  "generatedAt": "2025-12-29T00:48:08.379Z",
   "totalFiles": 124,
-  "totalLines": 30071,
+  "totalLines": 30076,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (530行)",
+      "components/CodebaseHealthDashboard.tsx (535行)",
       "components/ConsolePanel.tsx (171行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
@@ -266,11 +266,11 @@
     {
       "id": "refactor-components-CodebaseHealthDashboard-tsx",
       "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "530行。重複削除・ロジック整理で300行以下を目指す",
+      "description": "535行。重複削除・ロジック整理で300行以下を目指す",
       "file": "components/CodebaseHealthDashboard.tsx",
       "priority": "low",
       "status": "todo",
-      "estimatedLines": 230
+      "estimatedLines": 235
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",

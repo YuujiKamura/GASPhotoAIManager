@@ -298,7 +298,12 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
 
               {expandedSections.has('tasks') && (
                 <div className="p-5 pt-0 space-y-3">
-                  {codebaseStats.tasks?.filter((t: any) => t.status === 'todo').map((task: any) => (
+                  {codebaseStats.tasks?.filter((t: any) => t.status === 'todo')
+                    .sort((a: any, b: any) => {
+                      const order = { high: 0, medium: 1, low: 2 };
+                      return (order[a.priority as keyof typeof order] ?? 2) - (order[b.priority as keyof typeof order] ?? 2);
+                    })
+                    .map((task: any) => (
                     <div
                       key={task.id}
                       className={`rounded-xl border-2 p-4 ${
