@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:57:44.322Z",
+  "generatedAt": "2025-12-29T01:06:04.955Z",
   "totalFiles": 124,
-  "totalLines": 30237,
+  "totalLines": 30243,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -128,7 +128,7 @@
       "hooks/useMasterEditorState.ts (151行)",
       "hooks/useNormalizationFlow.ts (46行)",
       "hooks/useNormalizationHandlers.ts (53行)",
-      "hooks/usePdfHandlers.ts (97行)",
+      "hooks/usePdfHandlers.ts (100行)",
       "hooks/usePendingState.ts (76行)",
       "hooks/usePhotoManagement.ts (84行)",
       "hooks/usePhotosState.ts (171行)",
@@ -222,7 +222,7 @@
       "status": "warning",
       "count": 221,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "Unused files (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -380,7 +380,7 @@
       "title": "PDF機能を遅延読込",
       "description": "pdfGenerator.ts, PdfLoadDialog.tsx を動的importに変更",
       "priority": "medium",
-      "status": "todo",
+      "status": "done",
       "estimatedLines": 0
     }
   ]
