@@ -60,15 +60,22 @@ export const useInteractiveAnalysis = (
       };
       conversationRef.current.push(aiMessage);
 
+      const newAnalysis = result.analysis || null;
+
       setState(prev => ({
         ...prev,
         isProcessing: false,
         isStreaming: false,
         streamingText: '',
         messages: [...conversationRef.current],
-        currentAnalysis: result.analysis || prev.currentAnalysis,
+        currentAnalysis: newAnalysis || prev.currentAnalysis,
         currentChoices: DEFAULT_CHOICES,
       }));
+
+      // 解析結果があれば自動反映（OKを待たない）
+      if (newAnalysis) {
+        onConfirm(photo.fileName, newAnalysis);
+      }
     } catch (error: any) {
       if (!abortRef.current) {
         setState(prev => ({
@@ -79,7 +86,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [apiKey]);
+  }, [apiKey, onConfirm]);
 
   // ダイアログを閉じる
   const closeDialog = useCallback(() => {
@@ -136,15 +143,22 @@ export const useInteractiveAnalysis = (
       };
       conversationRef.current.push(aiMessage);
 
+      const newAnalysis = result.analysis || null;
+
       setState(prev => ({
         ...prev,
         isProcessing: false,
         isStreaming: false,
         streamingText: '',
         messages: [...conversationRef.current],
-        currentAnalysis: result.analysis || prev.currentAnalysis,
+        currentAnalysis: newAnalysis || prev.currentAnalysis,
         currentChoices: DEFAULT_CHOICES,
       }));
+
+      // 解析結果があれば自動反映（OKを待たない）
+      if (newAnalysis && state.targetPhoto) {
+        onConfirm(state.targetPhoto.fileName, newAnalysis);
+      }
     } catch (error: any) {
       if (!abortRef.current) {
         setState(prev => ({
@@ -155,7 +169,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [state.targetPhoto, apiKey]);
+  }, [state.targetPhoto, apiKey, onConfirm]);
 
   // 選択肢を選択
   const selectChoice = useCallback(async (choice: DialogChoice) => {

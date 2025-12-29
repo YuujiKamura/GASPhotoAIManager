@@ -9,7 +9,7 @@ import { PhotoRecord, AIAnalysisResult } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { sanitizeErrorMessage } from './apiKey';
 import { getSelectedModel } from './models';
-import { INTERACTIVE_SYSTEM_PROMPT } from './systemPrompts';
+import { getSystemInstruction } from './systemPrompts';
 
 // ============================================
 // 型定義
@@ -92,11 +92,25 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
   }
 
   try {
+    // 階層マスタを含むシステム指示を使用（通常解析と同じ知識を持たせる）
+    const systemInstruction = getSystemInstruction('construction') + `
+
+## 対話モード追加ルール
+- 簡潔でプロフェッショナルに対話（1-2文で返答）
+- 敬語は使わず、フランクに話す（「～だね」「～しよう」）
+- 写真を解析したら所見を述べ、結果確認を促す
+
+## 出力形式（JSON必須）
+{
+  "response": "ユーザーへの返答",
+  "analysis": { fileName, workType, variety, detail, station, remarks, measurements, description, hasBoard, detectedText, reasoning }
+}`;
+
     const result = await genAI.models.generateContentStream({
       model: modelToUse,
       contents,
       config: {
-        systemInstruction: INTERACTIVE_SYSTEM_PROMPT,
+        systemInstruction,
         responseMimeType: 'application/json',
         temperature: 0.3,
       },

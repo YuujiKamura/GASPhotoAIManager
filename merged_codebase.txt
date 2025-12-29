@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 09:12:15
+生成日時: 2025-12-29 09:23:56
 ================================================================================
 
 === ファイル一覧 ===
@@ -3478,15 +3478,22 @@ export const useInteractiveAnalysis = (
       };
       conversationRef.current.push(aiMessage);
 
+      const newAnalysis = result.analysis || null;
+
       setState(prev => ({
         ...prev,
         isProcessing: false,
         isStreaming: false,
         streamingText: '',
         messages: [...conversationRef.current],
-        currentAnalysis: result.analysis || prev.currentAnalysis,
+        currentAnalysis: newAnalysis || prev.currentAnalysis,
         currentChoices: DEFAULT_CHOICES,
       }));
+
+      // 解析結果があれば自動反映（OKを待たない）
+      if (newAnalysis) {
+        onConfirm(photo.fileName, newAnalysis);
+      }
     } catch (error: any) {
       if (!abortRef.current) {
         setState(prev => ({
@@ -3497,7 +3504,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [apiKey]);
+  }, [apiKey, onConfirm]);
 
   // ダイアログを閉じる
   const closeDialog = useCallback(() => {
@@ -3554,15 +3561,22 @@ export const useInteractiveAnalysis = (
       };
       conversationRef.current.push(aiMessage);
 
+      const newAnalysis = result.analysis || null;
+
       setState(prev => ({
         ...prev,
         isProcessing: false,
         isStreaming: false,
         streamingText: '',
         messages: [...conversationRef.current],
-        currentAnalysis: result.analysis || prev.currentAnalysis,
+        currentAnalysis: newAnalysis || prev.currentAnalysis,
         currentChoices: DEFAULT_CHOICES,
       }));
+
+      // 解析結果があれば自動反映（OKを待たない）
+      if (newAnalysis && state.targetPhoto) {
+        onConfirm(state.targetPhoto.fileName, newAnalysis);
+      }
     } catch (error: any) {
       if (!abortRef.current) {
         setState(prev => ({
@@ -3573,7 +3587,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [state.targetPhoto, apiKey]);
+  }, [state.targetPhoto, apiKey, onConfirm]);
 
   // 選択肢を選択
   const selectChoice = useCallback(async (choice: DialogChoice) => {
@@ -18647,7 +18661,7 @@ import { PhotoRecord, AIAnalysisResult } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { sanitizeErrorMessage } from './apiKey';
 import { getSelectedModel } from './models';
-import { INTERACTIVE_SYSTEM_PROMPT } from './systemPrompts';
+import { getSystemInstruction } from './systemPrompts';
 
 // ============================================
 // 型定義
@@ -18730,11 +18744,25 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
   }
 
   try {
+    // 階層マスタを含むシステム指示を使用（通常解析と同じ知識を持たせる）
+    const systemInstruction = getSystemInstruction('construction') + `
+
+## 対話モード追加ルール
+- 簡潔でプロフェッショナルに対話（1-2文で返答）
+- 敬語は使わず、フランクに話す（「～だね」「～しよう」）
+- 写真を解析したら所見を述べ、結果確認を促す
+
+## 出力形式（JSON必須）
+{
+  "response": "ユーザーへの返答",
+  "analysis": { fileName, workType, variety, detail, station, remarks, measurements, description, hasBoard, detectedText, reasoning }
+}`;
+
     const result = await genAI.models.generateContentStream({
       model: modelToUse,
       contents,
       config: {
-        systemInstruction: INTERACTIVE_SYSTEM_PROMPT,
+        systemInstruction,
         responseMimeType: 'application/json',
         temperature: 0.3,
       },
