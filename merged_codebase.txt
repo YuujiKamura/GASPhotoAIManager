@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 10:15:05
+生成日時: 2025-12-29 10:19:42
 ================================================================================
 
 === ファイル一覧 ===
@@ -18940,7 +18940,11 @@ export const analyzePhotoInteractive = async (
 ファイル名: ${photo.fileName}
 ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n種別: ${photo.analysis.variety || ''}\n細別: ${photo.analysis.detail || ''}\n測点: ${photo.analysis.station}\n備考: ${photo.analysis.remarks}` : ''}
 
-写真の内容を確認して、所見を述べてください。`,
+【指示】
+1. 黒板に書いてある文字を全て読み取ること（省略禁止）
+2. 工種・種別・細別を階層マスタから正確に選択
+3. 測点、備考、寸法も完全に転記
+4. 解析結果をJSON形式で出力`,
         },
       ],
     });
@@ -18969,14 +18973,28 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
     const systemInstruction = getSystemInstruction('construction') + `
 
 ## 対話モード追加ルール
-- 簡潔でプロフェッショナルに対話（1-2文で返答）
 - 敬語は使わず、フランクに話す（「～だね」「～しよう」）
 - 写真を解析したら所見を述べ、結果確認を促す
+- **全ての項目を省略せず完全に記入すること**
+- 要約・省略は禁止。黒板に書いてある文字は全て転記する
+- 工種・種別・細別は階層マスタから正確に選択する
 
 ## 出力形式（JSON必須）
 {
-  "response": "ユーザーへの返答",
-  "analysis": { fileName, workType, variety, detail, station, remarks, measurements, description, hasBoard, detectedText, reasoning }
+  "response": "ユーザーへの返答（所見を含む）",
+  "analysis": {
+    "fileName": "ファイル名",
+    "workType": "工種（階層マスタから選択）",
+    "variety": "種別（階層マスタから選択）",
+    "detail": "細別（階層マスタから選択）",
+    "station": "測点（黒板から読み取り。例: NO.5+10.00）",
+    "remarks": "摘要/備考カテゴリ（黒板から完全転記）",
+    "measurements": "寸法・規格（黒板から完全転記）",
+    "description": "写真の説明（何が写っているか詳細に）",
+    "hasBoard": true/false,
+    "detectedText": "黒板から読み取った全テキスト（省略禁止）",
+    "reasoning": "この判定を行った理由"
+  }
 }`;
 
     const result = await genAI.models.generateContentStream({

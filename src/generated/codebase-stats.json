@@ -1,13 +1,8 @@
 {
-  "generatedAt": "2025-12-29T01:02:11.994Z",
+  "generatedAt": "2025-12-29T01:19:25.823Z",
   "totalFiles": 124,
-  "totalLines": 30240,
+  "totalLines": 29813,
   "largeFiles": [
-    {
-      "path": "utils/pdfGenerator.ts",
-      "lines": 927,
-      "size": 31630
-    },
     {
       "path": "utils/constructionMaster.ts",
       "lines": 818,
@@ -52,6 +47,11 @@
       "path": "services/personalStorage.ts",
       "lines": 538,
       "size": 13343
+    },
+    {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 536,
+      "size": 23860
     }
   ],
   "components": {
@@ -95,7 +95,7 @@
       "services/gemini/apiKey.ts (170行)",
       "services/gemini/helpers.ts (106行)",
       "services/gemini/index.ts (88行)",
-      "services/gemini/interactiveAnalysis.ts (170行)",
+      "services/gemini/interactiveAnalysis.ts (188行)",
       "services/gemini/models.ts (150行)",
       "services/gemini/normalization.ts (445行)",
       "services/gemini/systemPrompts.ts (282行)",
@@ -151,7 +151,7 @@
       "utils/learnedSortOrder.ts (89行)",
       "utils/locationUtils.ts (43行)",
       "utils/masterEditorStorage.ts (165行)",
-      "utils/pdfGenerator.ts (927行)",
+      "utils/pdfGenerator.ts (479行)",
       "utils/sortingUtils.ts (276行)",
       "utils/storage/analysisCache.ts (103行)",
       "utils/storage/dbCore.ts (68行)",
@@ -192,7 +192,7 @@
     {
       "name": "TypeScript",
       "status": "error",
-      "count": 67,
+      "count": 64,
       "details": [
         "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
         "components/ManualPairingModal.tsx(197,21): error TS2322: Type '{ key: any; photo",
@@ -212,9 +212,9 @@
     {
       "name": "jscpd",
       "status": "ok",
-      "count": 48,
+      "count": 46,
       "details": [
-        "重複: 2.3% (48箇所)"
+        "重複: 2.2% (46箇所)"
       ]
     },
     {
@@ -231,15 +231,6 @@
     }
   ],
   "tasks": [
-    {
-      "id": "refactor-utils-pdfGenerator-ts",
-      "title": "utils/pdfGenerator.ts をリファクタ",
-      "description": "927行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "utils/pdfGenerator.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 627
-    },
     {
       "id": "refactor-utils-constructionMaster-ts",
       "title": "utils/constructionMaster.ts をリファクタ",
