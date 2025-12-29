@@ -3,7 +3,7 @@ import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisH
 import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, assignSceneIds, getSelectedModel, NormalizationCorrection } from '../services/geminiService';
 import { processPhotosWithSmartFlow } from '../services/smartFlowService';
-import { getCachedAnalysis, cacheAnalysis, saveAnalysisHistory, getAnalysisHistoryEntry } from '../utils/storage';
+import { getCachedAnalysis, cacheAnalysis, saveAnalysisHistory } from '../utils/storage';
 import { runAIAgent } from '../services/aiAgentService';
 import { loadAliasSettings, hasAliases, applyAliasesToRecords } from '../utils/workTypeAliases';
 import { extractLocationName } from '../utils/locationUtils';
@@ -12,7 +12,6 @@ import { OriginalData } from '../components/NormalizationPreviewModal';
 
 const DEFAULT_BATCH_SIZE = 6;
 const PARALLEL_BATCHES = 2;
-const MAX_PHOTOS = 30;
 
 interface UseAnalysisHandlersProps {
   apiKey: string | null;
@@ -45,370 +44,189 @@ interface UseAnalysisHandlersProps {
   txt: any;
 }
 
-export function useAnalysisHandlers({
-  apiKey,
-  photos,
-  setPhotos,
-  stats,
-  setStats,
-  appMode,
-  lang,
-  currentSortPolicy,
-  addLog,
-  setIsProcessing,
-  setCurrentStep,
-  setErrorMsg,
-  setSuccessMsg,
-  setShowPreview,
-  setInitialLayout,
-  setShowNormalizationModal,
-  setNormalizationProposals,
-  setNormalizationOriginals,
-  setPhotosForNormalization,
-  setManualPairingPhotos,
-  setShowManualPairing,
-  setShowHistory,
-  setIsAskingAI,
-  initialInstruction,
-  setInitialInstruction,
-  activeInstruction,
-  setActiveInstruction,
-  txt,
-}: UseAnalysisHandlersProps) {
+// ヘルパー関数
+const createDefaultAnalysis = (fileName: string): AIAnalysisResult => ({
+  fileName, workType: '', variety: '', detail: '', station: '', remarks: '', description: '', hasBoard: false, detectedText: ''
+});
+
+const createBatches = <T,>(items: T[], size: number): T[][] => {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size));
+  return batches;
+};
+
+const loadPhotoFromFile = async (file: File): Promise<PhotoRecord> => {
+  const date = await getPhotoDate(file);
+  const { base64, mimeType } = await processImageForAI(file);
+  return { fileName: file.name, base64, mimeType, fileSize: file.size, lastModified: file.lastModified, originalFile: file, status: 'pending', date, fromCache: false };
+};
+
+export function useAnalysisHandlers(props: UseAnalysisHandlersProps) {
+  const { apiKey, photos, setPhotos, setStats, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep,
+    setErrorMsg, setSuccessMsg, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals,
+    setNormalizationOriginals, setPhotosForNormalization, setManualPairingPhotos, setShowManualPairing, setShowHistory,
+    setIsAskingAI, initialInstruction, setInitialInstruction, activeInstruction, setActiveInstruction, txt } = props;
+
   const shouldAbortRef = useRef(false);
 
-  const logIndividualResult = useCallback((fileName: string, result: AIAnalysisResult) => {
-    const summary = [
-      `📸 ${fileName}`,
-      result.workType && `工種: ${result.workType}`,
-      result.variety && `種別: ${result.variety}`,
-      result.detail && `細別: ${result.detail}`,
-      result.station && `測点: ${result.station}`,
-      result.remarks && `備考: ${result.remarks}`,
-    ].filter(Boolean).join(' | ');
-    addLog(summary, 'success', result);
-  }, [addLog]);
+  const withProcessing = async <T,>(fn: () => Promise<T>, cleanup = true): Promise<T | undefined> => {
+    setIsProcessing(true);
+    try { return await fn(); }
+    catch (err: any) { setErrorMsg(err.message || 'Error'); addLog('Error', 'error', err); return undefined; }
+    finally { if (cleanup) { setIsProcessing(false); setCurrentStep(''); } }
+  };
 
-  // AIエージェントにリクエスト
+  const processBatchesParallel = async (
+    targets: PhotoRecord[], instruction: string, batchSize: number,
+    onResult: (record: PhotoRecord, result: AIAnalysisResult) => PhotoRecord
+  ): Promise<PhotoRecord[]> => {
+    const batches = createBatches(targets, batchSize);
+    const results: PhotoRecord[] = [];
+    for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+      if (shouldAbortRef.current) break;
+      const parallel = batches.slice(i, i + PARALLEL_BATCHES);
+      setCurrentStep(`${txt.analyzing} (${i * batchSize + 1}/${targets.length})`);
+      const batchResults = await Promise.all(parallel.map(async batch => {
+        if (!apiKey) return batch;
+        try {
+          const results = await analyzePhotoBatch(batch, instruction, batchSize, appMode, apiKey, addLog, (fn, r) => addLog(`📸 ${fn} | ${r.workType}`, 'success', r), () => shouldAbortRef.current);
+          return batch.map(rec => {
+            const res = results.find(r => r.fileName === rec.fileName);
+            return res ? onResult(rec, res) : { ...rec, status: 'error' as const };
+          });
+        } catch (e: any) { addLog(`Batch failed: ${e.message}`, 'error'); return batch.map(r => ({ ...r, status: 'error' as const })); }
+      }));
+      results.push(...batchResults.flat());
+    }
+    return results;
+  };
+
   const handleAskAI = useCallback(async (prompt: string): Promise<string> => {
     setIsAskingAI(true);
     try {
       addLog(`[AIエージェント] リクエスト: ${prompt.substring(0, 50)}...`, 'info');
-      const response = await runAIAgent(prompt, (log) => addLog(log, 'info'));
+      const response = await runAIAgent(prompt, log => addLog(log, 'info'));
       addLog('[AIエージェント] 完了', 'success');
       return response;
-    } catch (err: any) {
-      addLog(`[AIエージェント] エラー: ${err.message}`, 'error');
-      throw err;
-    } finally {
-      setIsAskingAI(false);
-    }
+    } catch (err: any) { addLog(`[AIエージェント] エラー: ${err.message}`, 'error'); throw err; }
+    finally { setIsAskingAI(false); }
   }, [addLog, setIsAskingAI]);
 
-  // 自動ペアリング
   const handleAutoPair = useCallback(async () => {
-    if (!apiKey) {
-      alert(txt.permissionError);
-      return;
-    }
-
-    setIsProcessing(true);
-    setCurrentStep(txt.pairingProcessing);
-
-    try {
+    if (!apiKey) { alert(txt.permissionError); return; }
+    await withProcessing(async () => {
+      setCurrentStep(txt.pairingProcessing);
       const records = [...photos];
-      const needsAI: PhotoRecord[] = [];
-      const hasStation: PhotoRecord[] = [];
-      const alreadyPaired: PhotoRecord[] = [];
-
-      records.forEach(r => {
-        if (r.analysis?.sceneId && r.analysis.sceneId.startsWith("AI_S")) {
-          alreadyPaired.push(r);
-        } else {
-          const station = normalizeStationName(r.analysis?.station);
-          if (station && station !== "UNKNOWN") {
-            hasStation.push(r);
-          } else {
-            needsAI.push(r);
-          }
-        }
-      });
+      const alreadyPaired = records.filter(r => r.analysis?.sceneId?.startsWith('AI_S'));
+      const hasStation = records.filter(r => !r.analysis?.sceneId?.startsWith('AI_S') && normalizeStationName(r.analysis?.station) !== 'UNKNOWN');
+      const needsAI = records.filter(r => !r.analysis?.sceneId?.startsWith('AI_S') && normalizeStationName(r.analysis?.station) === 'UNKNOWN');
 
       const updatedHasStation = hasStation.map(r => {
         const station = normalizeStationName(r.analysis?.station);
-        return {
-          ...r,
-          analysis: {
-            ...r.analysis!,
-            sceneId: `LOGICAL_${station}`,
-            phase: ((r.analysis?.remarks || "").includes("着手前") ? 'before' : (r.analysis?.remarks || "").includes("完了") || (r.analysis?.remarks || "").includes("竣工") ? 'after' : 'status') as any
-          }
-        };
+        const remarks = r.analysis?.remarks || '';
+        return { ...r, analysis: { ...r.analysis!, sceneId: `LOGICAL_${station}`, phase: (remarks.includes('着手前') ? 'before' : remarks.includes('完了') || remarks.includes('竣工') ? 'after' : 'status') as any } };
       });
 
-      let updatedVisual: PhotoRecord[] = [...alreadyPaired];
-
+      let updatedVisual = [...alreadyPaired];
       if (needsAI.length > 1) {
         try {
           const assignments = await assignSceneIds(needsAI, apiKey, addLog, () => shouldAbortRef.current);
-          const assignmentMap = new Map(assignments.map(a => [a.fileName, a]));
-
-          const processedAI = needsAI.map(r => {
-            const assign = assignmentMap.get(r.fileName);
-            if (assign) {
-              return {
-                ...r,
-                analysis: {
-                  ...r.analysis!,
-                  sceneId: `AI_${assign.sceneId}`,
-                  phase: assign.phase,
-                  visualAnchors: assign.visualAnchors
-                }
-              };
-            }
-            return r;
-          });
-
-          updatedVisual = [...updatedVisual, ...processedAI];
-          addLog(`Visual pairing created anchors for ${assignments.length} photos.`, 'success');
-        } catch (e) {
-          console.error("Visual pairing failed", e);
-          addLog("Visual pairing failed - falling back to timestamp sort.", 'error');
-          updatedVisual = [...updatedVisual, ...needsAI];
-        }
-      } else {
-        updatedVisual = [...updatedVisual, ...needsAI];
-      }
+          const map = new Map(assignments.map(a => [a.fileName, a]));
+          updatedVisual.push(...needsAI.map(r => {
+            const a = map.get(r.fileName);
+            return a ? { ...r, analysis: { ...r.analysis!, sceneId: `AI_${a.sceneId}`, phase: a.phase, visualAnchors: a.visualAnchors } } : r;
+          }));
+          addLog(`Visual pairing: ${assignments.length} photos.`, 'success');
+        } catch { addLog('Visual pairing failed', 'error'); updatedVisual.push(...needsAI); }
+      } else { updatedVisual.push(...needsAI); }
 
       const allUpdated = [...updatedHasStation, ...updatedVisual];
-      allUpdated.forEach(r => {
-        if (r.analysis) {
-          cacheAnalysis(r, r.analysis).catch(console.error);
-        }
-      });
-
+      allUpdated.forEach(r => r.analysis && cacheAnalysis(r, r.analysis).catch(() => {}));
       const { sorted, pairCount, omittedCount } = arrangePairsStrictly(allUpdated);
       setPhotos(sorted);
-      setSuccessMsg(lang === 'ja'
-        ? `${pairCount}組の着手前-完了ペアを作成しました${omittedCount > 0 ? `（${omittedCount}枚を除外）` : ''}`
-        : `Created ${pairCount} before-after pairs${omittedCount > 0 ? ` (${omittedCount} photos omitted)` : ''}`);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg("Pairing failed: " + err.message);
-      addLog("Pairing fatal error", 'error', err);
-    } finally {
-      setIsProcessing(false);
-      setCurrentStep("");
-    }
+      setSuccessMsg(lang === 'ja' ? `${pairCount}組のペアを作成${omittedCount > 0 ? `（${omittedCount}枚除外）` : ''}` : `Created ${pairCount} pairs`);
+    });
   }, [apiKey, photos, setPhotos, lang, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, txt]);
 
-  // スマートソート
   const handleSmartSort = useCallback(() => {
-    const sorted = sortPhotosLogical([...photos], currentSortPolicy);
-    setPhotos(sorted);
-    setSuccessMsg(lang === 'ja' ? "測点・シーン情報に基づいて並び替えました" : "Sorted by Scene & Phase");
+    setPhotos(sortPhotosLogical([...photos], currentSortPolicy));
+    setSuccessMsg(lang === 'ja' ? '並び替え完了' : 'Sorted');
   }, [photos, setPhotos, currentSortPolicy, lang, setSuccessMsg]);
 
-  // 手動ペアリング開始
   const handleStartManualPairing = useCallback(async (files: File[], instruction: string) => {
-    setIsProcessing(true);
-    setErrorMsg(null);
-    addLog('手動ペアリングモードで開始...', 'info');
-    setInitialInstruction(instruction);
-    setActiveInstruction(instruction);
-
-    try {
-      addLog(`${files.length}枚の画像を読み込み中...`, 'info');
-      const records: PhotoRecord[] = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        addLog(`  [${i + 1}/${files.length}] ${file.name}`, 'info');
-        const date = await getPhotoDate(file);
-        const { base64, mimeType } = await processImageForAI(file);
-
-        records.push({
-          fileName: file.name,
-          base64,
-          mimeType,
-          fileSize: file.size,
-          lastModified: file.lastModified,
-          originalFile: file,
-          status: 'pending',
-          date,
-          fromCache: false
-        });
-      }
-
-      addLog(`読み込み完了: ${records.length}枚`, 'success');
+    await withProcessing(async () => {
+      setInitialInstruction(instruction);
+      setActiveInstruction(instruction);
+      addLog(`${files.length}枚読み込み中...`, 'info');
+      const records = await Promise.all(files.map(loadPhotoFromFile));
       setManualPairingPhotos(records);
       setShowManualPairing(true);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "画像読み込みエラー");
-      addLog("画像読み込みエラー", 'error', err);
-    } finally {
-      setIsProcessing(false);
-    }
+      addLog(`読み込み完了: ${records.length}枚`, 'success');
+    });
   }, [addLog, setIsProcessing, setErrorMsg, setInitialInstruction, setActiveInstruction, setManualPairingPhotos, setShowManualPairing]);
 
-  // 手動ペアリング完了
   const handleManualPairingComplete = useCallback((pairs: Array<{ before: PhotoRecord, after: PhotoRecord, id: string }>) => {
     const locationName = extractLocationName(activeInstruction || initialInstruction);
-    const pairedPhotos: PhotoRecord[] = [];
-
-    pairs.forEach((pair, index) => {
-      const sceneId = `MANUAL_S${index + 1}`;
-      const beforePhoto: PhotoRecord = {
-        ...pair.before,
-        analysis: {
-          ...(pair.before.analysis || { fileName: pair.before.fileName, workType: '', variety: '', detail: '', station: '', remarks: '', description: '', hasBoard: false, detectedText: '' }),
-          sceneId,
-          phase: 'before' as const,
-          station: locationName,
-          remarks: '着手前'
-        },
-        status: 'done'
-      };
-
-      const afterPhoto: PhotoRecord = {
-        ...pair.after,
-        analysis: {
-          ...(pair.after.analysis || { fileName: pair.after.fileName, workType: '', variety: '', detail: '', station: '', remarks: '', description: '', hasBoard: false, detectedText: '' }),
-          sceneId,
-          phase: 'after' as const,
-          station: locationName,
-          remarks: '竣工'
-        },
-        status: 'done'
-      };
-
-      pairedPhotos.push(beforePhoto, afterPhoto);
+    const pairedPhotos = pairs.flatMap((pair, i) => {
+      const sceneId = `MANUAL_S${i + 1}`;
+      const mkPhoto = (p: PhotoRecord, phase: 'before' | 'after', remarks: string): PhotoRecord => ({
+        ...p, status: 'done', analysis: { ...(p.analysis || createDefaultAnalysis(p.fileName)), sceneId, phase, station: locationName, remarks }
+      });
+      return [mkPhoto(pair.before, 'before', '着手前'), mkPhoto(pair.after, 'after', '竣工')];
     });
-
     setPhotos(pairedPhotos);
     setStats({ total: pairedPhotos.length, processed: pairedPhotos.length, success: pairedPhotos.length, failed: 0, cached: 0 });
     setInitialLayout(2);
     setShowPreview(true);
     setShowManualPairing(false);
-    setSuccessMsg(lang === 'ja' ? `${pairs.length}組のペアを手動作成しました` : `Created ${pairs.length} pairs manually`);
-    addLog(`手動ペアリング完了: ${pairs.length}組`, 'success');
-  }, [activeInstruction, initialInstruction, setPhotos, setStats, setInitialLayout, setShowPreview, setShowManualPairing, setSuccessMsg, addLog, lang]);
+    setSuccessMsg(lang === 'ja' ? `${pairs.length}組作成` : `Created ${pairs.length} pairs`);
+  }, [activeInstruction, initialInstruction, setPhotos, setStats, setInitialLayout, setShowPreview, setShowManualPairing, setSuccessMsg, lang]);
 
-  // 履歴から読み込み
   const handleLoadHistory = useCallback(async (entry: AnalysisHistoryEntry) => {
     setShowHistory(false);
-    setIsProcessing(true);
-    setCurrentStep('履歴から復元中...');
-
-    try {
-      const records: PhotoRecord[] = [];
-
-      for (let i = 0; i < entry.photoKeys.length; i++) {
-        const key = entry.photoKeys[i];
+    await withProcessing(async () => {
+      setCurrentStep('履歴復元中...');
+      const records = await Promise.all(entry.photoKeys.map(async (key, i) => {
         const parts = key.split('_');
         const fileName = parts.slice(0, -2).join('_');
-        const fileSize = parseInt(parts[parts.length - 2]) || 0;
-        const lastModified = parseInt(parts[parts.length - 1]) || 0;
-        const thumbnail = entry.thumbnails?.[i] || '';
-
-        const record: PhotoRecord = {
-          fileName,
-          base64: thumbnail,
-          mimeType: 'image/jpeg',
-          fileSize,
-          lastModified,
-          status: 'done',
-          date: lastModified,
-          fromCache: true
-        };
-
-        const cachedAnalysis = await getCachedAnalysis(record);
-        if (cachedAnalysis) {
-          record.analysis = cachedAnalysis;
-        }
-
-        records.push(record);
-      }
-
+        const record: PhotoRecord = { fileName, base64: entry.thumbnails?.[i] || '', mimeType: 'image/jpeg', fileSize: parseInt(parts[parts.length - 2]) || 0, lastModified: parseInt(parts[parts.length - 1]) || 0, status: 'done', date: parseInt(parts[parts.length - 1]) || 0, fromCache: true };
+        const cached = await getCachedAnalysis(record);
+        if (cached) record.analysis = cached;
+        return record;
+      }));
       setPhotos(records);
       setStats({ total: records.length, processed: records.length, success: records.length, failed: 0, cached: records.length });
       setInitialInstruction(entry.instruction);
       setActiveInstruction(entry.instruction);
       setShowPreview(true);
-      addLog(`履歴読み込み: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success');
-      setSuccessMsg(`${entry.photoCount}枚の写真を履歴から読み込みました`);
-    } catch (err: any) {
-      console.error('履歴読み込みエラー:', err);
-      setErrorMsg('履歴の読み込みに失敗しました');
-      addLog('履歴読み込みエラー', 'error', err);
-    } finally {
-      setIsProcessing(false);
-      setCurrentStep('');
-    }
-  }, [setShowHistory, setIsProcessing, setCurrentStep, setPhotos, setStats, setInitialInstruction, setActiveInstruction, setShowPreview, addLog, setSuccessMsg, setErrorMsg]);
+      setSuccessMsg(`${entry.photoCount}枚を履歴から読み込み`);
+    });
+  }, [setShowHistory, setIsProcessing, setCurrentStep, setPhotos, setStats, setInitialInstruction, setActiveInstruction, setShowPreview, setSuccessMsg, setErrorMsg, addLog]);
 
-  // 解析パイプライン開始
   const startAnalysisPipeline = useCallback(async (files: File[], instruction: string, useCache: boolean) => {
-    setIsProcessing(true);
     shouldAbortRef.current = false;
     setErrorMsg(null);
     setSuccessMsg(null);
-
     setInitialInstruction(instruction);
     setActiveInstruction(instruction);
-    addLog(`[INSTRUCTION] Initial: "${instruction.substring(0, 50)}${instruction.length > 50 ? '...' : ''}"`, 'info');
 
-    try {
-      addLog(`=== STEP 1/4: 画像準備 ===`, 'info');
-      setCurrentStep(lang === 'ja' ? "画像を準備中..." : "Preparing images...");
-
+    await withProcessing(async () => {
+      setCurrentStep(lang === 'ja' ? '画像準備中...' : 'Preparing...');
       const newRecords: PhotoRecord[] = [];
       let cachedCount = 0;
-      const totalFiles = files.length;
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        addLog(`[${i + 1}/${totalFiles}] ${file.name} を読み込み中...`, 'info');
+      for (const file of files) {
         const date = await getPhotoDate(file);
-        const tempRecord: PhotoRecord = {
-          fileName: file.name,
-          base64: '',
-          mimeType: file.type,
-          fileSize: file.size,
-          lastModified: file.lastModified,
-          originalFile: file,
-          status: 'pending',
-          date: date,
-          fromCache: false
-        };
-
-        let cachedAnalysis: AIAnalysisResult | null = null;
-        if (useCache) {
-          cachedAnalysis = await getCachedAnalysis(file);
-        }
-
+        const tempRecord: PhotoRecord = { fileName: file.name, base64: '', mimeType: file.type, fileSize: file.size, lastModified: file.lastModified, originalFile: file, status: 'pending', date, fromCache: false };
+        const cachedAnalysis = useCache ? await getCachedAnalysis(file) : null;
+        const { base64, mimeType } = await processImageForAI(file);
         if (cachedAnalysis) {
-          const { base64, mimeType } = await processImageForAI(file);
-          const locationName = extractLocationName(instruction);
-          newRecords.push({
-            ...tempRecord,
-            base64,
-            mimeType,
-            analysis: { ...cachedAnalysis, station: locationName },
-            status: 'done',
-            fromCache: true
-          });
+          newRecords.push({ ...tempRecord, base64, mimeType, analysis: { ...cachedAnalysis, station: extractLocationName(instruction) }, status: 'done', fromCache: true });
           cachedCount++;
-          addLog(`  ✓ キャッシュから復元`, 'success');
         } else {
-          const { base64, mimeType } = await processImageForAI(file);
-          newRecords.push({ ...tempRecord, base64, mimeType, status: 'pending', fromCache: false });
-          addLog(`  → 新規解析が必要`, 'info');
+          newRecords.push({ ...tempRecord, base64, mimeType });
         }
       }
-
-      addLog(`画像準備完了: ${totalFiles}枚 (キャッシュ: ${cachedCount}枚, 新規: ${totalFiles - cachedCount}枚)`, 'success');
 
       const initialSorted = sortPhotosLogical(newRecords, currentSortPolicy);
       setPhotos(initialSorted);
@@ -416,268 +234,99 @@ export function useAnalysisHandlers({
       setShowPreview(true);
 
       const pendingPhotos = initialSorted.filter(p => p.status === 'pending');
-
       if (pendingPhotos.length > 0 && apiKey) {
-        addLog(`=== STEP 2/4: 写真タイプ判定 ===`, 'info');
-        addLog(`${pendingPhotos.length}枚の新規写真をAI解析します`, 'info');
-
         const result = await processPhotosWithSmartFlow(pendingPhotos, apiKey, instruction, addLog, () => shouldAbortRef.current);
-
         if (result.type === 'paired') {
-          addLog(`=== STEP 3/4: 景観ペアリング ===`, 'info');
-          addLog(`${result.pairs?.length || 0}組のペアを作成`, 'success');
-
           const locationName = extractLocationName(instruction);
-          const updatedPhotos: PhotoRecord[] = [];
-
-          result.pairs?.forEach(pair => {
-            const beforeAnalysis = pair.before.analysis || { fileName: pair.before.fileName, workType: '', variety: '', detail: '', station: '', remarks: '', description: '', hasBoard: false, detectedText: '' };
-            const afterAnalysis = pair.after.analysis || { fileName: pair.after.fileName, workType: '', variety: '', detail: '', station: '', remarks: '', description: '', hasBoard: false, detectedText: '' };
-
-            updatedPhotos.push({
-              ...pair.before,
-              analysis: { ...beforeAnalysis, sceneId: pair.sceneId, phase: 'before' as const, station: locationName, remarks: '着手前' },
-              status: 'done' as const
+          const updatedPhotos = result.pairs?.flatMap(pair => {
+            const mk = (p: PhotoRecord, phase: 'before' | 'after', remarks: string): PhotoRecord => ({
+              ...p, status: 'done', analysis: { ...(p.analysis || createDefaultAnalysis(p.fileName)), sceneId: pair.sceneId, phase, station: locationName, remarks }
             });
-            updatedPhotos.push({
-              ...pair.after,
-              analysis: { ...afterAnalysis, sceneId: pair.sceneId, phase: 'after' as const, station: locationName, remarks: '竣工' },
-              status: 'done' as const
-            });
-          });
-
-          setPhotos(prev => {
-            const unchanged = prev.filter(p => p.status !== 'pending');
-            return [...unchanged, ...updatedPhotos];
-          });
+            return [mk(pair.before, 'before', '着手前'), mk(pair.after, 'after', '竣工')];
+          }) || [];
+          setPhotos(prev => [...prev.filter(p => p.status !== 'pending'), ...updatedPhotos]);
           setInitialLayout(2);
         } else {
-          addLog(`=== STEP 3/4: 黒板写真解析 ===`, 'info');
-          const batchSize = DEFAULT_BATCH_SIZE;
-          const batches: PhotoRecord[][] = [];
-
-          for (let i = 0; i < pendingPhotos.length; i += batchSize) {
-            batches.push(pendingPhotos.slice(i, i + batchSize));
-          }
-          addLog(`${pendingPhotos.length}枚を${batches.length}バッチに分割（${PARALLEL_BATCHES}並列）`, 'info');
-
-          for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
-            if (shouldAbortRef.current) {
-              addLog("解析が中断されました", 'info');
-              break;
-            }
-
-            const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
-            const processedCount = i * batchSize;
-            addLog(`バッチ ${Math.floor(i / PARALLEL_BATCHES) + 1}/${Math.ceil(batches.length / PARALLEL_BATCHES)} 処理中...`, 'info');
-            setCurrentStep(`${txt.analyzing} (${processedCount + 1}/${pendingPhotos.length}) - ${parallelBatches.length}並列`);
-
-            const batchPromises = parallelBatches.map(async (batch) => {
-              try {
-                const results = await analyzePhotoBatch(batch, instruction, batchSize, appMode, apiKey, addLog, logIndividualResult, () => shouldAbortRef.current);
-                return batch.map(record => {
-                  const res = results.find(r => r.fileName === record.fileName);
-                  if (res) {
-                    cacheAnalysis(record, res).catch(console.error);
-                    return { ...record, analysis: res, status: 'done' as const };
-                  }
-                  return { ...record, status: 'error' as const };
-                });
-              } catch (e: any) {
-                addLog(`Batch analysis failed: ${e.message}`, 'error');
-                return batch.map(record => ({ ...record, status: 'error' as const }));
-              }
-            });
-
-            const batchResults = await Promise.all(batchPromises);
-            const allUpdated = batchResults.flat();
-
-            setPhotos(prev => prev.map(p => {
-              const updated = allUpdated.find(u => u.fileName === p.fileName);
-              return updated || p;
-            }));
-          }
+          const updated = await processBatchesParallel(pendingPhotos, instruction, DEFAULT_BATCH_SIZE, (rec, res) => {
+            cacheAnalysis(rec, res).catch(() => {});
+            return { ...rec, analysis: res, status: 'done' as const };
+          });
+          setPhotos(prev => prev.map(p => updated.find(u => u.fileName === p.fileName) || p));
         }
       }
 
-      // Normalization check
-      addLog(`=== STEP 4/4: データ整合性チェック ===`, 'info');
+      // Normalization
       let currentPhotos: PhotoRecord[] = [];
       setPhotos(prev => { currentPhotos = prev; return prev; });
-      await new Promise(resolve => setTimeout(resolve, 0));
-
+      await new Promise(r => setTimeout(r, 0));
       const newlyAnalyzed = currentPhotos.filter(p => !p.fromCache && p.status === 'done');
       if (newlyAnalyzed.length > 0 && apiKey) {
-        addLog(`${newlyAnalyzed.length}枚の解析結果を正規化中...`, 'info');
-        setCurrentStep("Finalizing data consistency...");
-
-        const result = await getNormalizationProposals(newlyAnalyzed, apiKey, undefined, addLog, () => shouldAbortRef.current);
-
-        if (result.corrections.length > 0) {
-          setNormalizationProposals(result.corrections);
-          setNormalizationOriginals(newlyAnalyzed.map(p => ({
-            fileName: p.fileName,
-            workType: p.analysis?.workType || '',
-            variety: p.analysis?.variety || '',
-            detail: p.analysis?.detail || '',
-            station: p.analysis?.station || '',
-            remarks: p.analysis?.remarks || ''
-          })));
+        const normResult = await getNormalizationProposals(newlyAnalyzed, apiKey, undefined, addLog, () => shouldAbortRef.current);
+        if (normResult.corrections.length > 0) {
+          setNormalizationProposals(normResult.corrections);
+          setNormalizationOriginals(newlyAnalyzed.map(p => ({ fileName: p.fileName, workType: p.analysis?.workType || '', variety: p.analysis?.variety || '', detail: p.analysis?.detail || '', station: p.analysis?.station || '', remarks: p.analysis?.remarks || '' })));
           setPhotosForNormalization(newlyAnalyzed);
-          addLog(`${result.corrections.length}件の修正提案があります。ユーザー承認を待機中...`, 'info');
           setShowNormalizationModal(true);
           setIsProcessing(false);
-          setCurrentStep("");
+          setCurrentStep('');
           return;
-        } else {
-          addLog('修正提案なし - データは整合しています', 'success');
         }
       }
 
       setPhotos(prev => {
         const sorted = sortPhotosLogical(prev, currentSortPolicy);
-        saveAnalysisHistory(sorted, instruction, getSelectedModel())
-          .then(entry => addLog(`履歴保存: ${entry.photoCount}枚 (${new Date(entry.createdAt).toLocaleString('ja-JP')})`, 'success'))
-          .catch(e => console.error('履歴保存失敗:', e));
+        saveAnalysisHistory(sorted, instruction, getSelectedModel()).catch(() => {});
         return sorted;
       });
 
       const aliasSettings = loadAliasSettings();
       if (aliasSettings.enabled && hasAliases(aliasSettings)) {
-        setPhotos(prev => {
-          const { modifiedCount, records } = applyAliasesToRecords(prev, aliasSettings);
-          if (modifiedCount > 0) {
-            addLog(`エイリアス自動適用: ${modifiedCount}件のデータを変換しました`, 'success');
-          }
-          return records;
-        });
+        setPhotos(prev => applyAliasesToRecords(prev, aliasSettings).records);
       }
-
       setSuccessMsg(txt.done);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Unknown error occurred");
-      addLog("Pipeline fatal error", 'error', err);
-    } finally {
-      setIsProcessing(false);
-      setCurrentStep("");
-    }
-  }, [apiKey, appMode, lang, currentSortPolicy, addLog, logIndividualResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setInitialInstruction, setActiveInstruction, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, txt]);
+    }, false);
+    setIsProcessing(false);
+    setCurrentStep('');
+  }, [apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setInitialInstruction, setActiveInstruction, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, txt]);
 
-  // 再解析
   const handleRefineAnalysis = useCallback(async (instruction: string, batchSize: number) => {
-    setIsProcessing(true);
-    setCurrentStep("Refining analysis...");
+    await withProcessing(async () => {
+      setCurrentStep('Refining...');
+      if (instruction && instruction !== '__REANALYZE__') setActiveInstruction(instruction);
 
-    if (instruction && instruction !== "__REANALYZE__") {
-      setActiveInstruction(instruction);
-      addLog(`[INSTRUCTION] Refinement: "${instruction.substring(0, 50)}${instruction.length > 50 ? '...' : ''}"`, 'info');
-    }
-
-    try {
-      let targetFileNames: string[] = [];
       const refinementStation = extractLocationName(instruction);
-      const hasStationOverride = instruction && instruction !== "__REANALYZE__" &&
-        (instruction.includes('測点') || instruction.includes('付近') || instruction.includes('地点'));
+      const hasStationOverride = instruction && instruction !== '__REANALYZE__' && (instruction.includes('測点') || instruction.includes('付近') || instruction.includes('地点'));
+      const isReanalyzeAll = instruction === '__REANALYZE__' || /全体|すべて|全件|全部|all\s*(photos?)?|re-?analyze\s*all/i.test(instruction);
 
-      const isReanalyzeAllRequest = instruction === "__REANALYZE__" ||
-        (instruction && /全体|すべて|全件|全部|all\s*(photos?)?|re-?analyze\s*all/i.test(instruction));
-
-      if (isReanalyzeAllRequest) {
-        targetFileNames = photos.map(p => p.fileName);
-        addLog("Re-analyzing ALL photos.", 'info');
-      } else if (apiKey) {
-        setCurrentStep(txt.identifyingTargets);
-        targetFileNames = await identifyTargetPhotos(photos, instruction, apiKey, addLog, () => shouldAbortRef.current);
-      }
-
-      if (targetFileNames.length === 0) {
-        setSuccessMsg("No matching photos found to update.");
-        setIsProcessing(false);
-        return;
-      }
+      let targetFileNames = isReanalyzeAll ? photos.map(p => p.fileName) : apiKey ? await identifyTargetPhotos(photos, instruction, apiKey, addLog, () => shouldAbortRef.current) : [];
+      if (targetFileNames.length === 0) { setSuccessMsg('No matching photos'); return; }
 
       const targets = photos.filter(p => targetFileNames.includes(p.fileName));
-      let updatedTargets: PhotoRecord[] = [];
-      const batches: PhotoRecord[][] = [];
-
-      for (let i = 0; i < targets.length; i += batchSize) {
-        batches.push(targets.slice(i, i + batchSize));
-      }
-
-      for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
-        const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
-        const processedCount = i * batchSize;
-        setCurrentStep(`${txt.analyzing} (${processedCount + 1}/${targets.length}) - ${parallelBatches.length}並列`);
-
-        const batchPromises = parallelBatches.map(async (batch) => {
-          if (!apiKey) return batch;
-          try {
-            const results = await analyzePhotoBatch(batch, instruction === "__REANALYZE__" ? "" : instruction, batchSize, appMode, apiKey, addLog, logIndividualResult, () => shouldAbortRef.current);
-            return batch.map(record => {
-              const res = results.find(r => r.fileName === record.fileName);
-              if (res) {
-                let finalAnalysis = res;
-                if (record.analysis?.editedFields) {
-                  finalAnalysis = { ...res, editedFields: record.analysis.editedFields };
-                  record.analysis.editedFields.forEach(field => {
-                    (finalAnalysis as any)[field] = (record.analysis as any)[field];
-                  });
-                }
-                if (record.analysis?.sceneId) {
-                  finalAnalysis.sceneId = record.analysis.sceneId;
-                  finalAnalysis.phase = record.analysis.phase;
-                  finalAnalysis.visualAnchors = record.analysis.visualAnchors;
-                }
-                cacheAnalysis(record, finalAnalysis).catch(console.error);
-                return { ...record, analysis: finalAnalysis, status: 'done' as const };
-              }
-              return record;
-            });
-          } catch (e: any) {
-            addLog(`Refine batch failed: ${e.message}`, 'error');
-            return batch;
-          }
-        });
-
-        const batchResults = await Promise.all(batchPromises);
-        updatedTargets = [...updatedTargets, ...batchResults.flat()];
-      }
+      let updatedTargets = await processBatchesParallel(targets, instruction === '__REANALYZE__' ? '' : instruction, batchSize, (rec, res) => {
+        let final = res;
+        if (rec.analysis?.editedFields) {
+          final = { ...res, editedFields: rec.analysis.editedFields };
+          rec.analysis.editedFields.forEach(f => (final as any)[f] = (rec.analysis as any)[f]);
+        }
+        if (rec.analysis?.sceneId) { final.sceneId = rec.analysis.sceneId; final.phase = rec.analysis.phase; final.visualAnchors = rec.analysis.visualAnchors; }
+        cacheAnalysis(rec, final).catch(() => {});
+        return { ...rec, analysis: final, status: 'done' as const };
+      });
 
       if (hasStationOverride && refinementStation) {
-        addLog(`[INSTRUCTION] Applying station "${refinementStation}" to all photos`, 'info');
         updatedTargets = updatedTargets.map(p => p.analysis ? { ...p, analysis: { ...p.analysis, station: refinementStation } } : p);
       }
 
       setPhotos(prev => prev.map(p => {
         const updated = updatedTargets.find(u => u.fileName === p.fileName);
         if (updated) return updated;
-        if (hasStationOverride && refinementStation && p.analysis) {
-          return { ...p, analysis: { ...p.analysis, station: refinementStation } };
-        }
+        if (hasStationOverride && refinementStation && p.analysis) return { ...p, analysis: { ...p.analysis, station: refinementStation } };
         return p;
       }));
-      setSuccessMsg(`Updated ${updatedTargets.length} photos.${hasStationOverride ? ` Station set to "${refinementStation}"` : ''}`);
-    } catch (e: any) {
-      console.error(e);
-      setErrorMsg("Refine failed: " + e.message);
-    } finally {
-      shouldAbortRef.current = false;
-      setIsProcessing(false);
-      setCurrentStep("");
-    }
-  }, [apiKey, photos, appMode, addLog, logIndividualResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, txt]);
+      setSuccessMsg(`Updated ${updatedTargets.length} photos`);
+    });
+    shouldAbortRef.current = false;
+  }, [apiKey, photos, appMode, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, txt]);
 
-  return {
-    shouldAbortRef,
-    handleAskAI,
-    handleAutoPair,
-    handleSmartSort,
-    handleStartManualPairing,
-    handleManualPairingComplete,
-    handleLoadHistory,
-    startAnalysisPipeline,
-    handleRefineAnalysis,
-    logIndividualResult,
-  };
+  return { shouldAbortRef, handleAskAI, handleAutoPair, handleSmartSort, handleStartManualPairing, handleManualPairingComplete, handleLoadHistory, startAnalysisPipeline, handleRefineAnalysis };
 }
