@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 08:43:21
+生成日時: 2025-12-29 09:06:14
 ================================================================================
 
 === ファイル一覧 ===
@@ -19532,6 +19532,18 @@ Traverse the hierarchy directly:
 *   **remarksCategory**: Select from the enum (e.g., "到着温度", "転圧状況", "着手前")
 *   **IMPORTANT**: 備考には測定値を含めない。測定値はすべて measurements フィールドに出力する。
 
+**MATCHING RULE for remarksCategory**:
+When the blackboard text doesn't exactly match an enum value, use BOTH criteria equally:
+1. **Prefix match**: Characters matching from the start (先頭からの一致)
+2. **Character set match**: Total matching characters regardless of order (順序無関係の一致文字数)
+
+Example: Blackboard says "乳剤端部塗布状況"
+- "乳剤散布状況" → prefix=2 (乳剤), charset=4 (乳剤状況)
+- "端部乳剤塗布状況" → prefix=0, charset=8 (ALL characters match)
+→ Choose "端部乳剤塗布状況" because charset score is much higher.
+
+The idea: "乳剤端部塗布" and "端部乳剤塗布" are the SAME operation with words reordered.
+
 **Category-specific rules:**
 *   **着手前及び完成写真**: remarksCategory = "着手前" or "竣工"
 *   **施工状況写真**: remarksCategory = "転圧状況" etc.
@@ -19647,7 +19659,7 @@ export const REMARKS_CATEGORIES = [
   "現場密度測定",
   // 施工状況
   "転圧状況", "敷均し状況", "舗設状況", "初期転圧状況", "2次転圧状況",
-  "乳剤散布状況", "養生砂散布状況", "清掃状況",
+  "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
   "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
   // 着手前・完成
   "着手前", "完了", "竣工", "施工完了",

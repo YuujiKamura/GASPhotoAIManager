@@ -27,7 +27,10 @@
       "Bash(npm ls:*)",
       "Bash(npm run dev:*)",
       "Bash(gh run:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(node:*)",
+      "Bash(timeout 5 npm run dev:*)",
+      "Bash(git merge:*)"
     ]
   }
 }
