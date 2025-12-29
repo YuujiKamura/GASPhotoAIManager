@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": ["index.tsx", "App.tsx"],
+  "project": ["**/*.{ts,tsx}"],
+  "ignore": [
+    "scripts/**",
+    ".claude/**",
+    "src/generated/**"
+  ],
+  "ignoreDependencies": [
+    "fontkit",
+    "puppeteer",
+    "@fontsource/noto-sans-jp",
+    "@testing-library/react",
+    "@types/adm-zip",
+    "adm-zip",
+    "autoprefixer",
+    "depcheck",
+    "dotenv",
+    "exceljs",
+    "jscpd",
+    "@pdf-lib/fontkit",
+    "@webcontainer/api",
+    "lucide-react",
+    "pdf-lib",
+    "pdfjs-dist",
+    "react",
+    "react-dom"
+  ],
+  "ignoreBinaries": ["tsx"]
+}
