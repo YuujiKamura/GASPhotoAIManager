@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T03:43:38.652Z",
+  "generatedAt": "2025-12-29T03:52:49.033Z",
   "totalFiles": 124,
-  "totalLines": 29777,
+  "totalLines": 29300,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -12,11 +12,6 @@
       "path": "components/PhotoAlbumView.tsx",
       "lines": 715,
       "size": 31320
-    },
-    {
-      "path": "scripts/test-pdf-image-extraction.ts",
-      "lines": 702,
-      "size": 23411
     },
     {
       "path": "hooks/useAnalysisHandlers.ts",
@@ -52,6 +47,11 @@
       "path": "services/personalStorage.ts",
       "lines": 538,
       "size": 13343
+    },
+    {
+      "path": "components/StationReplaceModal.tsx",
+      "lines": 525,
+      "size": 22102
     }
   ],
   "components": {
@@ -222,7 +222,7 @@
       "status": "warning",
       "count": 219,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "Unused files (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -248,15 +248,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 415
-    },
-    {
-      "id": "refactor-scripts-test-pdf-image-extraction-ts",
-      "title": "scripts/test-pdf-image-extraction.ts をリファクタ",
-      "description": "702行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "scripts/test-pdf-image-extraction.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 402
     },
     {
       "id": "refactor-hooks-useAnalysisHandlers-ts",
