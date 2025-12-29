@@ -27,14 +27,23 @@ let cachedApiKey: string | null = null;
 export const getApiKey = (): string | null => {
   // メモリキャッシュがあればそれを返す
   if (cachedApiKey) return cachedApiKey;
-  // フォールバック: 平文localStorage（移行期間）
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
+  // sessionStorageから取得（セキュリティ: ブラウザ閉じるとリセット）
+  const sessionKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
+  if (sessionKey) return sessionKey;
+  // フォールバック: 旧localStorage（移行用、見つかったらsessionStorageに移行）
+  const legacyKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (legacyKey) {
+    sessionStorage.setItem(API_KEY_STORAGE_KEY, legacyKey);
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+    return legacyKey;
+  }
+  return null;
 };
 
 export const setApiKey = (key: string): void => {
   cachedApiKey = key;
-  // 平文でも保存（移行期間・フォールバック用）
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  // sessionStorageに保存（セキュリティ: ブラウザ閉じるとリセット）
+  sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
 // 暗号化してAPIキーを保存
@@ -76,7 +85,8 @@ export const hasMasterPassword = (): boolean => {
 
 export const clearApiKey = (): void => {
   cachedApiKey = null;
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  localStorage.removeItem(API_KEY_STORAGE_KEY); // 旧データもクリア
   localStorage.removeItem(ENCRYPTED_KEY_STORAGE);
 };
 
