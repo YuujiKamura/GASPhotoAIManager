@@ -35,7 +35,8 @@
       "Bash(git branch:*)",
       "Bash(npx tsc:*)",
       "Bash(gh pr list:*)",
-      "Bash(time npm run analyze:*)"
+      "Bash(time npm run analyze:*)",
+      "Bash(npm run analyze:*)"
     ]
   }
 }

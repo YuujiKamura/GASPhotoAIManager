@@ -69,8 +69,7 @@ export default function App() {
 
   // Photos State (unified state management with auto-save)
   const photosState = usePhotosState(processing.addLog);
-  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout } = photosState;
-  const resetStats = () => setStats({ total: 0, processed: 0, success: 0, failed: 0, cached: 0 });
+  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats } = photosState;
 
   // Analysis Handlers
   const analysisHandlers = useAnalysisHandlers({

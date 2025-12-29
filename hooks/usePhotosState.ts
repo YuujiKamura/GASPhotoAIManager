@@ -147,6 +147,11 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     setStats({ total: newPhotos.length, processed: success + failed, success, failed, cached });
   }, []);
 
+  // 統計をリセット
+  const resetStats = useCallback(() => {
+    setStats({ total: 0, processed: 0, success: 0, failed: 0, cached: 0 });
+  }, []);
+
   return {
     photos,
     setPhotos,
@@ -166,5 +171,6 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     closeProject,
     sortPhotos,
     updateStats,
+    resetStats,
   };
 }
