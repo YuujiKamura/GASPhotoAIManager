@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { PhotoRecord } from '../types';
 import { loadAliasSettings, hasAliases, applyAliasesToRecords } from '../utils/workTypeAliases';
 

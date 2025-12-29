@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { PhotoRecord, SortPolicy } from '../types';
 import { applyNormalizationCorrections, NormalizationCorrection } from '../services/geminiService';
 import { sortPhotosLogical } from '../utils/sortingUtils';

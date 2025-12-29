@@ -28,7 +28,7 @@ export async function loadImagesFromFolder(folder: FileSystemDirectoryHandle): P
   const readDir = async (dir: FileSystemDirectoryHandle, depth = 0) => {
     for await (const entry of dir.values()) {
       if (entry.kind === 'file') {
-        const file = await entry.getFile();
+        const file = await (entry as FileSystemFileHandle).getFile();
         if (file.type.startsWith('image/')) {
           const base64 = await fileToBase64(file);
           images.push({ fileName: file.name, base64, mimeType: file.type });
@@ -81,7 +81,7 @@ export async function loadImagesFromFolder(folder: FileSystemDirectoryHandle): P
           }
         }
       } else if (entry.kind === 'directory') {
-        await readDir(entry, depth + 1);
+        await readDir(entry as FileSystemDirectoryHandle, depth + 1);
       }
     }
   };

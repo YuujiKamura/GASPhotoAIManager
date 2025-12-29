@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
 import { clearAnalysisCache } from '../utils/storage';
 import { fsCache } from '../utils/fileSystemCache';
@@ -11,7 +11,7 @@ interface UseCacheHandlersProps {
   setSuccessMsg: (msg: string | null) => void;
   fsCacheEnabled: boolean;
   setFsCacheEnabled: (enabled: boolean) => void;
-  setFsCacheStats: (stats: { count: number; size: number }) => void;
+  setFsCacheStats: (stats: { totalFiles: number; lastUpdated: string } | null) => void;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   CustomizationData,
   WorkTypeData,
@@ -107,8 +107,8 @@ export function useMasterEditorState() {
   }, [selectedWorkType]);
 
   // フィルタリングとソート済みの工種リスト
-  const workTypeList = Array.from(allWorkTypes.values())
-    .filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  const workTypeList: WorkTypeData[] = (Array.from(allWorkTypes.values()) as WorkTypeData[])
+    .filter((w) => w.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       const orderA = WORK_TYPE_CATEGORY_ORDER[a.name] ?? UNCATEGORIZED_ORDER;
       const orderB = WORK_TYPE_CATEGORY_ORDER[b.name] ?? UNCATEGORIZED_ORDER;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PhotoRecord, AIAnalysisResult, IssueType } from '../types';
 import { saveExample, saveAnalysisIssue } from '../utils/storage';
 
