@@ -78,57 +78,48 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
     heavyDeps: 'Heavy Dependencies'
   };
 
+  // 初期表示用: 静的データをロード
+  const loadStaticData = () => {
+    const metrics: FileMetrics[] = [
+      { category: txt.components, count: codebaseStats.components.count, files: codebaseStats.components.files.slice(0, 6) },
+      { category: txt.services, count: codebaseStats.services.count, files: codebaseStats.services.files.slice(0, 6) },
+      { category: txt.utilities, count: codebaseStats.utils.count, files: codebaseStats.utils.files.slice(0, 6) }
+    ];
+    const deps: DependencyInfo[] = [
+      { name: 'react + react-dom', version: '^19.0.0', type: 'prod', size: '~140KB' },
+      { name: 'pdfjs-dist', version: '^4.10.38', type: 'prod', size: '~1.1MB', issue: lang === 'ja' ? '巨大' : 'Large' },
+      { name: 'pdf-lib', version: '^1.17.1', type: 'prod', size: '~280KB' },
+      { name: 'lucide-react', version: '^0.469.0', type: 'prod', size: '~25KB (tree-shaken)' },
+      { name: '@google/genai', version: '-', type: 'prod', size: '~50KB' },
+    ];
+    const checks: HealthCheck[] = (codebaseStats as any).health || [];
+    setFileMetrics(metrics);
+    setDependencies(deps);
+    setHealthChecks(checks);
+    setIsLoading(false);
+  };
+
   useEffect(() => {
-    analyzeCodebase();
+    loadStaticData();
   }, []);
 
-  const analyzeCodebase = () => {
+  // 更新ボタン: APIを呼んで分析を実行し、ページをリロード
+  const runAnalysis = async () => {
     setIsLoading(true);
-
-    setTimeout(() => {
-      // 動的ファイルメトリクス
-      const metrics: FileMetrics[] = [
-        {
-          category: txt.components,
-          count: codebaseStats.components.count,
-          files: codebaseStats.components.files.slice(0, 6)
-        },
-        {
-          category: txt.services,
-          count: codebaseStats.services.count,
-          files: codebaseStats.services.files.slice(0, 6)
-        },
-        {
-          category: txt.utilities,
-          count: codebaseStats.utils.count,
-          files: codebaseStats.utils.files.slice(0, 6)
-        }
-      ];
-
-      // Dependencies with size info
-      const deps: DependencyInfo[] = [
-        { name: 'react + react-dom', version: '^19.0.0', type: 'prod', size: '~140KB' },
-        { name: 'pdfjs-dist', version: '^4.10.38', type: 'prod', size: '~1.1MB', issue: lang === 'ja' ? '巨大' : 'Large' },
-        { name: 'jspdf', version: '^3.0.0', type: 'prod', size: '~280KB', issue: lang === 'ja' ? 'PDFライブラリ重複' : 'Duplicate PDF lib' },
-        { name: 'exceljs', version: '^4.4.0', type: 'prod', size: '~350KB' },
-        { name: 'jszip', version: '^3.10.1', type: 'prod', size: '~90KB' },
-        { name: 'lucide-react', version: '^0.469.0', type: 'prod', size: '~25KB (tree-shaken)' },
-        { name: '@google/genai', version: '-', type: 'prod', size: '~50KB' },
-        { name: 'idb', version: '^8.0.1', type: 'prod', size: '~5KB' },
-        { name: 'tailwindcss', version: '^3.4.17', type: 'dev', size: '~65KB CSS' },
-        { name: 'vite', version: '^6.2.0', type: 'dev' },
-        { name: 'typescript', version: '~5.8.2', type: 'dev' },
-        { name: 'vitest', version: '^3.0.4', type: 'dev' }
-      ];
-
-      // Health checks - 生成されたデータを使用
-      const checks: HealthCheck[] = (codebaseStats as any).health || [];
-
-      setFileMetrics(metrics);
-      setDependencies(deps);
-      setHealthChecks(checks);
+    try {
+      const res = await fetch('/api/analyze');
+      const data = await res.json();
+      if (data.success) {
+        // 分析完了後、ページをリロードして新しいデータを取得
+        window.location.reload();
+      } else {
+        console.error('Analysis failed:', data.error);
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error('Failed to run analysis:', err);
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   const toggleSection = (section: string) => {
@@ -177,7 +168,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={analyzeCodebase}
+                onClick={runAnalysis}
                 disabled={isLoading}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >

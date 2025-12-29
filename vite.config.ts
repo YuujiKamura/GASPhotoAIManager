@@ -1,6 +1,33 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+// 分析スクリプトを実行するViteプラグイン
+function analyzePlugin() {
+  return {
+    name: 'analyze-plugin',
+    configureServer(server: any) {
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        if (req.url === '/api/analyze') {
+          try {
+            res.setHeader('Content-Type', 'application/json');
+            await execAsync('npx tsx scripts/analyze-codebase.ts', { cwd: process.cwd() });
+            res.end(JSON.stringify({ success: true, timestamp: new Date().toISOString() }));
+          } catch (error: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: error.message }));
+          }
+          return;
+        }
+        next();
+      });
+    }
+  };
+}
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -15,7 +42,7 @@ export default defineConfig(({ mode }) => {
           'Cross-Origin-Opener-Policy': 'same-origin',
         },
       },
-      plugins: [react()],
+      plugins: [react(), analyzePlugin()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
