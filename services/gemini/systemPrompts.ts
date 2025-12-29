@@ -143,6 +143,13 @@ Example: Blackboard says "乳剤端部塗布状況"
 
 The idea: "乳剤端部塗布" and "端部乳剤塗布" are the SAME operation with words reordered.
 
+**PAIRED OPERATIONS on blackboard**:
+When blackboard shows paired items like "乳剤・養生砂散布状況" (separated by ・):
+- This means TWO sequential operations were written together
+- For the FIRST photo of this pair → use the FIRST item: "乳剤散布状況"
+- For the SECOND photo → use the SECOND item: "養生砂散布状況"
+- Split at "・" and pick the appropriate one based on photo content/sequence.
+
 **Category-specific rules:**
 *   **着手前及び完成写真**: remarksCategory = "着手前" or "竣工"
 *   **施工状況写真**: remarksCategory = "転圧状況" etc.

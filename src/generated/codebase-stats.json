@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:05:54.843Z",
+  "generatedAt": "2025-12-29T00:08:48.324Z",
   "totalFiles": 117,
-  "totalLines": 29997,
+  "totalLines": 30004,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -98,7 +98,7 @@
       "services/gemini/interactiveAnalysis.ts (156行)",
       "services/gemini/models.ts (150行)",
       "services/gemini/normalization.ts (445行)",
-      "services/gemini/systemPrompts.ts (272行)",
+      "services/gemini/systemPrompts.ts (279行)",
       "services/gemini/workTypeSelector.ts (119行)",
       "services/geminiService.ts (12行)",
       "services/githubSync.ts (617行)",
