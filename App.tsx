@@ -1,5 +1,5 @@
 import React, { useState, lazy, Suspense } from 'react';
-import { PhotoRecord, AppMode, SortPolicy } from './types';
+import { PhotoRecord, AppMode } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 
@@ -19,6 +19,7 @@ import {
   useNormalizationHandlers,
   usePhotoManagement,
   useProjectHandlers,
+  usePhotosState,
 } from './hooks';
 
 // Core components
@@ -55,12 +56,6 @@ export default function App() {
   const txt = TRANS[lang];
   const [appMode, setAppMode] = useState<AppMode>('construction');
 
-  // Photos State
-  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
-  const [currentSortPolicy, setCurrentSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
-  const [initialLayout, setInitialLayout] = useState<2 | 3>(3);
-
   // Interactive Analysis Target
   const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
 
@@ -72,9 +67,14 @@ export default function App() {
   const fsCacheState = useFsCache(processing.addLog);
   const pending = usePendingState();
 
+  // Photos State (unified state management with auto-save)
+  const photosState = usePhotosState(processing.addLog);
+  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout } = photosState;
+  const resetStats = () => setStats({ total: 0, processed: 0, success: 0, failed: 0, cached: 0 });
+
   // Analysis Handlers
   const analysisHandlers = useAnalysisHandlers({
-    apiKey: apiKeyState.apiKey, photos, setPhotos, stats: processing.stats, setStats: processing.setStats,
+    apiKey: apiKeyState.apiKey, photos, setPhotos, stats, setStats,
     appMode, lang, currentSortPolicy, addLog: processing.addLog, setIsProcessing: processing.setIsProcessing,
     setCurrentStep: processing.setCurrentStep, setErrorMsg: processing.setErrorMsg, setSuccessMsg: processing.setSuccessMsg,
     setShowPreview, setInitialLayout, setShowNormalizationModal: modals.setShowNormalizationModal,
@@ -86,14 +86,14 @@ export default function App() {
   });
 
   // PDF Handlers
-  const pdfHandlers = usePdfHandlers({ setPhotos, setStats: processing.setStats, addLog: processing.addLog, setErrorMsg: processing.setErrorMsg });
+  const pdfHandlers = usePdfHandlers({ setPhotos, setStats, addLog: processing.addLog, setErrorMsg: processing.setErrorMsg });
 
   // Export Handlers
-  const exportHandlers = useExportHandlers({ photos, setPhotos, setStats: processing.setStats, setShowPreview });
+  const exportHandlers = useExportHandlers({ photos, setPhotos, setStats, setShowPreview });
 
   // Cache Handlers
   const cacheHandlers = useCacheHandlers({
-    lang, setPhotos, setStats: processing.setStats, setErrorMsg: processing.setErrorMsg, setSuccessMsg: processing.setSuccessMsg,
+    lang, setPhotos, setStats, setErrorMsg: processing.setErrorMsg, setSuccessMsg: processing.setSuccessMsg,
     fsCacheEnabled: fsCacheState.fsCacheEnabled, setFsCacheEnabled: fsCacheState.setFsCacheEnabled, setFsCacheStats: fsCacheState.setFsCacheStats,
   });
 
@@ -114,12 +114,12 @@ export default function App() {
 
   // Photo Management
   const photoManagement = usePhotoManagement({
-    lang, photos, setPhotos, setStats: processing.setStats, addLog: processing.addLog, setSuccessMsg: processing.setSuccessMsg,
+    lang, photos, setPhotos, setStats, addLog: processing.addLog, setSuccessMsg: processing.setSuccessMsg,
   });
 
   // Project Handlers
   const projectHandlers = useProjectHandlers({
-    txt, setPhotos, setShowPreview, setInitialLayout, resetStats: processing.resetStats, setErrorMsg: processing.setErrorMsg,
+    txt, setPhotos, setShowPreview, setInitialLayout, resetStats, setErrorMsg: processing.setErrorMsg,
     setSuccessMsg: processing.setSuccessMsg, resetAllPending: pending.resetAllPending, clearLogs: processing.clearLogs,
     addLog: processing.addLog, handleRefineAnalysis: analysisHandlers.handleRefineAnalysis, photos, setInteractiveAnalysisTarget,
   });
@@ -186,7 +186,7 @@ export default function App() {
         />
       ) : (
         <PreviewView
-          lang={lang} photos={photos} stats={processing.stats} appMode={appMode} isProcessing={processing.isProcessing}
+          lang={lang} photos={photos} stats={stats} appMode={appMode} isProcessing={processing.isProcessing}
           currentStep={processing.currentStep} errorMsg={processing.errorMsg} successMsg={processing.successMsg}
           logs={processing.logs} initialLayout={initialLayout} fsCacheEnabled={fsCacheState.fsCacheEnabled}
           fsCacheStats={fsCacheState.fsCacheStats} onClearLogs={processing.clearLogs}
