@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T04:15:19.297Z",
+  "generatedAt": "2025-12-29T04:39:07.203Z",
   "totalFiles": 134,
-  "totalLines": 28372,
+  "totalLines": 28110,
   "largeFiles": [
     {
       "path": "hooks/useAnalysisHandlers.ts",
@@ -17,11 +17,6 @@
       "path": "components/CodebaseHealthDashboard.tsx",
       "lines": 543,
       "size": 24418
-    },
-    {
-      "path": "services/personalStorage.ts",
-      "lines": 538,
-      "size": 13343
     },
     {
       "path": "components/StationReplaceModal.tsx",
@@ -52,6 +47,11 @@
       "path": "utils/pdfGenerator.ts",
       "lines": 479,
       "size": 18378
+    },
+    {
+      "path": "services/learningService.ts",
+      "lines": 462,
+      "size": 13208
     }
   ],
   "components": {
@@ -79,18 +79,18 @@
       "components/PhotoAlbumView/IssueReportModal.tsx (115行)",
       "components/PhotoAlbumView/ReasoningModal.tsx (130行)",
       "components/PhotoAlbumView.tsx (199行)",
-      "components/PreviewView/index.ts (3行)",
       "components/PreviewView/PreviewToolsMenu.tsx (200行)",
       "components/PreviewView/ReorderModeView.tsx (181行)",
+      "components/PreviewView/index.ts (3行)",
       "components/PreviewView.tsx (253行)",
       "components/RefineModal.tsx (523行)",
       "components/SessionHistoryPanel.tsx (404行)",
-      "components/shared/EditableField.tsx (93行)",
       "components/SimplePairingMode.tsx (130行)",
       "components/StationReplaceModal.tsx (525行)",
       "components/UploadView.tsx (555行)",
       "components/UsagePanel.tsx (127行)",
-      "components/WorkTypeConfirmModal.tsx (132行)"
+      "components/WorkTypeConfirmModal.tsx (132行)",
+      "components/shared/EditableField.tsx (93行)"
     ]
   },
   "services": {
@@ -111,7 +111,7 @@
       "services/githubSync.ts (178行)",
       "services/learningService.ts (462行)",
       "services/optimizedSpatialPairingService.ts (384行)",
-      "services/personalStorage.ts (538行)",
+      "services/personalStorage.ts (276行)",
       "services/projectStorage.ts (513行)",
       "services/smartFlowService.ts (255行)",
       "services/spatialPairingService.ts (369行)",
@@ -222,9 +222,9 @@
     {
       "name": "jscpd",
       "status": "ok",
-      "count": 41,
+      "count": 34,
       "details": [
-        "重複: 2.0% (41箇所)"
+        "重複: 1.3% (34箇所)"
       ]
     },
     {
@@ -232,11 +232,11 @@
       "status": "warning",
       "count": 221,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
-        "scripts/analyze-folder.ts                   ",
-        "scripts/analyze-pdf.ts                      ",
-        "scripts/create-test-pdf-with-images.ts      ",
-        "scripts/extract-pdf-images.ts               "
+        "Unused files (27)",
+        "components/ExamplesModal.tsx                ",
+        "components/NormalizationPresetsPanel.tsx    ",
+        "components/PersonalStorageSetup.tsx         ",
+        "components/SimplePairingMode.tsx            "
       ]
     }
   ],
@@ -267,15 +267,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 243
-    },
-    {
-      "id": "refactor-services-personalStorage-ts",
-      "title": "services/personalStorage.ts をリファクタ",
-      "description": "538行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "services/personalStorage.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 238
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",
