@@ -157,21 +157,30 @@ export const generateExcel = async (
       const finalH = imgH * scale;
       console.log(`[ExcelExport] Scaled size: ${Math.round(finalW)}x${Math.round(finalH)}`);
 
-      // 3. Use tl/ext format (more compatible with CDN version of ExcelJS)
-      // Calculate column offset for centering (as fraction of column width)
-      const colOffset = (BOX_WIDTH_PX - finalW) / 2 / PIXELS_PER_COL_UNIT / COL_A_WIDTH;
-      // Calculate row offset for centering (as fraction of rows)
-      const rowOffset = (BOX_HEIGHT_PX - finalH) / 2 / (ROW_HEIGHT_PTS * PIXELS_PER_PT) / rowsPerBlock;
+      // 3. Calculate cell positions for tl (top-left) and br (bottom-right)
+      // Using tl/br format with 'absolute' ensures image doesn't move/resize with cells
+      const paddingCols = (BOX_WIDTH_PX - finalW) / 2 / PIXELS_PER_COL_UNIT / COL_A_WIDTH;
+      const paddingRows = (BOX_HEIGHT_PX - finalH) / 2 / (ROW_HEIGHT_PTS * PIXELS_PER_PT);
 
+      const tlCol = Math.max(0.01, paddingCols);
+      const tlRow = startRow - 1 + Math.max(0.05, paddingRows);
+
+      // Calculate bottom-right position
+      const imgWidthInCols = finalW / PIXELS_PER_COL_UNIT / COL_A_WIDTH;
+      const imgHeightInRows = finalH / (ROW_HEIGHT_PTS * PIXELS_PER_PT);
+      const brCol = tlCol + imgWidthInCols;
+      const brRow = tlRow + imgHeightInRows;
+
+      // Use tl/br format - 'absolute' means image won't move/resize with cells (critical for printing)
       sheet.addImage(imageId, {
-        tl: { col: Math.max(0, colOffset), row: startRow - 1 + Math.max(0, rowOffset * rowsPerBlock) },
-        ext: { width: finalW, height: finalH },
-        editAs: 'oneCell'
+        tl: { col: tlCol, row: tlRow },
+        br: { col: brCol, row: brRow },
+        editAs: 'absolute'
       });
 
     } catch (e) {
       console.warn("[ExcelExport] Could not calculate image dimensions, using fallback.", e);
-      // Fallback: place image with fixed size
+      // Fallback: use tl/ext format (less precise but works)
       sheet.addImage(imageId, {
         tl: { col: 0.02, row: startRow - 1 + 0.1 },
         ext: { width: 400, height: 300 },
