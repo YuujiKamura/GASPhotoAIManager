@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T03:02:28.980Z",
+  "generatedAt": "2025-12-29T03:04:49.054Z",
   "totalFiles": 124,
-  "totalLines": 29853,
+  "totalLines": 29862,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -44,14 +44,14 @@
       "size": 23417
     },
     {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 543,
+      "size": 24418
+    },
+    {
       "path": "services/personalStorage.ts",
       "lines": 538,
       "size": 13343
-    },
-    {
-      "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 534,
-      "size": 24001
     }
   ],
   "components": {
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (534行)",
+      "components/CodebaseHealthDashboard.tsx (543行)",
       "components/ConsolePanel.tsx (171行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
@@ -194,7 +194,7 @@
       "status": "error",
       "count": 65,
       "details": [
-        "components/CodebaseHealthDashboard.tsx(171,28): error TS2339: Property 'env' doe",
+        "components/CodebaseHealthDashboard.tsx(170,28): error TS2339: Property 'env' doe",
         "components/ManualPairingModal.tsx(172,21): error TS2322: Type '{ key: any; photo",
         "components/ManualPairingModal.tsx(197,21): error TS2322: Type '{ key: any; photo",
         "components/MasterEditorModal.tsx(305,61): error TS2339: Property 'name' does not",
@@ -304,6 +304,15 @@
       "estimatedLines": 255
     },
     {
+      "id": "refactor-components-CodebaseHealthDashboard-tsx",
+      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
+      "description": "543行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "components/CodebaseHealthDashboard.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 243
+    },
+    {
       "id": "refactor-services-personalStorage-ts",
       "title": "services/personalStorage.ts をリファクタ",
       "description": "538行。重複削除・ロジック整理で300行以下を目指す",
@@ -311,15 +320,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 238
-    },
-    {
-      "id": "refactor-components-CodebaseHealthDashboard-tsx",
-      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "534行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/CodebaseHealthDashboard.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 234
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",

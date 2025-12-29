@@ -167,8 +167,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {/* 更新ボタン: devサーバーのみ表示（本番では非表示） */}
-              {import.meta.env.DEV && (
+              {import.meta.env.DEV ? (
                 <button
                   onClick={runAnalysis}
                   disabled={isLoading}
@@ -177,6 +176,16 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                   <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                   {txt.refresh}
                 </button>
+              ) : (
+                <a
+                  href="https://github.com/YuujiKamura/GASPhotoAIManager/actions/workflows/deploy.yml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {lang === 'ja' ? '再デプロイ' : 'Redeploy'}
+                </a>
               )}
 
               {/* Three-dot menu */}
