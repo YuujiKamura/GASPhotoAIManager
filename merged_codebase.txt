@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 11:29:41
+生成日時: 2025-12-29 11:55:03
 ================================================================================
 
 === ファイル一覧 ===
@@ -1077,6 +1077,10 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                 <GitBranch className="w-6 h-6 text-blue-600" />
                 {txt.title}
               </h1>
+              <span className="text-sm text-gray-500">
+                {lang === 'ja' ? '更新: ' : 'Updated: '}
+                {new Date(codebaseStats.generatedAt).toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button

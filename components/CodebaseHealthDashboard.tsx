@@ -170,6 +170,10 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                 <GitBranch className="w-6 h-6 text-blue-600" />
                 {txt.title}
               </h1>
+              <span className="text-sm text-gray-500">
+                {lang === 'ja' ? '更新: ' : 'Updated: '}
+                {new Date(codebaseStats.generatedAt).toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button

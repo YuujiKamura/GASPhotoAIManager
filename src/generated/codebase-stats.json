@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T02:29:35.326Z",
+  "generatedAt": "2025-12-29T02:54:57.627Z",
   "totalFiles": 124,
-  "totalLines": 29828,
+  "totalLines": 29832,
   "largeFiles": [
     {
       "path": "utils/constructionMaster.ts",
@@ -44,14 +44,14 @@
       "size": 23417
     },
     {
+      "path": "components/CodebaseHealthDashboard.tsx",
+      "lines": 540,
+      "size": 24100
+    },
+    {
       "path": "services/personalStorage.ts",
       "lines": 538,
       "size": 13343
-    },
-    {
-      "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 536,
-      "size": 23860
     }
   ],
   "components": {
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (536行)",
+      "components/CodebaseHealthDashboard.tsx (540行)",
       "components/ConsolePanel.tsx (171行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
@@ -304,6 +304,15 @@
       "estimatedLines": 255
     },
     {
+      "id": "refactor-components-CodebaseHealthDashboard-tsx",
+      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
+      "description": "540行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "components/CodebaseHealthDashboard.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 240
+    },
+    {
       "id": "refactor-services-personalStorage-ts",
       "title": "services/personalStorage.ts をリファクタ",
       "description": "538行。重複削除・ロジック整理で300行以下を目指す",
@@ -311,15 +320,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 238
-    },
-    {
-      "id": "refactor-components-CodebaseHealthDashboard-tsx",
-      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "536行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/CodebaseHealthDashboard.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 236
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",
