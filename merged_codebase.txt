@@ -4,7 +4,7 @@ GASPhotoAIManager - Merged Codebase Snapshot
 このファイルはpre-commitフックで自動生成されます。
 コードベース全体のスナップショットとして、AI Studio等で使用できます。
 
-生成日時: 2025-12-29 09:31:24
+生成日時: 2025-12-29 09:42:08
 ================================================================================
 
 === ファイル一覧 ===
@@ -905,28 +905,16 @@ export default ApiKeySetup;
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
-  FileCode,
-  Package,
   GitBranch,
   CheckCircle,
   AlertTriangle,
-  Info,
-  Layers,
-  FolderTree,
-  Cpu,
-  Database,
-  Wrench,
   RefreshCw,
   ChevronDown,
   ChevronRight,
-  Trash2,
   Scale,
   Zap,
   AlertCircle,
-  TrendingDown,
-  FileWarning,
   PackageX,
-  Copy,
   MoreVertical,
   ExternalLink
 } from 'lucide-react';
@@ -960,88 +948,37 @@ interface HealthCheck {
   details?: string;
 }
 
-interface WasteItem {
-  type: 'bloated_file' | 'unused_code' | 'duplicate_dep' | 'bundle_bloat' | 'complexity';
-  severity: 'high' | 'medium' | 'low';
-  file?: string;
-  description: string;
-  suggestion: string;
-  impact: string;
-  lines?: number;
-}
-
 const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang, onClose }) => {
   const [fileMetrics, setFileMetrics] = useState<FileMetrics[]>([]);
   const [dependencies, setDependencies] = useState<DependencyInfo[]>([]);
   const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
-  const [wasteItems, setWasteItems] = useState<WasteItem[]>([]);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks', 'waste']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks']));
   const [isLoading, setIsLoading] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
 
   const txt = lang === 'ja' ? {
     title: 'コードベース健全性ダッシュボード',
     back: '戻る',
-    overview: '概要',
-    waste: '🛫 無駄な部品検出',
-    wasteSubtitle: '飛行機のフレームのように、余分なものはスピードを落とす',
     bundle: 'バンドルサイズ分析',
     health: '健全性チェック',
-    structure: 'プロジェクト構造',
-    dependencies: '依存関係',
-    totalFiles: '総ファイル数',
     components: 'コンポーネント',
     services: 'サービス',
     utilities: 'ユーティリティ',
-    types: '型定義',
-    config: '設定ファイル',
-    prodDeps: '本番依存関係',
-    devDeps: '開発依存関係',
-    ok: '正常',
-    warning: '警告',
-    error: 'エラー',
     refresh: '更新',
     loading: '分析中...',
-    wasteCount: '検出された問題',
-    suggestion: '改善案',
-    impact: '影響',
-    high: '高',
-    medium: '中',
-    low: '低',
     bundleTotal: 'バンドル合計',
-    mainChunk: 'メインチャンク',
     heavyDeps: '重い依存関係'
   } : {
     title: 'Codebase Health Dashboard',
     back: 'Back',
-    overview: 'Overview',
-    waste: '🛫 Waste Detection',
-    wasteSubtitle: 'Like an aircraft frame, unnecessary parts slow you down',
     bundle: 'Bundle Size Analysis',
     health: 'Health Checks',
-    structure: 'Project Structure',
-    dependencies: 'Dependencies',
-    totalFiles: 'Total Files',
     components: 'Components',
     services: 'Services',
     utilities: 'Utilities',
-    types: 'Type Definitions',
-    config: 'Config Files',
-    prodDeps: 'Production Dependencies',
-    devDeps: 'Development Dependencies',
-    ok: 'OK',
-    warning: 'Warning',
-    error: 'Error',
     refresh: 'Refresh',
     loading: 'Analyzing...',
-    wasteCount: 'Issues Detected',
-    suggestion: 'Suggestion',
-    impact: 'Impact',
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
     bundleTotal: 'Bundle Total',
-    mainChunk: 'Main Chunk',
     heavyDeps: 'Heavy Dependencies'
   };
 
@@ -1053,94 +990,6 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
     setIsLoading(true);
 
     setTimeout(() => {
-      // === 動的データからWASTE検出 ===
-      const waste: WasteItem[] = [];
-
-      // 巨大ファイル (500行以上を警告)
-      for (const file of codebaseStats.largeFiles) {
-        if (file.lines >= 500) {
-          waste.push({
-            type: 'bloated_file',
-            severity: file.lines >= 1000 ? 'high' : 'medium',
-            file: file.path,
-            lines: file.lines,
-            description: lang === 'ja'
-              ? `${file.path} が${file.lines.toLocaleString()}行で肥大化`
-              : `${file.path} is bloated at ${file.lines.toLocaleString()} lines`,
-            suggestion: lang === 'ja'
-              ? 'ロジックを分離モジュール/カスタムフックに抽出'
-              : 'Extract logic into separate modules/custom hooks',
-            impact: lang === 'ja'
-              ? 'ビルド時間増加、保守性低下'
-              : 'Slower builds, reduced maintainability'
-          });
-        }
-      }
-
-      // バンドル肥大化 (静的 - ビルド結果から)
-      waste.push({
-        type: 'bundle_bloat',
-        severity: 'high',
-        file: 'index.js',
-        description: lang === 'ja'
-          ? 'メインバンドルが1.43MB (gzip: 521KB)'
-          : 'Main bundle is 1.43MB (gzip: 521KB)',
-        suggestion: lang === 'ja'
-          ? 'manualChunksで重いモジュールを分割'
-          : 'Use manualChunks to split heavy modules',
-        impact: lang === 'ja'
-          ? '初回ロード時間が長い'
-          : 'Long initial load time'
-      });
-
-      waste.push({
-        type: 'bundle_bloat',
-        severity: 'medium',
-        file: 'pdf.js + pdf.worker',
-        description: lang === 'ja'
-          ? 'PDF関連が合計1.95MB'
-          : 'PDF total 1.95MB',
-        suggestion: lang === 'ja'
-          ? 'PDF機能を使用時のみ動的読込に変更'
-          : 'Load PDF dynamically on demand',
-        impact: lang === 'ja'
-          ? 'PDF不要なユーザーにも負担'
-          : 'Penalty for users not using PDF'
-      });
-
-      // 重複・類似機能 (静的)
-      waste.push({
-        type: 'duplicate_dep',
-        severity: 'medium',
-        description: lang === 'ja'
-          ? 'pdfjs-dist と jspdf の両方を使用'
-          : 'Both pdfjs-dist and jspdf used',
-        suggestion: lang === 'ja'
-          ? '読み込みにpdfjs、生成にjspdfと役割を明確化'
-          : 'Clarify roles (read vs generate)',
-        impact: lang === 'ja'
-          ? 'バンドルサイズ増加'
-          : 'Increased bundle size'
-      });
-
-      // 未使用フック (hooks/ の数が多いのに使われてない場合)
-      if (codebaseStats.hooks.count >= 5) {
-        waste.push({
-          type: 'unused_code',
-          severity: 'medium',
-          file: 'hooks/*.ts',
-          description: lang === 'ja'
-            ? `カスタムフック${codebaseStats.hooks.count}個が作成済み`
-            : `${codebaseStats.hooks.count} custom hooks created`,
-          suggestion: lang === 'ja'
-            ? 'App.tsxで活用して状態管理を整理'
-            : 'Use in App.tsx to organize state',
-          impact: lang === 'ja'
-            ? 'フックが無駄に'
-            : 'Hooks wasted'
-        });
-      }
-
       // 動的ファイルメトリクス
       const metrics: FileMetrics[] = [
         {
@@ -1207,7 +1056,6 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
       setFileMetrics(metrics);
       setDependencies(deps);
       setHealthChecks(checks);
-      setWasteItems(waste);
       setIsLoading(false);
     }, 500);
   };
@@ -1231,38 +1079,6 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
       case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />;
     }
   };
-
-  const getSeverityColor = (severity: 'high' | 'medium' | 'low') => {
-    switch (severity) {
-      case 'high': return 'border-red-300 bg-red-50';
-      case 'medium': return 'border-yellow-300 bg-yellow-50';
-      case 'low': return 'border-blue-200 bg-blue-50';
-    }
-  };
-
-  const getSeverityBadge = (severity: 'high' | 'medium' | 'low') => {
-    const label = severity === 'high' ? txt.high : severity === 'medium' ? txt.medium : txt.low;
-    const colors = severity === 'high'
-      ? 'bg-red-100 text-red-700 border-red-300'
-      : severity === 'medium'
-      ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
-      : 'bg-blue-100 text-blue-700 border-blue-300';
-    return <span className={`text-xs font-bold px-2 py-0.5 rounded border ${colors}`}>{label}</span>;
-  };
-
-  const getWasteIcon = (type: WasteItem['type']) => {
-    switch (type) {
-      case 'bloated_file': return <FileWarning className="w-5 h-5 text-red-500" />;
-      case 'bundle_bloat': return <Scale className="w-5 h-5 text-orange-500" />;
-      case 'duplicate_dep': return <Copy className="w-5 h-5 text-yellow-600" />;
-      case 'unused_code': return <Trash2 className="w-5 h-5 text-gray-500" />;
-      case 'complexity': return <TrendingDown className="w-5 h-5 text-purple-500" />;
-    }
-  };
-
-  const highCount = wasteItems.filter(w => w.severity === 'high').length;
-  const mediumCount = wasteItems.filter(w => w.severity === 'medium').length;
-  const lowCount = wasteItems.filter(w => w.severity === 'low').length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1350,102 +1166,37 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
         ) : (
           <div className="space-y-6">
 
-            {/* === WASTE DETECTION (Main Feature) === */}
-            <section className="bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl border-2 border-red-200 overflow-hidden">
-              <button
-                onClick={() => toggleSection('waste')}
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-red-100/50 transition-colors"
-              >
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    {expandedSections.has('waste') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                    {txt.waste}
-                  </h2>
-                  <p className="text-sm text-gray-600 mt-1 ml-7">{txt.wasteSubtitle}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {highCount > 0 && (
-                    <span className="bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                      {highCount} {txt.high}
-                    </span>
-                  )}
-                  {mediumCount > 0 && (
-                    <span className="bg-yellow-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                      {mediumCount} {txt.medium}
-                    </span>
-                  )}
-                  {lowCount > 0 && (
-                    <span className="bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                      {lowCount} {txt.low}
-                    </span>
-                  )}
-                </div>
-              </button>
-
-              {expandedSections.has('waste') && (
-                <div className="p-5 pt-0 space-y-4">
-                  {wasteItems.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className={`rounded-xl border-2 p-4 ${getSeverityColor(item.severity)}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        {getWasteIcon(item.type)}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {getSeverityBadge(item.severity)}
-                            {item.file && (
-                              <span className="font-mono text-sm bg-gray-200 px-2 py-0.5 rounded">
-                                {item.file}
-                              </span>
-                            )}
-                            {item.lines && (
-                              <span className="text-xs text-gray-500">
-                                ({item.lines.toLocaleString()} lines)
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-2 text-gray-800 font-medium">{item.description}</p>
-                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                            <div className="bg-white/70 rounded-lg p-2">
-                              <span className="font-semibold text-green-700">💡 {txt.suggestion}:</span>
-                              <p className="text-gray-700 mt-1">{item.suggestion}</p>
-                            </div>
-                            <div className="bg-white/70 rounded-lg p-2">
-                              <span className="font-semibold text-orange-700">⚡ {txt.impact}:</span>
-                              <p className="text-gray-700 mt-1">{item.impact}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* === TASK BOARD (タスクボード) === */}
-            <section className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200 overflow-hidden">
+            {/* === UNIFIED TASK LIST === */}
+            <section className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border-2 border-slate-200 overflow-hidden">
               <button
                 onClick={() => toggleSection('tasks')}
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-blue-100/50 transition-colors"
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-100/50 transition-colors"
               >
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                     {expandedSections.has('tasks') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                    📋 {lang === 'ja' ? 'タスクボード' : 'Task Board'}
+                    🔧 {lang === 'ja' ? 'タスク一覧' : 'Task List'}
                   </h2>
                   <p className="text-sm text-gray-600 mt-1 ml-7">
-                    {lang === 'ja' ? 'Claudeが並列で作業可能なタスク一覧' : 'Tasks that can be worked on in parallel'}
+                    {lang === 'ja' ? '検出された課題とClaude用タスク' : 'Detected issues and Claude tasks'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                    {codebaseStats.tasks?.filter((t: any) => t.priority === 'high' && t.status === 'todo').length || 0} High
-                  </span>
-                  <span className="bg-yellow-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                    {codebaseStats.tasks?.filter((t: any) => t.priority === 'medium' && t.status === 'todo').length || 0} Med
-                  </span>
+                  {(codebaseStats.tasks?.filter((t: any) => t.priority === 'high' && t.status === 'todo').length || 0) > 0 && (
+                    <span className="bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {codebaseStats.tasks?.filter((t: any) => t.priority === 'high' && t.status === 'todo').length} High
+                    </span>
+                  )}
+                  {(codebaseStats.tasks?.filter((t: any) => t.priority === 'medium' && t.status === 'todo').length || 0) > 0 && (
+                    <span className="bg-yellow-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {codebaseStats.tasks?.filter((t: any) => t.priority === 'medium' && t.status === 'todo').length} Med
+                    </span>
+                  )}
+                  {(codebaseStats.tasks?.filter((t: any) => t.priority === 'low' && t.status === 'todo').length || 0) > 0 && (
+                    <span className="bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {codebaseStats.tasks?.filter((t: any) => t.priority === 'low' && t.status === 'todo').length} Low
+                    </span>
+                  )}
                 </div>
               </button>
 

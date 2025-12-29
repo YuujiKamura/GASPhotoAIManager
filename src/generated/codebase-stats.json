@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T00:31:23.432Z",
+  "generatedAt": "2025-12-29T00:41:23.346Z",
   "totalFiles": 124,
-  "totalLines": 30321,
+  "totalLines": 30072,
   "largeFiles": [
     {
       "path": "utils/pdfGenerator.ts",
@@ -12,11 +12,6 @@
       "path": "utils/constructionMaster.ts",
       "lines": 818,
       "size": 26474
-    },
-    {
-      "path": "components/CodebaseHealthDashboard.tsx",
-      "lines": 780,
-      "size": 33095
     },
     {
       "path": "components/PhotoAlbumView.tsx",
@@ -52,6 +47,11 @@
       "path": "components/UploadView.tsx",
       "lines": 555,
       "size": 23417
+    },
+    {
+      "path": "services/personalStorage.ts",
+      "lines": 538,
+      "size": 13343
     }
   ],
   "components": {
@@ -59,7 +59,7 @@
     "files": [
       "components/AnalysisRulesPanel.tsx (158行)",
       "components/ApiKeySetup.tsx (331行)",
-      "components/CodebaseHealthDashboard.tsx (780行)",
+      "components/CodebaseHealthDashboard.tsx (531行)",
       "components/ConsolePanel.tsx (171行)",
       "components/EditableTreeView.tsx (204行)",
       "components/ExamplesModal.tsx (317行)",
@@ -192,15 +192,6 @@
       "estimatedLines": 518
     },
     {
-      "id": "refactor-components-CodebaseHealthDashboard-tsx",
-      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
-      "description": "780行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "components/CodebaseHealthDashboard.tsx",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 480
-    },
-    {
       "id": "refactor-components-PhotoAlbumView-tsx",
       "title": "components/PhotoAlbumView.tsx をリファクタ",
       "description": "715行。重複削除・ロジック整理で300行以下を目指す",
@@ -271,6 +262,15 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 238
+    },
+    {
+      "id": "refactor-components-CodebaseHealthDashboard-tsx",
+      "title": "components/CodebaseHealthDashboard.tsx をリファクタ",
+      "description": "531行。重複削除・ロジック整理で300行以下を目指す",
+      "file": "components/CodebaseHealthDashboard.tsx",
+      "priority": "low",
+      "status": "todo",
+      "estimatedLines": 231
     },
     {
       "id": "refactor-components-StationReplaceModal-tsx",
