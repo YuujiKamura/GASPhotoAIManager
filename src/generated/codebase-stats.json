@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2025-12-29T04:01:19.648Z",
+  "generatedAt": "2025-12-29T04:11:46.018Z",
   "totalFiles": 130,
-  "totalLines": 29051,
+  "totalLines": 28612,
   "largeFiles": [
     {
       "path": "hooks/useAnalysisHandlers.ts",
@@ -12,11 +12,6 @@
       "path": "components/PreviewView.tsx",
       "lines": 645,
       "size": 29192
-    },
-    {
-      "path": "services/githubSync.ts",
-      "lines": 617,
-      "size": 17419
     },
     {
       "path": "services/aiAgentService.ts",
@@ -52,6 +47,11 @@
       "path": "services/projectStorage.ts",
       "lines": 513,
       "size": 12242
+    },
+    {
+      "path": "services/gemini/analysis.ts",
+      "lines": 509,
+      "size": 20805
     }
   ],
   "components": {
@@ -82,12 +82,12 @@
       "components/PreviewView.tsx (645行)",
       "components/RefineModal.tsx (523行)",
       "components/SessionHistoryPanel.tsx (404行)",
-      "components/shared/EditableField.tsx (93行)",
       "components/SimplePairingMode.tsx (130行)",
       "components/StationReplaceModal.tsx (525行)",
       "components/UploadView.tsx (555行)",
       "components/UsagePanel.tsx (127行)",
-      "components/WorkTypeConfirmModal.tsx (132行)"
+      "components/WorkTypeConfirmModal.tsx (132行)",
+      "components/shared/EditableField.tsx (93行)"
     ]
   },
   "services": {
@@ -105,7 +105,7 @@
       "services/gemini/systemPrompts.ts (282行)",
       "services/gemini/workTypeSelector.ts (119行)",
       "services/geminiService.ts (12行)",
-      "services/githubSync.ts (617行)",
+      "services/githubSync.ts (178行)",
       "services/learningService.ts (462行)",
       "services/optimizedSpatialPairingService.ts (384行)",
       "services/personalStorage.ts (538行)",
@@ -218,9 +218,9 @@
     {
       "name": "jscpd",
       "status": "ok",
-      "count": 43,
+      "count": 41,
       "details": [
-        "重複: 2.1% (43箇所)"
+        "重複: 2.0% (41箇所)"
       ]
     },
     {
@@ -228,7 +228,7 @@
       "status": "warning",
       "count": 220,
       "details": [
-        "\u001b[93m\u001b[4mUnused files\u001b[24m\u001b[39m (27)",
+        "Unused files (27)",
         "components/ExamplesModal.tsx                ",
         "components/NormalizationPresetsPanel.tsx    ",
         "components/PersonalStorageSetup.tsx         ",
@@ -254,15 +254,6 @@
       "priority": "low",
       "status": "todo",
       "estimatedLines": 345
-    },
-    {
-      "id": "refactor-services-githubSync-ts",
-      "title": "services/githubSync.ts をリファクタ",
-      "description": "617行。重複削除・ロジック整理で300行以下を目指す",
-      "file": "services/githubSync.ts",
-      "priority": "low",
-      "status": "todo",
-      "estimatedLines": 317
     },
     {
       "id": "refactor-services-aiAgentService-ts",
