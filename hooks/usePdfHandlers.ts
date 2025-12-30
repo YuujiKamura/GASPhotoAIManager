@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
 // pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
 import { loadImagesFromFolder } from '../utils/fileHandlers';
+import { saveAnalysisHistory } from '../utils/storage';
 
 interface UsePdfHandlersProps {
   setPhotos: React.Dispatch<React.SetStateAction<PhotoRecord[]>>;
@@ -89,6 +90,11 @@ export function usePdfHandlers({
       setPhotos(restoredPhotos);
       setStats({ total: restoredPhotos.length, processed: restoredPhotos.length, success: restoredPhotos.length, failed: 0, cached: restoredPhotos.length });
       log(`PDFから${restoredPhotos.length}枚を復元しました`, 'success');
+
+      // 履歴に保存
+      saveAnalysisHistory(restoredPhotos, `PDF復元: ${pdfFile.name}`, 'pdf-restore').catch(err => {
+        console.error('履歴保存エラー:', err);
+      });
     } catch (err: any) {
       setErrorMsg(err.message);
       throw err;
