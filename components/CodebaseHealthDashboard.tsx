@@ -1,10 +1,10 @@
 import React from 'react';
-import { ArrowLeft, GitBranch, RefreshCw, MoreVertical, ExternalLink, Scale, PackageX, Network, Layers, FileCode, TreePine, Folder, GitCompare, AlertTriangle, ClipboardCopy } from 'lucide-react';
+import { ArrowLeft, GitBranch, RefreshCw, MoreVertical, ExternalLink, Scale, PackageX, Network, Layers, FileCode, TreePine, Folder, GitCompare, AlertTriangle } from 'lucide-react';
 import codebaseStats from '../src/generated/codebase-stats.json';
 import { useDashboardState } from '../hooks/useDashboardState';
 import { ExpandableSection, SimpleSection } from './dashboard/ExpandableSection';
 import { TaskCard, SuggestionCard, ComponentAnalysisCard, SimilarModuleCard, BackendModuleGroupCard, FeatureFlowTree, DependencyGraph, StatusIcon, CopyButton } from './dashboard/Cards';
-import { DEPS, STATUS_STYLES, generateHealthFixPrompt, generateClaudeInstructions, Priority, Status } from './dashboard/constants';
+import { DEPS, STATUS_STYLES, generateHealthFixPrompt, Priority, Status } from './dashboard/constants';
 
 interface Props { lang: 'en' | 'ja'; onClose: () => void; }
 
@@ -71,24 +71,6 @@ const CodebaseHealthDashboard: React.FC<Props> = ({ lang, onClose }) => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {/* Claude Instructions Card */}
-        <div className="bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <ClipboardCopy className="w-5 h-5 text-violet-600" />
-              <h2 className="text-lg font-bold text-violet-900">{t('Claude用指示文', 'Claude Instructions')}</h2>
-            </div>
-            <CopyButton
-              text={generateClaudeInstructions(healthChecks, tasks, stats.suggestions || [], stats.architectureIssues || [], stats.similarModules || [])}
-              label={t('全てコピー', 'Copy All')}
-            />
-          </div>
-          <p className="text-sm text-violet-700 mb-3">{t('以下をコピーしてClaudeに貼り付けると、全タスクを実行できます', 'Copy and paste to Claude to execute all tasks')}</p>
-          <pre className="bg-white/70 border border-violet-200 rounded-lg p-4 text-xs text-gray-700 max-h-64 overflow-auto whitespace-pre-wrap">
-            {generateClaudeInstructions(healthChecks, tasks, stats.suggestions || [], stats.architectureIssues || [], stats.similarModules || [])}
-          </pre>
-        </div>
-
         {/* Tasks */}
         <ExpandableSection id="tasks" title={`🔧 ${t('タスク一覧', 'Task List')}`} subtitle={t('検出された課題とClaude用タスク', 'Detected issues and Claude tasks')}
           expanded={expandedSections.has('tasks')} onToggle={() => toggle('tasks')} gradient="bg-gradient-to-br from-slate-50 to-blue-50 border-slate-200"

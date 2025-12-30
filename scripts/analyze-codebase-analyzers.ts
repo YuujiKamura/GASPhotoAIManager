@@ -157,6 +157,7 @@ export function generateSuggestions(
 
   const problematic = components.filter(c => c.issues.length >= 2);
   if (problematic.length > 0) {
+    const targets = problematic.slice(0, 3);
     suggestions.push({
       id: 'refactor-complex-components',
       category: 'maintainability',
@@ -164,12 +165,29 @@ export function generateSuggestions(
       description: `${problematic.length}個のコンポーネントに複数の問題があります`,
       files: problematic.slice(0, 5).map(c => c.path),
       priority: 'high', effort: 'medium',
-      prompt: problematic.slice(0, 3).map(c => `${c.path}: ${c.issues.join(', ')}`).join('\n')
+      prompt: `# 複雑なコンポーネントのリファクタリング
+
+以下のコンポーネントをリファクタリングしてください。
+
+## 対象ファイル
+${targets.map(c => `- ${c.path}\n  - 問題: ${c.issues.join(', ')}\n  - 推奨: ${c.suggestions.join(', ')}`).join('\n')}
+
+## 作業手順
+1. 各ファイルを読んで現状を把握
+2. Props数が多い場合: オブジェクトにグループ化（data, handlers, state等）
+3. useState数が多い場合: カスタムフックに抽出
+4. JSXが深い場合: サブコンポーネントに分割
+5. ビルド確認してコミット
+
+## 完了条件
+- npm run build が成功
+- 各問題が解消されていること`
     });
   }
 
   const manyStates = components.filter(c => c.stateCount > 3);
   if (manyStates.length > 0) {
+    const targets = manyStates.slice(0, 3);
     suggestions.push({
       id: 'extract-custom-hooks',
       category: 'architecture',
@@ -177,12 +195,29 @@ export function generateSuggestions(
       description: `${manyStates.length}個のコンポーネントでstate管理をフック化可能`,
       files: manyStates.slice(0, 5).map(c => c.path),
       priority: 'medium', effort: 'small',
-      prompt: manyStates.slice(0, 3).map(c => `${c.path}: useState ${c.stateCount}個`).join('\n')
+      prompt: `# カスタムフック抽出
+
+以下のコンポーネントからカスタムフックを抽出してください。
+
+## 対象ファイル
+${targets.map(c => `- ${c.path}: useState ${c.stateCount}個`).join('\n')}
+
+## 作業手順
+1. 関連するuseStateをグループ化
+2. hooks/use[ComponentName].ts を作成
+3. state と handlers をフックに移動
+4. コンポーネントでフックを呼び出すように変更
+5. ビルド確認してコミット
+
+## 完了条件
+- npm run build が成功
+- useStateがカスタムフックに集約されていること`
     });
   }
 
   const heavyDeps = modules.filter(m => m.imports.length > 10);
   if (heavyDeps.length > 0) {
+    const targets = heavyDeps.slice(0, 3);
     suggestions.push({
       id: 'split-heavy-modules',
       category: 'architecture',
@@ -190,12 +225,29 @@ export function generateSuggestions(
       description: `${heavyDeps.length}個のファイルが多くのモジュールに依存`,
       files: heavyDeps.slice(0, 5).map(m => m.path),
       priority: 'medium', effort: 'large',
-      prompt: heavyDeps.slice(0, 3).map(m => `${m.path}: ${m.imports.length}依存`).join('\n')
+      prompt: `# 依存過多モジュールの分割
+
+以下のモジュールは依存が多すぎます。分割を検討してください。
+
+## 対象ファイル
+${targets.map(m => `- ${m.path}: ${m.imports.length}個の依存`).join('\n')}
+
+## 作業手順
+1. 各ファイルの責務を分析
+2. 関連する機能ごとにファイルを分割
+3. 共通部分は utils/ に抽出
+4. importを整理
+5. ビルド確認してコミット
+
+## 完了条件
+- npm run build が成功
+- 各ファイルの依存が10個以下`
     });
   }
 
   const highImpact = modules.filter(m => m.importedBy.length > 5);
   if (highImpact.length > 0) {
+    const targets = highImpact.slice(0, 5);
     suggestions.push({
       id: 'test-high-impact',
       category: 'maintainability',
@@ -203,12 +255,28 @@ export function generateSuggestions(
       description: `${highImpact.length}個のファイルが多くの場所から参照`,
       files: highImpact.slice(0, 5).map(m => m.path),
       priority: 'low', effort: 'medium',
-      prompt: highImpact.slice(0, 3).map(m => `${m.path}: ${m.importedBy.length}参照`).join('\n')
+      prompt: `# 高影響モジュールのテスト強化
+
+以下のモジュールは多くの場所から参照されています。変更時の影響が大きいためテストを追加してください。
+
+## 対象ファイル
+${targets.map(m => `- ${m.path}: ${m.importedBy.length}箇所から参照`).join('\n')}
+
+## 作業手順
+1. 各モジュールの主要な関数を特定
+2. tests/ にテストファイルを作成
+3. 正常系・異常系のテストを記述
+4. npm test で確認
+
+## 完了条件
+- テストが通ること
+- 主要な関数がカバーされていること`
     });
   }
 
   const largeRender = components.filter(c => c.jsxDepth > 6 || c.effectCount > 2);
   if (largeRender.length > 0) {
+    const targets = largeRender.slice(0, 3);
     suggestions.push({
       id: 'optimize-rendering',
       category: 'performance',
@@ -216,7 +284,23 @@ export function generateSuggestions(
       description: `${largeRender.length}個のコンポーネントで最適化可能`,
       files: largeRender.slice(0, 5).map(c => c.path),
       priority: 'low', effort: 'small',
-      prompt: largeRender.slice(0, 3).map(c => `${c.path}: JSX深度${c.jsxDepth}`).join('\n')
+      prompt: `# レンダリング最適化
+
+以下のコンポーネントでレンダリング最適化が可能です。
+
+## 対象ファイル
+${targets.map(c => `- ${c.path}: JSX深度${c.jsxDepth}, useEffect${c.effectCount}個`).join('\n')}
+
+## 作業手順
+1. 深いJSXはサブコンポーネントに分割
+2. useEffectの依存配列を最適化
+3. React.memoの適用を検討
+4. 不要な再レンダリングがないか確認
+5. ビルド確認してコミット
+
+## 完了条件
+- npm run build が成功
+- JSX深度が6以下になること`
     });
   }
   return suggestions;
@@ -346,7 +430,27 @@ export function detectSimilarModules(modules: ModuleNode[], ROOT: string): Simil
           modules: [mod1.path, mod2.path],
           similarity: Math.round(similarity * 100) / 100,
           reason: `共通: ${[...intersection].slice(0, 5).join(', ')}`,
-          comparisonPrompt: `${mod1.path} vs ${mod2.path}: 類似度${Math.round(similarity * 100)}%`
+          comparisonPrompt: `# 類似モジュールの統合検討
+
+以下の2つのモジュールが類似しています（${Math.round(similarity * 100)}%）。統合または役割分担の明確化を検討してください。
+
+## 対象ファイル
+- ${mod1.path}
+- ${mod2.path}
+
+## 共通トークン
+${[...intersection].slice(0, 10).join(', ')}
+
+## 作業手順
+1. 両ファイルを読んで機能を比較
+2. 統合可能か、役割分担が必要か判断
+3. 統合する場合: 1つのファイルにまとめる
+4. 分担する場合: 責務を明確化してリネーム
+5. ビルド確認してコミット
+
+## 完了条件
+- npm run build が成功
+- 重複コードが解消されていること`
         });
       }
     }
