@@ -227,7 +227,7 @@ export default function App() {
           onGoHome={() => { analysisHandlers.shouldAbortRef.current = true; setShowPreview(false); setInitialLayout(3); }}
           onCloseProject={projectHandlers.handleCloseProject} onRefine={() => modals.setShowRefineModal(true)}
           onExportExcel={(layout) => generateExcel(photos, appMode, layout)} onUpdatePhoto={updatePhoto}
-          onDeletePhoto={deletePhoto} onAutoPair={analysisHandlers.handleAutoPair}
+          onDeletePhoto={(fileName) => deletePhoto(fileName, lang)} onAutoPair={analysisHandlers.handleAutoPair}
           onManualPair={() => { pending.setManualPairingPhotos(photos); modals.setShowManualPairing(true); }}
           onSortByDate={analysisHandlers.handleSmartSort} onSendInstruction={projectHandlers.handleConsoleInstruction}
           onSelectCacheFolder={cacheHandlers.handleSelectCacheFolder} onClearFileSystemCache={cacheHandlers.handleClearFileSystemCache}
@@ -276,7 +276,7 @@ export default function App() {
         <Suspense fallback={<LoadingFallback />}>
           <NormalizationPreviewModal corrections={normalization.normalizationProposals} originalData={normalization.normalizationOriginals}
             onApprove={normalizationHandlers.handleNormalizationApprove} onReject={normalizationHandlers.handleNormalizationReject}
-            onRetry={async () => {}} lang={lang} />
+            onRetry={(customPrompt: string) => { analysisHandlers.handleRefineAnalysis(customPrompt, 6); modals.setShowNormalizationModal(false); }} lang={lang} />
         </Suspense>
       )}
 
