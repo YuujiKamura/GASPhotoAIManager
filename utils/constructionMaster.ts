@@ -485,3 +485,85 @@ const createOrderMap = (target: OrderTarget): Map<string, number> => {
 
 export const getDetailOrderMap = (): Map<string, number> => createOrderMap('detail');
 export const getVarietyOrderMap = (): Map<string, number> => createOrderMap('variety');
+
+// ============================================
+// 階層的な値取得（絞り込み用）
+// ============================================
+
+/**
+ * 指定された工種に属する種別一覧を取得
+ */
+export function getVarietiesByWorkType(workType: string): string[] {
+  const varieties = new Set<string>();
+  const root = getMergedHierarchy()["直接工事費"] as Record<string, unknown>;
+
+  for (const catKey in root) {
+    const category = root[catKey] as Record<string, unknown>;
+    if (category[workType]) {
+      const wt = category[workType] as Record<string, unknown>;
+      for (const varietyKey in wt) {
+        if (varietyKey) varieties.add(varietyKey);
+      }
+    }
+  }
+
+  return Array.from(varieties).sort();
+}
+
+/**
+ * 指定された工種・種別に属する細別一覧を取得
+ */
+export function getDetailsByVariety(workType: string, variety: string): string[] {
+  const details = new Set<string>();
+  const root = getMergedHierarchy()["直接工事費"] as Record<string, unknown>;
+
+  for (const catKey in root) {
+    const category = root[catKey] as Record<string, unknown>;
+    if (category[workType]) {
+      const wt = category[workType] as Record<string, unknown>;
+      if (wt[variety]) {
+        const v = wt[variety] as Record<string, unknown>;
+        for (const detailKey in v) {
+          if (detailKey && detailKey !== 'aliases') {
+            details.add(detailKey);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(details).sort();
+}
+
+/**
+ * 指定された工種・種別・細別に属する備考一覧を取得
+ */
+export function getRemarksByDetail(workType: string, variety: string, detail: string): string[] {
+  const remarks = new Set<string>();
+  const root = getMergedHierarchy()["直接工事費"] as Record<string, unknown>;
+
+  for (const catKey in root) {
+    const category = root[catKey] as Record<string, unknown>;
+    if (category[workType]) {
+      const wt = category[workType] as Record<string, unknown>;
+      if (wt[variety]) {
+        const v = wt[variety] as Record<string, unknown>;
+        if (v[detail]) {
+          const d = v[detail] as Record<string, unknown>;
+          // aliasesがあれば追加
+          if (d.aliases && Array.isArray(d.aliases)) {
+            (d.aliases as string[]).forEach(a => remarks.add(a));
+          }
+          // 直接のキーも追加
+          for (const remarkKey in d) {
+            if (remarkKey && remarkKey !== 'aliases') {
+              remarks.add(remarkKey);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(remarks).sort();
+}

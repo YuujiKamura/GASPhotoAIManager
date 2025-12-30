@@ -3,7 +3,7 @@ import { X, Edit3, CheckCircle2, Image, ChevronDown, ChevronUp, History, Layers,
 import { PhotoRecord, AIAnalysisResult } from '../types';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 import { useBulkEditorState } from '../hooks/useBulkEditorState';
-import { extractAllValidValues } from '../utils/constructionMaster';
+import { extractAllValidValues, getVarietiesByWorkType, getDetailsByVariety, getRemarksByDetail } from '../utils/constructionMaster';
 
 const EDITABLE_FIELDS = LAYOUT_FIELDS.filter(f => !f.readOnly);
 type FieldKey = keyof AIAnalysisResult;
@@ -27,30 +27,58 @@ const FIELD_LABELS: Record<string, { ja: string; en: string }> = {
 // マスタから選択可能なフィールド
 const MASTER_SELECTABLE_FIELDS = ['workType', 'variety', 'detail', 'remarks'] as const;
 
+// 階層の親情報
+interface HierarchyContext {
+  workType?: string;
+  variety?: string;
+  detail?: string;
+}
+
 // マスタ選択コンポーネント
 const MasterSelector: React.FC<{
   field: string;
   lang: 'en' | 'ja';
   onSelect: (value: string) => void;
   selectedValue: string;
-}> = ({ field, lang, onSelect, selectedValue }) => {
+  hierarchyContext: HierarchyContext;
+}> = ({ field, lang, onSelect, selectedValue, hierarchyContext }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const masterValues = useMemo(() => {
     const { workTypes, varieties, details, remarks } = extractAllValidValues();
+
     switch (field) {
       case 'workType':
         return Array.from(workTypes).sort();
+
       case 'variety':
+        // 工種が選択されていれば絞り込み
+        if (hierarchyContext.workType) {
+          const filtered = getVarietiesByWorkType(hierarchyContext.workType);
+          return filtered.length > 0 ? filtered : Array.from(varieties).sort();
+        }
         return Array.from(varieties).sort();
+
       case 'detail':
+        // 工種・種別が選択されていれば絞り込み
+        if (hierarchyContext.workType && hierarchyContext.variety) {
+          const filtered = getDetailsByVariety(hierarchyContext.workType, hierarchyContext.variety);
+          return filtered.length > 0 ? filtered : Array.from(details).sort();
+        }
         return Array.from(details).sort();
+
       case 'remarks':
+        // 工種・種別・細別が選択されていれば絞り込み
+        if (hierarchyContext.workType && hierarchyContext.variety && hierarchyContext.detail) {
+          const filtered = getRemarksByDetail(hierarchyContext.workType, hierarchyContext.variety, hierarchyContext.detail);
+          return filtered.length > 0 ? filtered : Array.from(remarks).sort();
+        }
         return Array.from(remarks).sort();
+
       default:
         return [];
     }
-  }, [field]);
+  }, [field, hierarchyContext]);
 
   const filteredValues = useMemo(() => {
     if (!searchQuery) return masterValues;
@@ -58,10 +86,31 @@ const MasterSelector: React.FC<{
     return masterValues.filter(v => v.toLowerCase().includes(query));
   }, [masterValues, searchQuery]);
 
+  // 絞り込みヒントを表示
+  const getFilterHint = (): string | null => {
+    if (field === 'variety' && !hierarchyContext.workType) {
+      return lang === 'ja' ? '💡 工種を選択すると絞り込まれます' : '💡 Select work type to filter';
+    }
+    if (field === 'detail' && (!hierarchyContext.workType || !hierarchyContext.variety)) {
+      return lang === 'ja' ? '💡 工種・種別を選択すると絞り込まれます' : '💡 Select work type & variety to filter';
+    }
+    if (field === 'remarks' && (!hierarchyContext.workType || !hierarchyContext.variety || !hierarchyContext.detail)) {
+      return lang === 'ja' ? '💡 工種・種別・細別を選択すると絞り込まれます' : '💡 Select hierarchy to filter';
+    }
+    return null;
+  };
+
+  const filterHint = getFilterHint();
+
   if (masterValues.length === 0) return null;
 
   return (
     <div className="space-y-2">
+      {filterHint && (
+        <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+          {filterHint}
+        </div>
+      )}
       <div className="relative">
         <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
@@ -458,6 +507,30 @@ const BulkEntryEditor: React.FC<BulkEntryEditorProps> = ({ photos, lang, onClose
   const isMultiline = EDITABLE_FIELDS.find(f => f.key === state.selectedField)?.multiline;
   const isMasterSelectable = (MASTER_SELECTABLE_FIELDS as readonly string[]).includes(state.selectedField);
 
+  // 選択された写真から共通の階層情報を取得
+  const hierarchyContext = useMemo((): HierarchyContext => {
+    const selectedPhotos = photos.filter(p => state.selectedPhotos.has(p.fileName));
+    if (selectedPhotos.length === 0) return {};
+
+    // 選択された写真の工種・種別・細別を収集
+    const workTypes = new Set<string>();
+    const varieties = new Set<string>();
+    const details = new Set<string>();
+
+    selectedPhotos.forEach(p => {
+      if (p.analysis?.workType) workTypes.add(p.analysis.workType);
+      if (p.analysis?.variety) varieties.add(p.analysis.variety);
+      if (p.analysis?.detail) details.add(p.analysis.detail);
+    });
+
+    // 共通の値がある場合のみコンテキストに設定
+    return {
+      workType: workTypes.size === 1 ? Array.from(workTypes)[0] : undefined,
+      variety: varieties.size === 1 ? Array.from(varieties)[0] : undefined,
+      detail: details.size === 1 ? Array.from(details)[0] : undefined,
+    };
+  }, [photos, state.selectedPhotos]);
+
   const handleApply = () => {
     const updates = state.buildUpdates();
     if (updates.length > 0) {
@@ -468,11 +541,21 @@ const BulkEntryEditor: React.FC<BulkEntryEditorProps> = ({ photos, lang, onClose
 
   const renderMasterInput = () => (
     <div className="space-y-2">
+      {/* 階層コンテキスト表示 */}
+      {(hierarchyContext.workType || hierarchyContext.variety || hierarchyContext.detail) && (
+        <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg p-2">
+          <span className="text-blue-700 font-medium">{lang === 'ja' ? '絞り込み条件: ' : 'Filter: '}</span>
+          {hierarchyContext.workType && <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded mr-1">{hierarchyContext.workType}</span>}
+          {hierarchyContext.variety && <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded mr-1">{hierarchyContext.variety}</span>}
+          {hierarchyContext.detail && <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">{hierarchyContext.detail}</span>}
+        </div>
+      )}
       <MasterSelector
         field={state.selectedField}
         lang={lang}
         onSelect={(value) => state.setNewValue(value)}
         selectedValue={state.newValue}
+        hierarchyContext={hierarchyContext}
       />
       {state.newValue && (
         <div className="p-2 bg-green-50 border border-green-200 rounded-lg">
