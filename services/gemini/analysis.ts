@@ -265,8 +265,7 @@ function buildBatchPrompt(records: PhotoRecord[]): string {
     Order must match the input order.
 
     **SHOOTING TIME INFO**: Use the shooting time to help determine photo category.
-    - Photos taken 7:00-8:30 AM with workers gathered = 朝礼状況 (DEFINITE)
-    - Photos taken 17:00-18:30 with lights = 点灯確認状況 (DEFINITE)
+    - Photos taken 8:00-9:00 AM with workers gathered = 朝礼状況 (DEFINITE)
 
     **CONTEXT RELAY**: If you cannot clearly determine the station (測点) or variety (種別) from a photo,
     but the previous photo had these values and the current photo appears to be from the same location/work type,

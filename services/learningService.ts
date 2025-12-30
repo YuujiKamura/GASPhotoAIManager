@@ -5,6 +5,7 @@
  */
 
 import { AIAnalysisResult, LearnedRule, LearnedAlias, LearnedSettings } from '../types';
+export type { LearnedSettings } from '../types';
 import {
   hasGitHubToken,
   getGitHubToken,

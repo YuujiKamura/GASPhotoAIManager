@@ -93,28 +93,13 @@ Do NOT guess. Match the conditions exactly.
     2. Workers wearing helmets/safety vests
     3. NO heavy machinery actively operating
     4. One person holding clipboard/documents (説明者)
-    5. Shooting time 7:00-8:30 AM (if available) → CONFIRMS 朝礼
+    5. Shooting time 8:00-9:00 AM (if available) → CONFIRMS 朝礼
     → If conditions 1-4 met: remarksCategory = "朝礼状況" (DEFINITE)
 
     **KY活動状況 - DEFINITE if:**
     - Workers gathered around a whiteboard/poster with hazard info
     - Workers pointing at or writing on KY board
     → remarksCategory = "KY活動状況" (DEFINITE)
-
-    **点灯確認状況 - DEFINITE if:**
-    - Safety lights/warning lights visible AND illuminated
-    - Shooting time 17:00-18:30 (dusk/evening)
-    → remarksCategory = "点灯確認状況" (DEFINITE)
-
-    **保安施設設置状況 - DEFINITE if:**
-    - Workers actively placing/adjusting traffic cones, barriers, signs
-    - Focus is on the safety equipment, not construction work
-    → remarksCategory = "保安施設設置状況" (DEFINITE)
-
-    **新規入場者教育状況 - DEFINITE if:**
-    - Indoor/tent setting with workers seated facing presenter
-    - Presentation screen or training materials visible
-    → remarksCategory = "新規入場者教育状況" (DEFINITE)
 
     **安全巡視状況 - DEFINITE if:**
     - 1-2 people (supervisors) walking/inspecting site
