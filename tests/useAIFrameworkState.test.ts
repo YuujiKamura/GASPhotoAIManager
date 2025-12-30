@@ -217,6 +217,15 @@ describe('useAIFrameworkState', () => {
 
       expect(result.current.temperature).toBe(0.7);
     });
+
+    it('should reset invalid stored temperature', () => {
+      localStorage.setItem('ai_temperature', 'NaN');
+
+      const { result } = renderHook(() => useAIFrameworkState(appMode));
+
+      expect(result.current.temperature).toBe(0.1);
+      expect(localStorage.getItem('ai_temperature')).toBeNull();
+    });
   });
 
   describe('Flow Settings', () => {
@@ -239,6 +248,20 @@ describe('useAIFrameworkState', () => {
 
       const saved = JSON.parse(localStorage.getItem('ai_flow_settings') || '{}');
       expect(saved.normalize).toBe(false);
+    });
+
+    it('should recover from invalid stored JSON', () => {
+      localStorage.setItem('ai_flow_settings', 'not-json');
+
+      const { result } = renderHook(() => useAIFrameworkState(appMode));
+
+      expect(result.current.flowSettings).toEqual({
+        detect: true,
+        worktype: true,
+        normalize: true,
+        scene: true,
+      });
+      expect(localStorage.getItem('ai_flow_settings')).toBeNull();
     });
   });
 
