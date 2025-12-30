@@ -4,11 +4,12 @@ import { useApiKeySetupState } from '../hooks/useApiKeySetupState';
 
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
+  onUnlock?: (apiKey: string) => void;  // ロック解除時のコールバック（モデル検証スキップ用）
   onCancel?: () => void;
   onImportPdf?: () => void;
 }
 
-const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImportPdf }) => {
+const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onUnlock, onCancel, onImportPdf }) => {
   const {
     mode,
     apiKey,
@@ -26,6 +27,9 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
     handleSubmit,
     handleResetKey,
   } = useApiKeySetupState();
+
+  // ロック解除時のコールバック（onUnlockがあればそちらを使う）
+  const handleUnlockComplete = onUnlock || onComplete;
 
   if (mode === 'check') {
     return (
@@ -83,7 +87,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                       type="password"
                       value={masterPassword}
                       onChange={(e) => setMasterPassword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleUnlock(onComplete)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleUnlock(handleUnlockComplete)}
                       placeholder="マスターパスワード"
                       className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
                       autoFocus
@@ -93,7 +97,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                     <p className="text-red-400 text-xs text-center">{error}</p>
                   )}
                   <button
-                    onClick={() => handleUnlock(onComplete)}
+                    onClick={() => handleUnlock(handleUnlockComplete)}
                     disabled={loading || !masterPassword}
                     className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                   >

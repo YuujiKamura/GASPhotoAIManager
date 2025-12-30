@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useCallback } from 'react';
 import { PhotoRecord, AppMode, SortPolicy } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
@@ -132,6 +132,13 @@ export default function App() {
     modals.setShowModelValidation(true);
   };
 
+  // ロック解除時（モデル検証をスキップ）
+  const handleUnlock = (key: string) => {
+    apiKeyState.handleUnlockComplete(key);
+    modals.setShowApiKeySetup(false);
+    // モデル検証はスキップ
+  };
+
   const handleModelValidationComplete = (key: string) => {
     apiKeyState.handleModelValidationComplete(key);
     modals.setShowModelValidation(false);
@@ -187,7 +194,7 @@ export default function App() {
 
       {modals.showApiKeySetup && (
         <Suspense fallback={<LoadingFallback />}>
-          <ApiKeySetup onComplete={handleApiKeyInput} onCancel={() => modals.setShowApiKeySetup(false)}
+          <ApiKeySetup onComplete={handleApiKeyInput} onUnlock={handleUnlock} onCancel={() => modals.setShowApiKeySetup(false)}
             onImportPdf={() => { modals.setShowApiKeySetup(false); modals.setShowPdfLoadDialog(true); }} />
         </Suspense>
       )}
