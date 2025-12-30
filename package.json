@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npx tsx scripts/analyze-codebase.ts && vite",
-    "prebuild": "npx tsx scripts/analyze-codebase.ts",
+    "dev": "node scripts/ensure-codebase-stats.js && vite",
+    "prebuild": "node scripts/ensure-codebase-stats.js",
     "build": "vite build",
-    "analyze": "npx tsx scripts/analyze-codebase.ts",
+    "analyze": "node scripts/ensure-codebase-stats.js",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
