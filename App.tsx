@@ -1,7 +1,8 @@
-import React, { useState, lazy, Suspense } from 'react';
-import { PhotoRecord, AppMode } from './types';
+import React, { useState, lazy, Suspense, useCallback } from 'react';
+import { PhotoRecord, AppMode, SortPolicy } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
+import { fileToBase64 } from './utils/fileHandlers';
 
 // Hooks
 import {
@@ -30,7 +31,6 @@ import RefineModal from './components/RefineModal';
 import ApiKeySetup from './components/ApiKeySetup';
 import ModelValidation from './components/ModelValidation';
 import UsagePanel from './components/UsagePanel';
-import WorkTypeConfirmModal from './components/WorkTypeConfirmModal';
 // Lazy-loaded components
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
@@ -141,6 +141,34 @@ export default function App() {
     modals.setShowApiKeySetup(true);
   };
 
+  // Test One Interactive: FileをPhotoRecordに変換して対話型解析を開く
+  const handleTestOneInteractive = useCallback(async (file: File) => {
+    try {
+      const base64 = await fileToBase64(file);
+      const photoRecord: PhotoRecord = {
+        fileName: file.name,
+        base64,
+        mimeType: file.type,
+        status: 'pending',
+      };
+      setInteractiveAnalysisTarget(photoRecord);
+    } catch (error) {
+      console.error('Failed to load file for interactive analysis:', error);
+      processing.setErrorMsg('ファイルの読み込みに失敗しました');
+    }
+  }, [processing]);
+
+  // 簡素化した解析開始ハンドラ
+  const handleStartAnalysis = useCallback((files: File[], sortPolicy: SortPolicy, useCache: boolean) => {
+    setCurrentSortPolicy(sortPolicy);
+    analysisHandlers.startAnalysisPipeline(files, '', useCache);
+  }, [setCurrentSortPolicy, analysisHandlers]);
+
+  // 簡素化した手動ペアリングハンドラ
+  const handleManualPairing = useCallback((files: File[]) => {
+    analysisHandlers.handleStartManualPairing(files, '');
+  }, [analysisHandlers]);
+
   // Render
   return (
     <>
@@ -176,12 +204,13 @@ export default function App() {
         <UploadView
           lang={lang} isProcessing={processing.isProcessing} photos={photos} appMode={appMode} apiKey={apiKeyState.apiKey || ''}
           logs={processing.logs} isAskingAI={processing.isAskingAI} setAppMode={setAppMode}
-          onStartProcessing={startProcessingFlow.handleStartProcessing} onResume={() => setShowPreview(true)} onCloseProject={projectHandlers.handleCloseProject}
+          onStartProcessing={handleStartAnalysis} onResume={() => setShowPreview(true)} onCloseProject={projectHandlers.handleCloseProject}
           onExportJson={exportHandlers.handleExportJson} onImportJson={exportHandlers.handleImportJson} onPdfButtonClick={() => modals.setShowPdfLoadDialog(true)}
           onClearCache={cacheHandlers.handleClearCache} onShowPreview={() => setShowPreview(true)} onOpenSettings={() => modals.setShowApiKeySetup(true)}
-          onManualPairing={analysisHandlers.handleStartManualPairing} onShowHistory={() => modals.setShowHistory(true)}
+          onManualPairing={handleManualPairing} onShowHistory={() => modals.setShowHistory(true)}
           onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onOpenHealthDashboard={() => modals.setShowHealthDashboard(true)}
           onAskAI={analysisHandlers.handleAskAI} onClearLogs={processing.clearLogs}
+          onTestOneInteractive={handleTestOneInteractive}
         />
       ) : (
         <PreviewView
@@ -247,12 +276,6 @@ export default function App() {
         <Suspense fallback={<LoadingFallback />}>
           <GitHubSyncPanel onClose={() => modals.setShowGitHubSync(false)} />
         </Suspense>
-      )}
-
-      {modals.showWorkTypeConfirm && (
-        <WorkTypeConfirmModal lang={lang} onConfirm={startProcessingFlow.handleWorkTypeConfirmed}
-          onCancel={() => { modals.setShowWorkTypeConfirm(false); pending.setPendingAnalysisFiles(null); }}
-          onOpenSettings={() => { modals.setShowWorkTypeConfirm(false); modals.setShowMasterEditor(true); }} />
       )}
 
       <Suspense fallback={<LoadingFallback />}>

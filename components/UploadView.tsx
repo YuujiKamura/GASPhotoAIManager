@@ -1,12 +1,10 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, LogEntry } from '../types';
 import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity } from 'lucide-react';
-import { estimateQuickCost } from '../services/usageTracker';
-import { getSelectedModel, setSelectedModel, ModelType } from '../services/geminiService';
+import { getSelectedModel } from '../services/geminiService';
 import ConsolePanel from './ConsolePanel';
-import CostEstimationPanel from './CostEstimationPanel';
-import { loadRuleSettings, saveRuleSettings, RuleSettings } from '../utils/analysisRules';
+import AnalysisSetupModal from './AnalysisSetupModal';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -17,7 +15,7 @@ interface UploadViewProps {
   logs: LogEntry[];
   isAskingAI?: boolean;
   setAppMode: (mode: AppMode) => void;
-  onStartProcessing: (files: File[], instruction: string, useCache: boolean, sortPolicy: SortPolicy) => void;
+  onStartProcessing: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
   onResume: () => void;
   onCloseProject: () => void;
   onExportJson: () => void;
@@ -26,15 +24,14 @@ interface UploadViewProps {
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
-  onManualPairing?: (files: File[], instruction: string) => void;
+  onManualPairing?: (files: File[]) => void;
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
   onOpenHealthDashboard?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
   onClearLogs?: () => void;
+  onTestOneInteractive?: (file: File) => void;
 }
-
-const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
 
 // Header button component to reduce duplication
 const HeaderButton: React.FC<{
@@ -56,37 +53,16 @@ const UploadView: React.FC<UploadViewProps> = ({
   lang, isProcessing, photos, appMode, apiKey, logs, isAskingAI,
   setAppMode, onStartProcessing, onResume, onCloseProject, onExportJson, onImportJson,
   onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onManualPairing,
-  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onAskAI, onClearLogs
+  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onAskAI, onClearLogs,
+  onTestOneInteractive
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputImportRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [instruction, setInstruction] = useState("");
-  const [useCache, setUseCache] = useState(true);
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
-  const [selectedModelLocal, setSelectedModelLocal] = useState<ModelType>(getSelectedModel());
-  const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
-  const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
   const [showMenu, setShowMenu] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
-
-  const handleRuleSettingsChange = (newSettings: RuleSettings) => {
-    setRuleSettings(newSettings);
-    saveRuleSettings(newSettings);
-  };
-
-  const costEstimate = useMemo(() => {
-    if (!pendingFiles || pendingFiles.length === 0) return null;
-    return estimateQuickCost(pendingFiles.length);
-  }, [pendingFiles]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_INSTRUCTION);
-    if (saved) setInstruction(saved);
-  }, []);
-
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_INSTRUCTION, instruction); }, [instruction]);
 
   useEffect(() => {
     if (showMenu) {
@@ -107,14 +83,6 @@ const UploadView: React.FC<UploadViewProps> = ({
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) setPendingFiles(Array.from(e.target.files));
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleConfirmStart = () => {
-    if (pendingFiles?.length) {
-      setSelectedModel(selectedModelLocal);
-      onStartProcessing(pendingFiles, instruction, useCache, sortPolicy);
-      setPendingFiles(null);
-    }
   };
 
   const handleClick = () => {
@@ -209,28 +177,19 @@ const UploadView: React.FC<UploadViewProps> = ({
           </div>
         )}
 
-        {/* Cost Estimation Panel */}
-        {pendingFiles && costEstimate && (
-          <CostEstimationPanel
-            pendingFiles={pendingFiles}
-            costEstimate={costEstimate}
-            selectedModel={selectedModelLocal}
-            sortPolicy={sortPolicy}
-            useCache={useCache}
-            ruleSettings={ruleSettings}
-            onModelChange={setSelectedModelLocal}
-            onSortPolicyChange={setSortPolicy}
-            onUseCacheChange={setUseCache}
-            onRuleSettingsChange={handleRuleSettingsChange}
+        {/* Analysis Setup Modal */}
+        {pendingFiles && pendingFiles.length > 0 && (
+          <AnalysisSetupModal
+            files={pendingFiles}
+            lang={lang}
             onCancel={() => setPendingFiles(null)}
-            onTestOne={() => {
-              if (pendingFiles?.length) {
-                setSelectedModel(selectedModelLocal);
-                onStartProcessing([pendingFiles[0]], instruction, useCache, sortPolicy);
-              }
+            onStartAnalysis={(files, sortPolicy, useCache) => {
+              onStartProcessing(files, sortPolicy, useCache);
+              setPendingFiles(null);
             }}
-            onStartAll={handleConfirmStart}
-            onManualPairing={onManualPairing ? () => { onManualPairing(pendingFiles, instruction); setPendingFiles(null); } : undefined}
+            onManualPairing={onManualPairing ? (files) => { onManualPairing(files); setPendingFiles(null); } : undefined}
+            onInteractiveTest={(file) => onTestOneInteractive?.(file)}
+            onOpenMasterEditor={() => onOpenMasterEditor?.()}
           />
         )}
       </div>
