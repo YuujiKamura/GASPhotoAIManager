@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Check, Trash2, Edit2, X, Plus } from 'lucide-react';
 import { CustomizationData } from '../utils/masterEditorStorage';
+import { useTreeViewEdit } from '../hooks/useTreeViewEdit';
 
 export interface EditableTreeViewProps {
   data: any;
@@ -21,10 +22,20 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
   onAdd,
   depth = 0
 }) => {
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [newEntryName, setNewEntryName] = useState('');
+  const {
+    editingKey,
+    editValue,
+    addingTo,
+    newEntryName,
+    setNewEntryName,
+    startEdit,
+    setEditValueDirect,
+    saveEdit,
+    cancelEdit,
+    startAdding,
+    handleAddEntry,
+    cancelAdding,
+  } = useTreeViewEdit();
 
   if (!data || typeof data !== 'object') return null;
 
@@ -44,28 +55,6 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
   const allKeys = [...visibleKeys, ...addedKeys];
 
   if (allKeys.length === 0) return null;
-
-  const startEdit = (key: string) => {
-    const displayName = customization.renamedPaths[path ? `${path}/${key}` : key] || key;
-    setEditingKey(key);
-    setEditValue(displayName);
-  };
-
-  const saveEdit = (originalKey: string) => {
-    if (editValue.trim() && editValue !== originalKey) {
-      onRename(path ? `${path}/${originalKey}` : originalKey, editValue.trim());
-    }
-    setEditingKey(null);
-    setEditValue('');
-  };
-
-  const handleAddEntry = () => {
-    if (newEntryName.trim()) {
-      onAdd(path, newEntryName.trim());
-      setAddingTo(null);
-      setNewEntryName('');
-    }
-  };
 
   return (
     <div className="text-sm">
@@ -88,22 +77,22 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
                   <input
                     type="text"
                     value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
+                    onChange={(e) => setEditValueDirect(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveEdit(key);
-                      if (e.key === 'Escape') setEditingKey(null);
+                      if (e.key === 'Enter') saveEdit(key, path, onRename);
+                      if (e.key === 'Escape') cancelEdit();
                     }}
                     className="flex-1 px-2 py-0.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                     autoFocus
                   />
                   <button
-                    onClick={() => saveEdit(key)}
+                    onClick={() => saveEdit(key, path, onRename)}
                     className="p-1 text-green-600 hover:bg-green-100 rounded"
                   >
                     <Check className="w-3 h-3" />
                   </button>
                   <button
-                    onClick={() => setEditingKey(null)}
+                    onClick={cancelEdit}
                     className="p-1 text-gray-600 hover:bg-gray-200 rounded"
                   >
                     <X className="w-3 h-3" />
@@ -119,7 +108,7 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
                     <button
-                      onClick={() => startEdit(key)}
+                      onClick={() => startEdit(key, displayName)}
                       className="p-1 text-blue-600 hover:bg-blue-100 rounded"
                       title="名前を変更"
                     >
@@ -134,10 +123,7 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
                     </button>
                     {childData && typeof childData === 'object' && (
                       <button
-                        onClick={() => {
-                          setAddingTo(fullPath);
-                          setNewEntryName('');
-                        }}
+                        onClick={() => startAdding(fullPath)}
                         className="p-1 text-green-600 hover:bg-green-100 rounded"
                         title="子項目を追加"
                       >
@@ -157,21 +143,21 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
                   value={newEntryName}
                   onChange={(e) => setNewEntryName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddEntry();
-                    if (e.key === 'Escape') setAddingTo(null);
+                    if (e.key === 'Enter') handleAddEntry(path, onAdd);
+                    if (e.key === 'Escape') cancelAdding();
                   }}
                   placeholder="新しい項目名..."
                   className="flex-1 px-2 py-0.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                   autoFocus
                 />
                 <button
-                  onClick={handleAddEntry}
+                  onClick={() => handleAddEntry(path, onAdd)}
                   className="p-1 text-green-600 hover:bg-green-100 rounded"
                 >
                   <Check className="w-3 h-3" />
                 </button>
                 <button
-                  onClick={() => setAddingTo(null)}
+                  onClick={cancelAdding}
                   className="p-1 text-gray-600 hover:bg-gray-200 rounded"
                 >
                   <X className="w-3 h-3" />

@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React from 'react';
 import { X, Check, Play, MousePointer, Settings, MessageCircle } from 'lucide-react';
 import { SortPolicy, SORT_POLICIES } from '../types';
-import { estimateQuickCost, formatCostJPY } from '../services/usageTracker';
-import { AVAILABLE_MODELS, ModelType, setSelectedModel, getSelectedModel } from '../services/geminiService';
-import { fileToBase64 } from '../utils/fileHandlers';
-
-const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
+import { formatCostJPY } from '../services/usageTracker';
+import { AVAILABLE_MODELS } from '../services/geminiService';
+import { useAnalysisSetupModal } from '../hooks/useAnalysisSetupModal';
 
 interface Props {
   files: File[];
@@ -17,67 +15,26 @@ interface Props {
   onOpenMasterEditor: () => void;
 }
 
-interface FileEntry {
-  file: File;
-  selected: boolean;
-  thumbnail: string | null;
-}
-
 const AnalysisSetupModal: React.FC<Props> = ({
   files, lang, onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor
 }) => {
-  const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [model, setModel] = useState<ModelType>(getSelectedModel());
-  const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
-  const [useCache, setUseCache] = useState(true);
-  const [enabledWorkTypes, setEnabledWorkTypes] = useState<string[]>([]);
-
-  // サムネイル生成
-  useEffect(() => {
-    const load = async () => {
-      const loaded = await Promise.all(
-        files.map(async (file) => {
-          try {
-            const thumbnail = await fileToBase64(file);
-            return { file, selected: true, thumbnail };
-          } catch {
-            return { file, selected: true, thumbnail: null };
-          }
-        })
-      );
-      setEntries(loaded);
-    };
-    load();
-  }, [files]);
-
-  // 有効工種を読み込み
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(ENABLED_WORK_TYPES_KEY);
-      if (saved) setEnabledWorkTypes(JSON.parse(saved));
-    } catch { /* ignore */ }
-  }, []);
-
-  const selectedFiles = useMemo(() => entries.filter(e => e.selected).map(e => e.file), [entries]);
-  const cost = useMemo(() => estimateQuickCost(selectedFiles.length), [selectedFiles.length]);
-
-  const toggleSelect = (index: number) => {
-    setEntries(prev => prev.map((e, i) => i === index ? { ...e, selected: !e.selected } : e));
-  };
-
-  const selectAll = () => setEntries(prev => prev.map(e => ({ ...e, selected: true })));
-  const selectNone = () => setEntries(prev => prev.map(e => ({ ...e, selected: false })));
-
-  const handleStart = () => {
-    if (selectedFiles.length === 0) return;
-    setSelectedModel(model);
-    onStartAnalysis(selectedFiles, sortPolicy, useCache);
-  };
-
-  const handleInteractive = (file: File) => {
-    setSelectedModel(model);
-    onInteractiveTest(file);
-  };
+  const {
+    entries,
+    model,
+    setModel,
+    sortPolicy,
+    setSortPolicy,
+    useCache,
+    setUseCache,
+    enabledWorkTypes,
+    selectedFiles,
+    cost,
+    toggleSelect,
+    selectAll,
+    selectNone,
+    handleStart,
+    handleInteractive,
+  } = useAnalysisSetupModal(files);
 
   const txt = {
     title: lang === 'ja' ? '解析設定' : 'Analysis Setup',
@@ -136,7 +93,7 @@ const AnalysisSetupModal: React.FC<Props> = ({
                 </button>
                 {/* Interactive button */}
                 <button
-                  onClick={() => handleInteractive(entry.file)}
+                  onClick={() => handleInteractive(entry.file, onInteractiveTest)}
                   className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <MessageCircle className="w-6 h-6 text-white drop-shadow" />
@@ -229,7 +186,7 @@ const AnalysisSetupModal: React.FC<Props> = ({
             </button>
           )}
           <button
-            onClick={handleStart}
+            onClick={() => handleStart(onStartAnalysis)}
             disabled={selectedFiles.length === 0 || enabledWorkTypes.length === 0}
             className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded font-bold flex items-center gap-1"
           >

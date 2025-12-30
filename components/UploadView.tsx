@@ -1,10 +1,11 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, LogEntry } from '../types';
 import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity, Brain } from 'lucide-react';
 import { getSelectedModel } from '../services/geminiService';
 import ConsolePanel from './ConsolePanel';
 import AnalysisSetupModal from './AnalysisSetupModal';
+import { useUploadViewState } from '../hooks/useUploadViewState';
 
 interface UploadViewProps {
   lang: 'en' | 'ja';
@@ -58,38 +59,22 @@ const UploadView: React.FC<UploadViewProps> = ({
   onTestOneInteractive
 }) => {
   const txt = TRANS[lang];
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileInputImportRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showConsole, setShowConsole] = useState(false);
-
-  useEffect(() => {
-    if (showMenu) {
-      const handleClickOutside = () => setShowMenu(false);
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [showMenu]);
-
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); if (!isProcessing && apiKey) setIsDragging(true); };
-  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (!isProcessing && apiKey && e.dataTransfer.files?.length) setPendingFiles(Array.from(e.dataTransfer.files));
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) setPendingFiles(Array.from(e.target.files));
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleClick = () => {
-    if (!isProcessing && apiKey) fileInputRef.current?.click();
-    else if (!apiKey) onOpenSettings?.();
-  };
+  const {
+    fileInputRef,
+    fileInputImportRef,
+    isDragging,
+    pendingFiles,
+    setPendingFiles,
+    showMenu,
+    setShowMenu,
+    showConsole,
+    setShowConsole,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleFileInputChange,
+    handleClick,
+  } = useUploadViewState();
 
   const handleSendInstruction = async (prompt: string) => {
     if (onAskAI) {
@@ -108,7 +93,9 @@ const UploadView: React.FC<UploadViewProps> = ({
   return (
     <div
       className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative ${isDragging ? 'bg-blue-50' : 'bg-white'} ${showConsole ? 'pb-[25vh]' : ''}`}
-      onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+      onDragOver={(e) => handleDragOver(e, isProcessing, apiKey)}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => handleDrop(e, isProcessing, apiKey)}
     >
       {/* Header */}
       <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-10">
@@ -156,7 +143,7 @@ const UploadView: React.FC<UploadViewProps> = ({
 
       {/* Main Interaction Area */}
       <div className="flex-1 flex flex-col items-center justify-center relative w-full max-w-2xl mx-auto px-4">
-        <div onClick={handleClick} className="group cursor-pointer flex flex-col items-center justify-center p-10 md:p-16 z-20 rounded-3xl transition-all duration-300 hover:bg-gray-50 w-full">
+        <div onClick={() => handleClick(isProcessing, apiKey, onOpenSettings)} className="group cursor-pointer flex flex-col items-center justify-center p-10 md:p-16 z-20 rounded-3xl transition-all duration-300 hover:bg-gray-50 w-full">
           <div className={`mb-6 transition-transform duration-300 ease-out p-6 rounded-full bg-gray-100 group-hover:bg-blue-100 group-hover:scale-110 ${isDragging ? 'scale-125 bg-blue-200' : ''}`}>
             <Upload className={`w-16 h-16 text-gray-400 group-hover:text-blue-600 transition-colors ${isDragging ? 'text-blue-600' : ''}`} strokeWidth={1.5} />
           </div>
