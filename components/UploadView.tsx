@@ -133,15 +133,15 @@ const UploadView: React.FC<UploadViewProps> = ({
           {onShowHistory && <HeaderButton onClick={onShowHistory} icon={<History className="w-4 h-4" />} label="履歴" title="解析履歴" className="bg-indigo-100 hover:bg-indigo-200 text-indigo-600" />}
           {/* 3-dot Menu */}
           <div className="relative">
-            <button onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }} className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="その他">
+            <button type="button" onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }} className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="その他">
               <MoreVertical className="w-5 h-5" />
             </button>
             {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                 {menuItems.map((item, i) => 'divider' in item ? (
                   <div key={i} className="border-t border-gray-100 my-1" />
                 ) : (
-                  <button key={i} onClick={() => { item.onClick?.(); setShowMenu(false); }} className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${item.danger ? 'text-red-600 hover:bg-red-50' : item.warning ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-700 hover:bg-gray-100'}`}>
+                  <button type="button" key={i} onClick={(e) => { e.preventDefault(); item.onClick?.(); setShowMenu(false); }} className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${item.danger ? 'text-red-600 hover:bg-red-50' : item.warning ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-700 hover:bg-gray-100'}`}>
                     <span>{item.icon}</span> {item.label}
                   </button>
                 ))}
