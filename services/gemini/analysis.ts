@@ -253,18 +253,35 @@ async function prepareAnalysisInputs(
 }
 
 function buildBatchPrompt(records: PhotoRecord[]): string {
+  // 撮影時間情報を含める（安全管理写真の判定に使用）
+  const photoInfoList = records.map(r => {
+    const timeInfo = r.date ? formatShootingTime(r.date) : 'unknown';
+    return `${r.fileName} (撮影時間: ${timeInfo})`;
+  });
+
   return `
     Analyze these ${records.length} photos.
     For each photo, output the JSON object matching the schema.
     Order must match the input order.
 
+    **SHOOTING TIME INFO**: Use the shooting time to help determine photo category.
+    - Photos taken 7:00-8:30 AM with workers gathered = 朝礼状況 (DEFINITE)
+    - Photos taken 17:00-18:30 with lights = 点灯確認状況 (DEFINITE)
+
     **CONTEXT RELAY**: If you cannot clearly determine the station (測点) or variety (種別) from a photo,
     but the previous photo had these values and the current photo appears to be from the same location/work type,
     you may inherit those values. However, always prioritize explicit information visible in the current photo.
 
-    Photo FileNames for reference:
-    ${records.map(r => r.fileName).join(", ")}
+    Photo Info (fileName + shooting time):
+    ${photoInfoList.join("\n    ")}
   `;
+}
+
+function formatShootingTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 async function streamAPIResponse(
