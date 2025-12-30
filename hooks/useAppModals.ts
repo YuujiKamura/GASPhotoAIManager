@@ -1,11 +1,16 @@
 import { useState } from 'react';
+import { getApiKey, hasEncryptedApiKey } from '../services/geminiService';
 
 /**
  * モーダル表示状態を一元管理するカスタムフック
  * App.tsx の肥大化を防ぐため、モーダル関連の状態をここに集約
  */
 export function useAppModals() {
-  const [showApiKeySetup, setShowApiKeySetup] = useState(false);
+  // ロック状態（キーがないが暗号化キーがある）なら最初からAPIキーセットアップを表示
+  const [showApiKeySetup, setShowApiKeySetup] = useState(() => {
+    const key = getApiKey();
+    return !key && hasEncryptedApiKey();
+  });
   const [showModelValidation, setShowModelValidation] = useState(false);
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [showManualPairing, setShowManualPairing] = useState(false);

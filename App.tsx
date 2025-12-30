@@ -73,13 +73,6 @@ export default function App() {
   const photosState = usePhotosState(processing.addLog);
   const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, bulkUpdateFields } = photosState;
 
-  // 起動時にロック状態ならAPIキーセットアップ画面を表示
-  useEffect(() => {
-    if (apiKeyState.isLocked && !modals.showApiKeySetup) {
-      modals.setShowApiKeySetup(true);
-    }
-  }, [apiKeyState.isLocked, modals.showApiKeySetup]);
-
   // Analysis Handlers
   const analysisHandlers = useAnalysisHandlers({
     apiKey: apiKeyState.apiKey, photos, setPhotos, stats, setStats,
