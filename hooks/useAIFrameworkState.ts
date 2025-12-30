@@ -196,22 +196,35 @@ export function useAIFrameworkState(appMode: AppMode) {
 
   // Preview generator
   const generatePreview = useMemo(() => {
-    const parts: string[] = [];
-    const hierarchy = hierarchyOverride ? JSON.parse(hierarchyOverride) : formatHierarchyForPrompt();
-    const systemPrompt = getSystemInstruction(appMode, customInstruction, hierarchy, ruleSettings);
-    const finalSystem = systemOverride || systemPrompt;
-    parts.push('=== システムプロンプト ===\n' + finalSystem.slice(0, 800) + '...\n');
-    parts.push('\n=== 分析ルール ===\n' + rulesToPromptText(ruleSettings));
-    if (examples.length > 0) {
-      parts.push('\n=== お手本 ===\n' + formatExamplesForPrompt(examples).slice(0, 400) + '...');
+    try {
+      const parts: string[] = [];
+      let hierarchy;
+      try {
+        hierarchy = hierarchyOverride ? JSON.parse(hierarchyOverride) : formatHierarchyForPrompt();
+      } catch {
+        hierarchy = formatHierarchyForPrompt();
+      }
+      const systemPrompt = getSystemInstruction(appMode, customInstruction, hierarchy, ruleSettings);
+      const finalSystem = systemOverride || systemPrompt;
+      parts.push('=== システムプロンプト ===\n' + finalSystem.slice(0, 800) + '...\n');
+      parts.push('\n=== 分析ルール ===\n' + rulesToPromptText(ruleSettings));
+      if (examples.length > 0) {
+        const examplesText = formatExamplesForPrompt(examples);
+        if (examplesText) {
+          parts.push('\n=== お手本 ===\n' + examplesText.slice(0, 400) + '...');
+        }
+      }
+      if (learnedSettings && learnedSettings.rules.length > 0) {
+        parts.push('\n=== 学習ルール ===\n' + learnedRulesToPromptText(learnedSettings).slice(0, 400) + '...');
+      }
+      if (customInstruction) {
+        parts.push('\n=== カスタム指示 ===\n' + customInstruction);
+      }
+      return parts.join('\n');
+    } catch (e) {
+      console.error('Failed to generate preview:', e);
+      return 'プレビューの生成に失敗しました';
     }
-    if (learnedSettings && learnedSettings.rules.length > 0) {
-      parts.push('\n=== 学習ルール ===\n' + learnedRulesToPromptText(learnedSettings).slice(0, 400) + '...');
-    }
-    if (customInstruction) {
-      parts.push('\n=== カスタム指示 ===\n' + customInstruction);
-    }
-    return parts.join('\n');
   }, [appMode, ruleSettings, examples, learnedSettings, customInstruction, systemOverride, hierarchyOverride]);
 
   return {
