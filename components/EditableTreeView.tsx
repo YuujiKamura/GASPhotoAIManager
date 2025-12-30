@@ -132,6 +132,120 @@ interface InternalProps {
   depth?: number;
 }
 
+// --- Tree Item Component ---
+
+interface TreeItemProps {
+  itemKey: string;
+  fullPath: string;
+  displayName: string;
+  childData: any;
+  isEditing: boolean;
+  isAdded: boolean;
+  isLastItem: boolean;
+  hasChildren: boolean;
+  editValue: string;
+  addingTo: string | null;
+  newEntryName: string;
+  customization: CustomizationData;
+  setEditValue: (v: string) => void;
+  setNewEntryName: (v: string) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onStartEdit: () => void;
+  onStartAdding: () => void;
+  onHandleAddEntry: () => void;
+  onCancelAdding: () => void;
+  onDelete: (path: string, key: string, deletedValue: any) => void;
+  onRename: (path: string, oldKey: string, newKey: string) => void;
+  onAdd: (path: string, key: string, value: any) => void;
+  depth: number;
+}
+
+const TreeItem: React.FC<TreeItemProps> = ({
+  itemKey,
+  fullPath,
+  displayName,
+  childData,
+  isEditing,
+  isAdded,
+  isLastItem,
+  hasChildren,
+  editValue,
+  addingTo,
+  newEntryName,
+  customization,
+  setEditValue,
+  setNewEntryName,
+  onSaveEdit,
+  onCancelEdit,
+  onStartEdit,
+  onStartAdding,
+  onHandleAddEntry,
+  onCancelAdding,
+  onDelete,
+  onRename,
+  onAdd,
+  depth
+}) => {
+  const renderItemContent = () => {
+    if (isEditing) {
+      return (
+        <EditInput
+          value={editValue}
+          onChange={setEditValue}
+          onSave={onSaveEdit}
+          onCancel={onCancelEdit}
+        />
+      );
+    }
+    return (
+      <>
+        <TreeItemLabel displayName={displayName} originalKey={itemKey} isAdded={isAdded} />
+        <TreeItemActions
+          onEdit={onStartEdit}
+          onDelete={() => onDelete(fullPath, itemKey, childData)}
+          onAdd={hasChildren ? onStartAdding : undefined}
+          hasChildren={hasChildren}
+        />
+      </>
+    );
+  };
+
+  return (
+    <div className="group">
+      <div className="flex items-center gap-1 py-1 hover:bg-gray-100 rounded px-1">
+        <div className="flex-shrink-0 w-4 text-gray-300">
+          {isLastItem ? '└' : '├'}
+        </div>
+        {renderItemContent()}
+      </div>
+      {addingTo === fullPath && (
+        <AddEntryForm
+          value={newEntryName}
+          onChange={setNewEntryName}
+          onAdd={onHandleAddEntry}
+          onCancel={onCancelAdding}
+        />
+      )}
+      {hasChildren && !isAdded && (
+        <div className="ml-5 border-l border-gray-200 pl-1">
+          <EditableTreeViewInner
+            data={childData}
+            path={fullPath}
+            customization={customization}
+            onDelete={onDelete}
+            onRename={onRename}
+            onAdd={onAdd}
+            depth={depth + 1}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Internal Component ---
+
 const EditableTreeViewInner: React.FC<InternalProps> = ({
   data,
   path,
@@ -170,59 +284,38 @@ const EditableTreeViewInner: React.FC<InternalProps> = ({
       {allKeys.map((key, idx) => {
         const fullPath = path ? `${path}/${key}` : key;
         const displayName = customization.renamedPaths[fullPath] || key;
-        const isEditing = state.editingKey === key;
         const childData = data[key];
         const isAdded = addedKeys.includes(key);
-        const isLastItem = idx === allKeys.length - 1;
         const hasChildren = childData && typeof childData === 'object';
 
         return (
-          <div key={key} className="group">
-            <div className="flex items-center gap-1 py-1 hover:bg-gray-100 rounded px-1">
-              <div className="flex-shrink-0 w-4 text-gray-300">
-                {isLastItem ? '└' : '├'}
-              </div>
-              {isEditing ? (
-                <EditInput
-                  value={state.editValue}
-                  onChange={setters.setEditValue}
-                  onSave={() => actions.saveEdit(key)}
-                  onCancel={actions.cancelEdit}
-                />
-              ) : (
-                <>
-                  <TreeItemLabel displayName={displayName} originalKey={key} isAdded={isAdded} />
-                  <TreeItemActions
-                    onEdit={() => actions.startEdit(key)}
-                    onDelete={() => onDelete(fullPath, key, childData)}
-                    onAdd={hasChildren ? () => actions.startAdding(fullPath) : undefined}
-                    hasChildren={!!hasChildren}
-                  />
-                </>
-              )}
-            </div>
-            {state.addingTo === fullPath && (
-              <AddEntryForm
-                value={state.newEntryName}
-                onChange={setters.setNewEntryName}
-                onAdd={actions.handleAddEntry}
-                onCancel={actions.cancelAdding}
-              />
-            )}
-            {hasChildren && !isAdded && (
-              <div className="ml-5 border-l border-gray-200 pl-1">
-                <EditableTreeViewInner
-                  data={childData}
-                  path={fullPath}
-                  customization={customization}
-                  onDelete={onDelete}
-                  onRename={onRename}
-                  onAdd={onAdd}
-                  depth={depth + 1}
-                />
-              </div>
-            )}
-          </div>
+          <TreeItem
+            key={key}
+            itemKey={key}
+            fullPath={fullPath}
+            displayName={displayName}
+            childData={childData}
+            isEditing={state.editingKey === key}
+            isAdded={isAdded}
+            isLastItem={idx === allKeys.length - 1}
+            hasChildren={!!hasChildren}
+            editValue={state.editValue}
+            addingTo={state.addingTo}
+            newEntryName={state.newEntryName}
+            customization={customization}
+            setEditValue={setters.setEditValue}
+            setNewEntryName={setters.setNewEntryName}
+            onSaveEdit={() => actions.saveEdit(key)}
+            onCancelEdit={actions.cancelEdit}
+            onStartEdit={() => actions.startEdit(key)}
+            onStartAdding={() => actions.startAdding(fullPath)}
+            onHandleAddEntry={actions.handleAddEntry}
+            onCancelAdding={actions.cancelAdding}
+            onDelete={onDelete}
+            onRename={onRename}
+            onAdd={onAdd}
+            depth={depth}
+          />
         );
       })}
     </div>
