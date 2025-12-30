@@ -89,32 +89,15 @@ Based on MLIT (Ministry of Land, Infrastructure, Transport and Tourism) photo ma
     *   **Curing Sand Spraying (養生砂散布)**: Worker using a **SHOVEL** or **BROAD SPREADER**. Sand cannot be sprayed from a thin nozzle.
     *   *Note*: Do NOT rely solely on surface color (black vs gray) as both can look similar. Look at the **EQUIPMENT**.
 
-**CATEGORY 3: "安全管理写真"** (Safety Management) [HIGHEST PRIORITY - CHECK FIRST]:
-*   **CRITICAL**: This category MUST be checked BEFORE施工状況写真. Many photos with workers are 安全管理写真, NOT 施工状況写真.
+**CATEGORY 3: "安全管理写真"** (Safety Management):
 *   **CRITICAL**: For safety management photos, set workType="", variety="", detail="".
-*   **DETECTION PRIORITY ORDER**:
-    1. **朝礼実施状況 / 朝礼・KYミーティング実施状況**:
-        - **Visual Cues**: Group of workers (3+ people) standing together, often in a circle or line
-        - Workers wearing safety vests/helmets, facing a speaker or each other
-        - Morning gathering, outdoor meeting scene
-        - **Blackboard keywords**: 朝礼, KY, ミーティング, 危険予知
-        - **IMPORTANT**: Workers standing in a group = 朝礼状況, even WITHOUT blackboard!
-    2. **KY活動状況 (危険予知活動)**:
-        - Workers looking at documents/boards together
-        - Discussion/pointing at safety board
-        - Small group reviewing hazards
-    3. **新規入場者教育状況**:
-        - Training session, workers watching presentation
-        - Classroom-style seating, instructor with materials
-    4. **安全巡視状況**:
-        - Inspection walk, supervisor checking site with clipboard
-        - Walking through site observing conditions
-    5. **保安施設設置状況**:
-        - Traffic cones, barriers, warning signs being set up
-        - Safety barricades, caution tape installation
-    6. **点灯確認状況**:
-        - Checking lights on safety equipment at dusk/night
-*   **GOLDEN RULE**: If you see a GROUP of workers NOT actively doing construction work (not operating machinery, not digging, not paving), it is almost certainly 安全管理写真 (朝礼・KY).
+*   **判定基準**:
+    1. **朝礼実施状況**: 黒板に「朝礼」「KY」「危険予知」等の記載がある
+    2. **KY活動状況**: 黒板に「KY活動」「危険予知活動」等の記載がある
+    3. **新規入場者教育状況**: 黒板に「新規入場者教育」等の記載がある
+    4. **安全巡視状況**: 黒板に「安全巡視」等の記載がある
+    5. **保安施設設置状況**: カラーコーン、バリケード、看板等の設置写真
+    6. **点灯確認状況**: 保安灯の点灯確認写真
 
 **CATEGORY 4: "使用材料写真"** (Materials):
 *   Material checks, delivery slips, material samples
