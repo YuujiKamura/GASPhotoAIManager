@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Check, Trash2, Edit2, X, Plus } from 'lucide-react';
 import { CustomizationData } from '../utils/masterEditorStorage';
+import { useTreeEditing } from '../hooks/useTreeEditing';
 
 // Grouped tree actions for cleaner interface
 export interface TreeActions {
@@ -9,27 +10,18 @@ export interface TreeActions {
   onAdd: (parentPath: string, name: string) => void;
 }
 
-// Internal props with grouped actions
-interface InternalTreeViewProps {
-  data: any;
-  path: string;
-  customization: CustomizationData;
-  actions: TreeActions;
-  depth?: number;
-}
-
 // Legacy props for backwards compatibility
 export interface EditableTreeViewProps {
   data: any;
   path: string;
   customization: CustomizationData;
-  onDelete: (path: string) => void;
-  onRename: (path: string, newName: string) => void;
-  onAdd: (parentPath: string, name: string) => void;
+  onDelete: (path: string, key: string, deletedValue: any) => void;
+  onRename: (path: string, oldKey: string, newKey: string) => void;
+  onAdd: (path: string, key: string, value: any) => void;
   depth?: number;
 }
 
-// --- Sub-components to reduce JSX depth ---
+// --- Sub-components ---
 
 interface EditInputProps {
   value: string;
@@ -128,20 +120,33 @@ const AddEntryForm: React.FC<AddEntryFormProps> = ({ value, onChange, onAdd, onC
   </div>
 );
 
-// --- Internal Component with grouped actions ---
+// --- Internal Component ---
 
-const EditableTreeViewInner: React.FC<InternalTreeViewProps> = ({
+interface InternalProps {
+  data: any;
+  path: string;
+  customization: CustomizationData;
+  onDelete: (path: string, key: string, deletedValue: any) => void;
+  onRename: (path: string, oldKey: string, newKey: string) => void;
+  onAdd: (path: string, key: string, value: any) => void;
+  depth?: number;
+}
+
+const EditableTreeViewInner: React.FC<InternalProps> = ({
   data,
   path,
   customization,
-  actions,
+  onDelete,
+  onRename,
+  onAdd,
   depth = 0
 }) => {
-  const { onDelete, onRename, onAdd } = actions;
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [newEntryName, setNewEntryName] = useState('');
+  const { state, setters, actions } = useTreeEditing(
+    path,
+    customization,
+    (p, newName) => onRename(p, state.editingKey || '', newName),
+    (p, name) => onAdd(p, name, null)
+  );
 
   if (!data || typeof data !== 'object') return null;
 
@@ -160,34 +165,12 @@ const EditableTreeViewInner: React.FC<InternalTreeViewProps> = ({
 
   if (allKeys.length === 0) return null;
 
-  const startEdit = (key: string) => {
-    const displayName = customization.renamedPaths[path ? `${path}/${key}` : key] || key;
-    setEditingKey(key);
-    setEditValue(displayName);
-  };
-
-  const saveEdit = (originalKey: string) => {
-    if (editValue.trim() && editValue !== originalKey) {
-      onRename(path ? `${path}/${originalKey}` : originalKey, editValue.trim());
-    }
-    setEditingKey(null);
-    setEditValue('');
-  };
-
-  const handleAddEntry = () => {
-    if (newEntryName.trim()) {
-      onAdd(path, newEntryName.trim());
-      setAddingTo(null);
-      setNewEntryName('');
-    }
-  };
-
   return (
     <div className="text-sm">
       {allKeys.map((key, idx) => {
         const fullPath = path ? `${path}/${key}` : key;
         const displayName = customization.renamedPaths[fullPath] || key;
-        const isEditing = editingKey === key;
+        const isEditing = state.editingKey === key;
         const childData = data[key];
         const isAdded = addedKeys.includes(key);
         const isLastItem = idx === allKeys.length - 1;
@@ -201,29 +184,29 @@ const EditableTreeViewInner: React.FC<InternalTreeViewProps> = ({
               </div>
               {isEditing ? (
                 <EditInput
-                  value={editValue}
-                  onChange={setEditValue}
-                  onSave={() => saveEdit(key)}
-                  onCancel={() => setEditingKey(null)}
+                  value={state.editValue}
+                  onChange={setters.setEditValue}
+                  onSave={() => actions.saveEdit(key)}
+                  onCancel={actions.cancelEdit}
                 />
               ) : (
                 <>
                   <TreeItemLabel displayName={displayName} originalKey={key} isAdded={isAdded} />
                   <TreeItemActions
-                    onEdit={() => startEdit(key)}
-                    onDelete={() => onDelete(fullPath)}
-                    onAdd={hasChildren ? () => { setAddingTo(fullPath); setNewEntryName(''); } : undefined}
+                    onEdit={() => actions.startEdit(key)}
+                    onDelete={() => onDelete(fullPath, key, childData)}
+                    onAdd={hasChildren ? () => actions.startAdding(fullPath) : undefined}
                     hasChildren={!!hasChildren}
                   />
                 </>
               )}
             </div>
-            {addingTo === fullPath && (
+            {state.addingTo === fullPath && (
               <AddEntryForm
-                value={newEntryName}
-                onChange={setNewEntryName}
-                onAdd={handleAddEntry}
-                onCancel={() => setAddingTo(null)}
+                value={state.newEntryName}
+                onChange={setters.setNewEntryName}
+                onAdd={actions.handleAddEntry}
+                onCancel={actions.cancelAdding}
               />
             )}
             {hasChildren && !isAdded && (
@@ -232,7 +215,9 @@ const EditableTreeViewInner: React.FC<InternalTreeViewProps> = ({
                   data={childData}
                   path={fullPath}
                   customization={customization}
-                  actions={actions}
+                  onDelete={onDelete}
+                  onRename={onRename}
+                  onAdd={onAdd}
                   depth={depth + 1}
                 />
               </div>
@@ -244,7 +229,7 @@ const EditableTreeViewInner: React.FC<InternalTreeViewProps> = ({
   );
 };
 
-// --- Public Component (wrapper for backwards compatibility) ---
+// --- Public Component ---
 
 export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
   data, path, customization, onDelete, onRename, onAdd, depth = 0
@@ -253,7 +238,9 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
     data={data}
     path={path}
     customization={customization}
-    actions={{ onDelete, onRename, onAdd }}
+    onDelete={onDelete}
+    onRename={onRename}
+    onAdd={onAdd}
     depth={depth}
   />
 );

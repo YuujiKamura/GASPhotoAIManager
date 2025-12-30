@@ -1,8 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, LogEntry } from '../types';
 import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity, Brain } from 'lucide-react';
 import { getSelectedModel } from '../services/geminiService';
+import { useUploadViewState } from '../hooks/useUploadViewState';
 import ConsolePanel from './ConsolePanel';
 import AnalysisSetupModal from './AnalysisSetupModal';
 
@@ -34,7 +35,7 @@ interface UploadViewProps {
   onTestOneInteractive?: (file: File) => void;
 }
 
-// Header button component to reduce duplication
+// Header button component
 const HeaderButton: React.FC<{
   onClick?: () => void;
   icon: React.ReactNode;
@@ -58,37 +59,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   onTestOneInteractive
 }) => {
   const txt = TRANS[lang];
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileInputImportRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showConsole, setShowConsole] = useState(false);
-
-  useEffect(() => {
-    if (showMenu) {
-      const handleClickOutside = () => setShowMenu(false);
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [showMenu]);
-
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); if (!isProcessing) setIsDragging(true); };
-  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (!isProcessing && e.dataTransfer.files?.length) setPendingFiles(Array.from(e.dataTransfer.files));
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) setPendingFiles(Array.from(e.target.files));
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleClick = () => {
-    if (!isProcessing) fileInputRef.current?.click();
-  };
+  const { refs, state, handlers } = useUploadViewState(isProcessing);
 
   const handleSendInstruction = async (prompt: string) => {
     if (onAskAI) {
@@ -97,17 +68,14 @@ const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const menuItems = [
-    // 設定系
     ...(onOpenSettings ? [{ label: apiKey ? `API設定 (${getSelectedModel()})` : 'API設定 (未設定)', icon: <Settings className="w-4 h-4" />, onClick: onOpenSettings, warning: !apiKey }] : []),
     ...(onOpenMasterEditor ? [{ label: 'マスタ管理', icon: <FolderTree className="w-4 h-4" />, onClick: onOpenMasterEditor }] : []),
     { divider: true },
-    // ダッシュボード
     ...(onOpenHealthDashboard ? [{ label: 'Health Dashboard', icon: <Activity className="w-4 h-4" />, onClick: onOpenHealthDashboard }] : []),
     ...(onOpenAIFramework ? [{ label: 'AI Framework', icon: <Brain className="w-4 h-4" />, onClick: onOpenAIFramework }] : []),
     { divider: true },
-    // データ管理
     { label: 'Backup (JSON)', icon: '💾', onClick: onExportJson },
-    { label: 'Restore (JSON)', icon: '📂', onClick: () => fileInputImportRef.current?.click() },
+    { label: 'Restore (JSON)', icon: '📂', onClick: handlers.triggerImportClick },
     ...(onPdfButtonClick ? [{ label: 'Load PDF', icon: <FileText className="w-4 h-4" />, onClick: onPdfButtonClick }] : []),
     { divider: true },
     ...(onClearCache ? [{ label: 'Clear Cache', icon: <Trash2 className="w-4 h-4" />, onClick: onClearCache, danger: true }] : []),
@@ -115,8 +83,8 @@ const UploadView: React.FC<UploadViewProps> = ({
 
   return (
     <div
-      className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative ${isDragging ? 'bg-blue-50' : 'bg-white'} ${showConsole ? 'pb-[25vh]' : ''}`}
-      onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+      className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative ${state.isDragging ? 'bg-blue-50' : 'bg-white'} ${state.showConsole ? 'pb-[25vh]' : ''}`}
+      onDragOver={handlers.handleDragOver} onDragLeave={handlers.handleDragLeave} onDrop={handlers.handleDrop}
     >
       {/* Header */}
       <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-10">
@@ -133,15 +101,15 @@ const UploadView: React.FC<UploadViewProps> = ({
           {onShowHistory && <HeaderButton onClick={onShowHistory} icon={<History className="w-4 h-4" />} label="履歴" title="解析履歴" className="bg-indigo-100 hover:bg-indigo-200 text-indigo-600" />}
           {/* 3-dot Menu */}
           <div className="relative">
-            <button type="button" onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }} className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="その他">
+            <button type="button" onClick={handlers.toggleMenu} className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="その他">
               <MoreVertical className="w-5 h-5" />
             </button>
-            {showMenu && (
+            {state.showMenu && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                 {menuItems.map((item, i) => 'divider' in item ? (
                   <div key={i} className="border-t border-gray-100 my-1" />
                 ) : (
-                  <button type="button" key={i} onClick={(e) => { e.preventDefault(); item.onClick?.(); setShowMenu(false); }} className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${item.danger ? 'text-red-600 hover:bg-red-50' : item.warning ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-700 hover:bg-gray-100'}`}>
+                  <button type="button" key={i} onClick={(e) => { e.preventDefault(); item.onClick?.(); handlers.closeMenu(); }} className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${item.danger ? 'text-red-600 hover:bg-red-50' : item.warning ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-700 hover:bg-gray-100'}`}>
                     <span>{item.icon}</span> {item.label}
                   </button>
                 ))}
@@ -153,17 +121,17 @@ const UploadView: React.FC<UploadViewProps> = ({
 
       {/* Main Interaction Area */}
       <div className="flex-1 flex flex-col items-center justify-center relative w-full max-w-2xl mx-auto px-4">
-        <div onClick={handleClick} className="group cursor-pointer flex flex-col items-center justify-center p-10 md:p-16 z-20 rounded-3xl transition-all duration-300 hover:bg-gray-50 w-full">
-          <div className={`mb-6 transition-transform duration-300 ease-out p-6 rounded-full bg-gray-100 group-hover:bg-blue-100 group-hover:scale-110 ${isDragging ? 'scale-125 bg-blue-200' : ''}`}>
-            <Upload className={`w-16 h-16 text-gray-400 group-hover:text-blue-600 transition-colors ${isDragging ? 'text-blue-600' : ''}`} strokeWidth={1.5} />
+        <div onClick={handlers.handleClick} className="group cursor-pointer flex flex-col items-center justify-center p-10 md:p-16 z-20 rounded-3xl transition-all duration-300 hover:bg-gray-50 w-full">
+          <div className={`mb-6 transition-transform duration-300 ease-out p-6 rounded-full bg-gray-100 group-hover:bg-blue-100 group-hover:scale-110 ${state.isDragging ? 'scale-125 bg-blue-200' : ''}`}>
+            <Upload className={`w-16 h-16 text-gray-400 group-hover:text-blue-600 transition-colors ${state.isDragging ? 'text-blue-600' : ''}`} strokeWidth={1.5} />
           </div>
           <span className="text-2xl md:text-3xl font-bold text-gray-700 group-hover:text-gray-900 transition-colors tracking-tight text-center">
-            {isDragging ? txt.dropHere : txt.putPhotos}
+            {state.isDragging ? txt.dropHere : txt.putPhotos}
           </span>
           <span className="mt-3 text-sm text-gray-400 group-hover:text-gray-500 text-center">
             {appMode === 'construction' ? '工事黒板を自動認識します' : 'Click or Drop photos here'}
           </span>
-          <input type="file" ref={fileInputRef} onChange={handleFileInputChange} className="hidden" multiple accept="image/*" />
+          <input type="file" ref={refs.fileInputRef} onChange={handlers.handleFileInputChange} className="hidden" multiple accept="image/*" />
         </div>
 
         {/* Processing Indicator */}
@@ -177,17 +145,17 @@ const UploadView: React.FC<UploadViewProps> = ({
         )}
 
         {/* Analysis Setup Modal */}
-        {pendingFiles && pendingFiles.length > 0 && (
+        {state.pendingFiles && state.pendingFiles.length > 0 && (
           <AnalysisSetupModal
-            files={pendingFiles}
+            files={state.pendingFiles}
             lang={lang}
             apiKey={apiKey}
-            onCancel={() => setPendingFiles(null)}
+            onCancel={handlers.clearPendingFiles}
             onStartAnalysis={(files, sortPolicy, useCache) => {
               onStartProcessing(files, sortPolicy, useCache);
-              setPendingFiles(null);
+              handlers.clearPendingFiles();
             }}
-            onManualPairing={onManualPairing ? (files) => { onManualPairing(files); setPendingFiles(null); } : undefined}
+            onManualPairing={onManualPairing ? (files) => { onManualPairing(files); handlers.clearPendingFiles(); } : undefined}
             onInteractiveTest={(file) => onTestOneInteractive?.(file)}
             onOpenMasterEditor={() => onOpenMasterEditor?.()}
             onOpenSettings={onOpenSettings}
@@ -195,8 +163,8 @@ const UploadView: React.FC<UploadViewProps> = ({
         )}
       </div>
 
-      <input type="file" ref={fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
-      <ConsolePanel logs={logs} isOpen={showConsole} onToggle={() => setShowConsole(!showConsole)} onClear={onClearLogs || (() => {})} isProcessing={isAskingAI} onSendInstruction={onAskAI ? handleSendInstruction : undefined} />
+      <input type="file" ref={refs.fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
+      <ConsolePanel logs={logs} isOpen={state.showConsole} onToggle={handlers.toggleConsole} onClear={onClearLogs || (() => {})} isProcessing={isAskingAI} onSendInstruction={onAskAI ? handleSendInstruction : undefined} />
     </div>
   );
 };

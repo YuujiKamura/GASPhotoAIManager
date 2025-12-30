@@ -48,7 +48,8 @@
       "Bash(npx depcheck:*)",
       "Bash(gh pr view:*)",
       "Bash(curl:*)",
-      "Bash(npx gh-pages -d dist)"
+      "Bash(npx gh-pages -d dist)",
+      "Bash(npx json:*)"
     ]
   }
 }

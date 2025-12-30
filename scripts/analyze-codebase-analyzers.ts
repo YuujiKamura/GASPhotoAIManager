@@ -82,11 +82,11 @@ export function analyzeComponents(files: FileStats[], ROOT: string): ComponentAn
         else { currentDepth++; jsxDepth = Math.max(jsxDepth, currentDepth); }
       }
 
-      if (propsCount > 12) { issues.push(`Props数が多い (${propsCount}個)`); suggestions.push('Propsをオブジェクトにまとめるか分割'); }
-      if (stateCount > 8) { issues.push(`useState数が多い (${stateCount}個)`); suggestions.push('useReducerまたはカスタムフック抽出'); }
-      if (effectCount > 5) { issues.push(`useEffect数が多い (${effectCount}個)`); suggestions.push('副作用をカスタムフックに分離'); }
-      if (jsxDepth > 10) { issues.push(`JSXネストが深い (${jsxDepth}層)`); suggestions.push('サブコンポーネントへの分割'); }
-      if (file.lines > 500) { issues.push(`ファイルが大きい (${file.lines}行)`); suggestions.push('ロジックとUIを分離'); }
+      if (propsCount > 8) { issues.push(`Props数が多い (${propsCount}個)`); suggestions.push('Propsをオブジェクトにまとめるか分割'); }
+      if (stateCount > 5) { issues.push(`useState数が多い (${stateCount}個)`); suggestions.push('useReducerまたはカスタムフック抽出'); }
+      if (effectCount > 3) { issues.push(`useEffect数が多い (${effectCount}個)`); suggestions.push('副作用をカスタムフックに分離'); }
+      if (jsxDepth > 8) { issues.push(`JSXネストが深い (${jsxDepth}層)`); suggestions.push('サブコンポーネントへの分割'); }
+      if (file.lines > 300) { issues.push(`ファイルが大きい (${file.lines}行)`); suggestions.push('ロジックとUIを分離'); }
 
       results.push({ path: file.path, propsCount, hooksUsed, stateCount, effectCount, jsxDepth, issues, suggestions });
     } catch { /* ignore */ }
@@ -155,7 +155,7 @@ export function generateSuggestions(
 ): ImprovementSuggestion[] {
   const suggestions: ImprovementSuggestion[] = [];
 
-  const problematic = components.filter(c => c.issues.length >= 3);
+  const problematic = components.filter(c => c.issues.length >= 2);
   if (problematic.length > 0) {
     suggestions.push({
       id: 'refactor-complex-components',
@@ -168,7 +168,7 @@ export function generateSuggestions(
     });
   }
 
-  const manyStates = components.filter(c => c.stateCount > 6);
+  const manyStates = components.filter(c => c.stateCount > 3);
   if (manyStates.length > 0) {
     suggestions.push({
       id: 'extract-custom-hooks',
@@ -181,7 +181,7 @@ export function generateSuggestions(
     });
   }
 
-  const heavyDeps = modules.filter(m => m.imports.length > 15);
+  const heavyDeps = modules.filter(m => m.imports.length > 10);
   if (heavyDeps.length > 0) {
     suggestions.push({
       id: 'split-heavy-modules',
@@ -194,7 +194,7 @@ export function generateSuggestions(
     });
   }
 
-  const highImpact = modules.filter(m => m.importedBy.length > 25);
+  const highImpact = modules.filter(m => m.importedBy.length > 5);
   if (highImpact.length > 0) {
     suggestions.push({
       id: 'test-high-impact',
@@ -207,7 +207,7 @@ export function generateSuggestions(
     });
   }
 
-  const largeRender = components.filter(c => c.jsxDepth > 8 && c.effectCount > 4);
+  const largeRender = components.filter(c => c.jsxDepth > 6 || c.effectCount > 2);
   if (largeRender.length > 0) {
     suggestions.push({
       id: 'optimize-rendering',

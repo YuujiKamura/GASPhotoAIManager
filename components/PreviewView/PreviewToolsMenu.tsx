@@ -1,22 +1,36 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
 import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers } from 'lucide-react';
 
-interface MenuSection {
-  label: { ja: string; en: string };
-  items: MenuItem[];
+// Grouped action props
+interface PairingActions {
+  onAutoPair: () => void;
+  onManualPair: () => void;
 }
 
-interface MenuItem {
-  icon: ReactNode;
-  iconColor: string;
-  hoverBg: string;
-  label: { ja: string; en: string };
-  onClick: () => void;
-  show?: boolean;
-  title?: { ja: string; en: string };
+interface EditActions {
+  onEnterReorderMode: () => void;
+  onRefine: () => void;
+  onOpenBulkEditor?: () => void;
 }
 
+interface SettingsActions {
+  onShowHistory: () => void;
+  onOpenMasterEditor?: () => void;
+  onApplyAliases?: () => { modifiedCount: number };
+  onOpenGitHubSync?: () => void;
+}
+
+// Combined props interface
 interface PreviewToolsMenuProps {
+  lang: 'en' | 'ja';
+  isProcessing: boolean;
+  pairingActions: PairingActions;
+  editActions: EditActions;
+  settingsActions: SettingsActions;
+}
+
+// Legacy props interface for backwards compatibility
+export interface LegacyPreviewToolsMenuProps {
   lang: 'en' | 'ja';
   isProcessing: boolean;
   onAutoPair: () => void;
@@ -30,18 +44,27 @@ interface PreviewToolsMenuProps {
   onOpenGitHubSync?: () => void;
 }
 
-const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
+interface MenuSection {
+  label: { ja: string; en: string };
+  items: MenuItem[];
+}
+
+interface MenuItem {
+  icon: ReactNode;
+  hoverBg: string;
+  label: { ja: string; en: string };
+  onClick: () => void;
+  show?: boolean;
+  title?: { ja: string; en: string };
+}
+
+// Inner component with grouped props
+const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
   lang,
   isProcessing,
-  onAutoPair,
-  onManualPair,
-  onEnterReorderMode,
-  onRefine,
-  onShowHistory,
-  onOpenBulkEditor,
-  onOpenMasterEditor,
-  onApplyAliases,
-  onOpenGitHubSync
+  pairingActions,
+  editActions,
+  settingsActions
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -59,8 +82,8 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
   }, [showMenu]);
 
   const handleApplyAliases = () => {
-    if (onApplyAliases) {
-      const result = onApplyAliases();
+    if (settingsActions.onApplyAliases) {
+      const result = settingsActions.onApplyAliases();
       setShowMenu(false);
       if (result.modifiedCount === 0) {
         alert(lang === 'ja'
@@ -76,17 +99,15 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
       items: [
         {
           icon: <GitCompare className="w-4 h-4 text-blue-400" />,
-          iconColor: 'text-blue-400',
           hoverBg: 'hover:bg-blue-600',
           label: { ja: 'AIペアリング', en: 'AI Pairing' },
-          onClick: () => { onAutoPair(); setShowMenu(false); }
+          onClick: () => { pairingActions.onAutoPair(); setShowMenu(false); }
         },
         {
           icon: <MousePointer className="w-4 h-4 text-amber-400" />,
-          iconColor: 'text-amber-400',
           hoverBg: 'hover:bg-amber-600',
           label: { ja: '手動ペアリング', en: 'Manual Pairing' },
-          onClick: () => { onManualPair(); setShowMenu(false); }
+          onClick: () => { pairingActions.onManualPair(); setShowMenu(false); }
         }
       ]
     },
@@ -95,26 +116,23 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
       items: [
         {
           icon: <ArrowUpDown className="w-4 h-4 text-orange-400" />,
-          iconColor: 'text-orange-400',
           hoverBg: 'hover:bg-orange-600',
           label: { ja: '並べ替え', en: 'Reorder' },
-          onClick: () => { onEnterReorderMode(); setShowMenu(false); }
+          onClick: () => { editActions.onEnterReorderMode(); setShowMenu(false); }
         },
         {
           icon: <Layers className="w-4 h-4 text-green-400" />,
-          iconColor: 'text-green-400',
           hoverBg: 'hover:bg-green-600',
           label: { ja: '一括編集', en: 'Bulk Edit' },
           title: { ja: '複数写真の項目を一括編集', en: 'Edit multiple photo fields at once' },
-          onClick: () => { onOpenBulkEditor?.(); setShowMenu(false); },
-          show: !!onOpenBulkEditor
+          onClick: () => { editActions.onOpenBulkEditor?.(); setShowMenu(false); },
+          show: !!editActions.onOpenBulkEditor
         },
         {
           icon: <Wand2 className="w-4 h-4 text-purple-400" />,
-          iconColor: 'text-purple-400',
           hoverBg: 'hover:bg-purple-600',
           label: { ja: '再解析', en: 'Refine' },
-          onClick: () => { onRefine(); setShowMenu(false); }
+          onClick: () => { editActions.onRefine(); setShowMenu(false); }
         }
       ]
     },
@@ -123,36 +141,32 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
       items: [
         {
           icon: <Star className="w-4 h-4 text-amber-400" />,
-          iconColor: 'text-amber-400',
           hoverBg: 'hover:bg-amber-600',
           label: { ja: '履歴・お手本管理', en: 'History & Examples' },
-          onClick: () => { onShowHistory(); setShowMenu(false); }
+          onClick: () => { settingsActions.onShowHistory(); setShowMenu(false); }
         },
         {
           icon: <Settings className="w-4 h-4 text-slate-400" />,
-          iconColor: 'text-slate-400',
           hoverBg: 'hover:bg-slate-600',
           label: { ja: 'マスタ管理', en: 'Master Data' },
-          onClick: () => { onOpenMasterEditor?.(); setShowMenu(false); },
-          show: !!onOpenMasterEditor
+          onClick: () => { settingsActions.onOpenMasterEditor?.(); setShowMenu(false); },
+          show: !!settingsActions.onOpenMasterEditor
         },
         {
           icon: <RefreshCw className="w-4 h-4 text-cyan-400" />,
-          iconColor: 'text-cyan-400',
           hoverBg: 'hover:bg-cyan-600',
           label: { ja: 'エイリアス適用', en: 'Apply Aliases' },
           title: { ja: '設定済みのエイリアスを適用します', en: 'Apply configured aliases' },
           onClick: handleApplyAliases,
-          show: !!onApplyAliases
+          show: !!settingsActions.onApplyAliases
         },
         {
           icon: <Github className="w-4 h-4 text-purple-400" />,
-          iconColor: 'text-purple-400',
           hoverBg: 'hover:bg-purple-600',
           label: { ja: 'GitHub同期', en: 'GitHub Sync' },
           title: { ja: '学習データをGitHubと同期', en: 'Sync learned data with GitHub' },
-          onClick: () => { onOpenGitHubSync?.(); setShowMenu(false); },
-          show: !!onOpenGitHubSync
+          onClick: () => { settingsActions.onOpenGitHubSync?.(); setShowMenu(false); },
+          show: !!settingsActions.onOpenGitHubSync
         }
       ]
     }
@@ -196,5 +210,28 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
     </div>
   );
 };
+
+// Wrapper for backwards compatibility with legacy individual props
+const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
+  lang,
+  isProcessing,
+  onAutoPair,
+  onManualPair,
+  onEnterReorderMode,
+  onRefine,
+  onShowHistory,
+  onOpenBulkEditor,
+  onOpenMasterEditor,
+  onApplyAliases,
+  onOpenGitHubSync
+}) => (
+  <PreviewToolsMenuInner
+    lang={lang}
+    isProcessing={isProcessing}
+    pairingActions={{ onAutoPair, onManualPair }}
+    editActions={{ onEnterReorderMode, onRefine, onOpenBulkEditor }}
+    settingsActions={{ onShowHistory, onOpenMasterEditor, onApplyAliases, onOpenGitHubSync }}
+  />
+);
 
 export default PreviewToolsMenu;
