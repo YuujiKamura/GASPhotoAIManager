@@ -9,46 +9,63 @@ import { ReorderModeView, PreviewToolsMenu } from './PreviewView/index';
 import { useReorderMode } from '../hooks/useReorderMode';
 import { usePreviewViewState } from '../hooks/usePreviewViewState';
 
-interface PreviewViewProps {
+// --- Grouped interfaces for cleaner props ---
+
+/** Core data props */
+interface PreviewData {
   lang: 'en' | 'ja';
   photos: PhotoRecord[];
   stats: ProcessingStats;
   appMode: AppMode;
+  logs: LogEntry[];
+  initialLayout?: 2 | 3;
+}
+
+/** Processing state props */
+interface PreviewState {
   isProcessing: boolean;
   currentStep: string;
   errorMsg: string | null;
   successMsg: string | null;
-  logs: LogEntry[];
-  initialLayout?: 2 | 3;
-  fsCacheEnabled?: boolean;
-  fsCacheStats?: any;
-  onClearLogs: () => void;
-  onGoHome: () => void;
-  onCloseProject: () => void;
-  onRefine: () => void;
-  onExportExcel: (photosPerPage: 2 | 3) => void;
+}
+
+/** Photo-related callbacks */
+interface PhotoHandlers {
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto: (fileName: string) => void;
+  onReanalyzePhoto?: (fileName: string) => void;
+  onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
+}
+
+/** Action callbacks */
+interface ActionHandlers {
+  onClearLogs: () => void;
+  onGoHome: () => void;
+  onRefine: () => void;
+  onExportExcel: (photosPerPage: 2 | 3) => void;
   onAutoPair: () => void;
   onManualPair: () => void;
-  onSortByDate: () => void;
   onSendInstruction?: (instruction: string) => void;
-  onSelectCacheFolder?: () => void;
-  onClearFileSystemCache?: () => void;
-  onReanalyzePhoto?: (fileName: string) => void;
   onAbort?: () => void;
   onOpenMasterEditor?: () => void;
-  onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
   onOpenBulkEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
 }
 
+// Main props interface using grouped interfaces
+export interface PreviewViewProps {
+  data: PreviewData;
+  state: PreviewState;
+  photoHandlers: PhotoHandlers;
+  actionHandlers: ActionHandlers;
+}
+
 const PreviewView: React.FC<PreviewViewProps> = ({
-  lang, photos, stats, appMode, isProcessing, currentStep, errorMsg, successMsg, logs,
-  initialLayout = 3 as const, onClearLogs, onGoHome, onRefine, onExportExcel, onUpdatePhoto,
-  onDeletePhoto, onAutoPair, onManualPair, onSendInstruction, onReanalyzePhoto, onAbort,
-  onOpenMasterEditor, onReorderPhotos, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync
+  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const },
+  state: { isProcessing, currentStep, errorMsg, successMsg },
+  photoHandlers: { onUpdatePhoto, onDeletePhoto, onReanalyzePhoto, onReorderPhotos },
+  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync }
 }) => {
   const txt = TRANS[lang];
   const reorder = useReorderMode(photos, onReorderPhotos);

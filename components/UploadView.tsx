@@ -7,20 +7,34 @@ import { useUploadViewState } from '../hooks/useUploadViewState';
 import ConsolePanel from './ConsolePanel';
 import AnalysisSetupModal from './AnalysisSetupModal';
 
-interface UploadViewProps {
+// --- Grouped interfaces ---
+
+/** Core data props */
+interface UploadData {
   lang: 'en' | 'ja';
-  isProcessing: boolean;
   photos: PhotoRecord[];
   appMode: AppMode;
   apiKey: string;
   logs: LogEntry[];
+}
+
+/** Processing state */
+interface UploadState {
+  isProcessing: boolean;
   isAskingAI?: boolean;
+}
+
+/** Core action handlers */
+interface CoreHandlers {
   setAppMode: (mode: AppMode) => void;
   onStartProcessing: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
   onResume: () => void;
-  onCloseProject: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+/** Optional feature handlers */
+interface FeatureHandlers {
   onPdfButtonClick?: () => void;
   onClearCache?: () => void;
   onShowPreview?: () => void;
@@ -33,6 +47,14 @@ interface UploadViewProps {
   onAskAI?: (prompt: string) => Promise<string>;
   onClearLogs?: () => void;
   onTestOneInteractive?: (file: File) => void;
+}
+
+// Main props interface
+export interface UploadViewProps {
+  data: UploadData;
+  state: UploadState;
+  coreHandlers: CoreHandlers;
+  featureHandlers: FeatureHandlers;
 }
 
 // Header button component
@@ -52,14 +74,13 @@ const HeaderButton: React.FC<{
 );
 
 const UploadView: React.FC<UploadViewProps> = ({
-  lang, isProcessing, photos, appMode, apiKey, logs, isAskingAI,
-  setAppMode, onStartProcessing, onResume, onCloseProject, onExportJson, onImportJson,
-  onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onManualPairing,
-  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onOpenAIFramework, onAskAI, onClearLogs,
-  onTestOneInteractive
+  data: { lang, photos, appMode, apiKey, logs },
+  state: { isProcessing, isAskingAI },
+  coreHandlers: { setAppMode, onStartProcessing, onResume, onExportJson, onImportJson },
+  featureHandlers: { onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onManualPairing, onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onOpenAIFramework, onAskAI, onClearLogs, onTestOneInteractive }
 }) => {
   const txt = TRANS[lang];
-  const { refs, state, handlers } = useUploadViewState(isProcessing);
+  const { refs, state: viewState, handlers } = useUploadViewState(isProcessing);
 
   const handleSendInstruction = async (prompt: string) => {
     if (onAskAI) {
@@ -83,7 +104,7 @@ const UploadView: React.FC<UploadViewProps> = ({
 
   return (
     <div
-      className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative ${state.isDragging ? 'bg-blue-50' : 'bg-white'} ${state.showConsole ? 'pb-[25vh]' : ''}`}
+      className={`min-h-screen w-full flex flex-col transition-colors duration-300 relative ${viewState.isDragging ? 'bg-blue-50' : 'bg-white'} ${viewState.showConsole ? 'pb-[25vh]' : ''}`}
       onDragOver={handlers.handleDragOver} onDragLeave={handlers.handleDragLeave} onDrop={handlers.handleDrop}
     >
       {/* Header */}
@@ -104,7 +125,7 @@ const UploadView: React.FC<UploadViewProps> = ({
             <button type="button" onClick={handlers.toggleMenu} className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="その他">
               <MoreVertical className="w-5 h-5" />
             </button>
-            {state.showMenu && (
+            {viewState.showMenu && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                 {menuItems.map((item, i) => 'divider' in item ? (
                   <div key={i} className="border-t border-gray-100 my-1" />
@@ -122,11 +143,11 @@ const UploadView: React.FC<UploadViewProps> = ({
       {/* Main Interaction Area */}
       <div className="flex-1 flex flex-col items-center justify-center relative w-full max-w-2xl mx-auto px-4">
         <div onClick={handlers.handleClick} className="group cursor-pointer flex flex-col items-center justify-center p-10 md:p-16 z-20 rounded-3xl transition-all duration-300 hover:bg-gray-50 w-full">
-          <div className={`mb-6 transition-transform duration-300 ease-out p-6 rounded-full bg-gray-100 group-hover:bg-blue-100 group-hover:scale-110 ${state.isDragging ? 'scale-125 bg-blue-200' : ''}`}>
-            <Upload className={`w-16 h-16 text-gray-400 group-hover:text-blue-600 transition-colors ${state.isDragging ? 'text-blue-600' : ''}`} strokeWidth={1.5} />
+          <div className={`mb-6 transition-transform duration-300 ease-out p-6 rounded-full bg-gray-100 group-hover:bg-blue-100 group-hover:scale-110 ${viewState.isDragging ? 'scale-125 bg-blue-200' : ''}`}>
+            <Upload className={`w-16 h-16 text-gray-400 group-hover:text-blue-600 transition-colors ${viewState.isDragging ? 'text-blue-600' : ''}`} strokeWidth={1.5} />
           </div>
           <span className="text-2xl md:text-3xl font-bold text-gray-700 group-hover:text-gray-900 transition-colors tracking-tight text-center">
-            {state.isDragging ? txt.dropHere : txt.putPhotos}
+            {viewState.isDragging ? txt.dropHere : txt.putPhotos}
           </span>
           <span className="mt-3 text-sm text-gray-400 group-hover:text-gray-500 text-center">
             {appMode === 'construction' ? '工事黒板を自動認識します' : 'Click or Drop photos here'}
@@ -145,9 +166,9 @@ const UploadView: React.FC<UploadViewProps> = ({
         )}
 
         {/* Analysis Setup Modal */}
-        {state.pendingFiles && state.pendingFiles.length > 0 && (
+        {viewState.pendingFiles && viewState.pendingFiles.length > 0 && (
           <AnalysisSetupModal
-            files={state.pendingFiles}
+            files={viewState.pendingFiles}
             lang={lang}
             apiKey={apiKey}
             onCancel={handlers.clearPendingFiles}
@@ -164,7 +185,7 @@ const UploadView: React.FC<UploadViewProps> = ({
       </div>
 
       <input type="file" ref={refs.fileInputImportRef} onChange={onImportJson} className="hidden" accept=".json" />
-      <ConsolePanel logs={logs} isOpen={state.showConsole} onToggle={handlers.toggleConsole} onClear={onClearLogs || (() => {})} isProcessing={isAskingAI} onSendInstruction={onAskAI ? handleSendInstruction : undefined} />
+      <ConsolePanel logs={logs} isOpen={viewState.showConsole} onToggle={handlers.toggleConsole} onClear={onClearLogs || (() => {})} isProcessing={isAskingAI} onSendInstruction={onAskAI ? handleSendInstruction : undefined} />
     </div>
   );
 };

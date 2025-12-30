@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import { FileText, FolderOpen, Loader2, AlertTriangle, X, Upload } from 'lucide-react';
-// pdfGenerator is dynamically imported when needed to avoid loading heavy PDF libraries upfront
+import { usePdfLoadDialog } from '../hooks/usePdfLoadDialog';
 
 interface PdfLoadDialogProps {
   isOpen: boolean;
@@ -13,15 +13,16 @@ interface PdfLoadDialogProps {
   lang: 'en' | 'ja';
 }
 
-type DialogState = 'select-pdf' | 'analyzing' | 'need-folder' | 'loading';
-
 const PdfLoadDialog: React.FC<PdfLoadDialogProps> = ({ isOpen, onClose, onLoad, lang }) => {
-  const [state, setState] = useState<DialogState>('select-pdf');
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [imageFolder, setImageFolder] = useState<FileSystemDirectoryHandle | null>(null);
-  const [folderName, setFolderName] = useState<string>('');
-  const [logs, setLogs] = useState<string[]>([]);
-  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const {
+    state,
+    pdfFile,
+    logs,
+    handlePdfSelect,
+    handleFolderSelect,
+    handleClose,
+    pdfInputRef
+  } = usePdfLoadDialog(onLoad, onClose);
 
   const txt = {
     title: lang === 'ja' ? 'PDF読み込み' : 'Load PDF',
@@ -33,94 +34,6 @@ const PdfLoadDialog: React.FC<PdfLoadDialogProps> = ({ isOpen, onClose, onLoad, 
     selectFolder: lang === 'ja' ? 'フォルダを選択' : 'Select Folder',
     folderSelected: lang === 'ja' ? '選択済み' : 'Selected',
     close: lang === 'ja' ? '閉じる' : 'Close',
-  };
-
-  const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setPdfFile(file);
-    setLogs([`PDF: ${file.name}`]);
-    setState('analyzing');
-
-    try {
-      pushLog('PDFを解析中...');
-
-      // Dynamic import of pdfGenerator to avoid loading heavy PDF libraries upfront
-      const { isSmartPdf, hasIndividualImages } = await import('../utils/pdfGenerator');
-
-      const isSmart = await isSmartPdf(file);
-      const hasImages = await hasIndividualImages(file);
-
-      if (isSmart && hasImages) {
-        // 新形式スマートPDF: 個別画像埋め込み済み → フォルダ不要
-        pushLog('新形式PDF: 画像＋キャプション埋め込み済み');
-        setState('loading');
-        try {
-          await onLoad(file, null, pushLog);
-          pushLog('読み込み完了');
-          handleClose();
-        } catch (err: any) {
-          pushLog(`エラー: ${err.message}`);
-          // 失敗したらフォルダ選択へフォールバック
-          pushLog('フォルダから画像を読み込みます');
-          setState('need-folder');
-        }
-      } else {
-        // 旧形式PDF: フォルダが必要
-        pushLog(isSmart ? '旧形式スマートPDF: 画像はフォルダから' : '旧形式PDF');
-        pushLog('画像フォルダを選択してください');
-        setState('need-folder');
-      }
-    } catch (err: any) {
-      console.error('PDF analysis failed:', err);
-      alert(err.message || 'Unknown error');
-      setState('select-pdf');
-    }
-  };
-
-  // checkSmartPdf removed - use isSmartPdf from pdfGenerator instead
-
-  const handleFolderSelect = async () => {
-    try {
-      const handle = await window.showDirectoryPicker();
-      console.log('[PdfLoadDialog] Folder selected:', handle.name);
-      setImageFolder(handle);
-      setFolderName(handle.name);
-      pushLog(`フォルダ選択: ${handle.name}`);
-      
-      // フォルダ選択したら即読み込み
-      if (pdfFile) {
-        console.log('[PdfLoadDialog] Starting load...');
-        setState('loading');
-        try {
-          console.log('[PdfLoadDialog] Calling onLoad...');
-          await onLoad(pdfFile, handle, pushLog);
-          console.log('[PdfLoadDialog] onLoad completed!');
-          pushLog('読み込み完了');
-          handleClose();
-        } catch (err: any) {
-          console.error('[PdfLoadDialog] onLoad error:', err);
-          alert(err.message || 'Load failed');
-          setState('select-pdf');
-        }
-      }
-    } catch (err) {
-      console.log('[PdfLoadDialog] Folder selection cancelled');
-    }
-  };
-
-  const handleClose = () => {
-    setPdfFile(null);
-    setImageFolder(null);
-    setFolderName('');
-    setLogs([]);
-    setState('select-pdf');
-    onClose();
-  };
-
-  const pushLog = (msg: string) => {
-    setLogs((prev) => [...prev, msg]);
   };
 
   if (!isOpen) return null;
@@ -196,7 +109,6 @@ const PdfLoadDialog: React.FC<PdfLoadDialogProps> = ({ isOpen, onClose, onLoad, 
               </button>
             </div>
           )}
-
         </div>
 
         {/* ログ表示 */}

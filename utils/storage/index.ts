@@ -57,7 +57,6 @@ export {
   getAnalysisHistory,
   getAnalysisHistoryEntry,
   deleteAnalysisHistory,
-  clearAnalysisHistory,
   toggleHistoryAsExample,
   updateHistoryName,
   setActiveExampleHistory,

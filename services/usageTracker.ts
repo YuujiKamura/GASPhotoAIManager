@@ -190,7 +190,7 @@ export const formatCostJPY = (costUSD: number): string => {
  * @param imageCount 画像枚数
  * @param mode 処理モード (auto, landscape, construction)
  */
-export const estimateAnalysisCost = (
+const estimateAnalysisCost = (
   imageCount: number,
   mode: 'auto' | 'landscape' | 'construction' = 'auto'
 ): CostEstimate => {

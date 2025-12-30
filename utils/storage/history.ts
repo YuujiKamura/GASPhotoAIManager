@@ -173,7 +173,7 @@ export const deleteAnalysisHistory = async (id: string): Promise<void> => {
 /**
  * Clear all history
  */
-export const clearAnalysisHistory = async (): Promise<void> => {
+const clearAnalysisHistory = async (): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_HISTORY, 'readwrite');

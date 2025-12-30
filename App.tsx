@@ -215,34 +215,54 @@ export default function App() {
         </Suspense>
       ) : !showPreview ? (
         <UploadView
-          lang={lang} isProcessing={processing.isProcessing} photos={photos} appMode={appMode} apiKey={apiKeyState.apiKey || ''}
-          logs={processing.logs} isAskingAI={processing.isAskingAI} setAppMode={setAppMode}
-          onStartProcessing={handleStartAnalysis} onResume={() => setShowPreview(true)} onCloseProject={projectHandlers.handleCloseProject}
-          onExportJson={exportHandlers.handleExportJson} onImportJson={exportHandlers.handleImportJson} onPdfButtonClick={() => modals.setShowPdfLoadDialog(true)}
-          onClearCache={cacheHandlers.handleClearCache} onShowPreview={() => setShowPreview(true)} onOpenSettings={() => modals.setShowApiKeySetup(true)}
-          onManualPairing={handleManualPairing} onShowHistory={() => modals.setShowHistory(true)}
-          onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onOpenHealthDashboard={() => modals.setShowHealthDashboard(true)}
-          onOpenAIFramework={() => modals.setShowAIFramework(true)} onAskAI={analysisHandlers.handleAskAI} onClearLogs={processing.clearLogs}
-          onTestOneInteractive={handleTestOneInteractive}
+          data={{ lang, photos, appMode, apiKey: apiKeyState.apiKey || '', logs: processing.logs }}
+          state={{ isProcessing: processing.isProcessing, isAskingAI: processing.isAskingAI }}
+          coreHandlers={{
+            setAppMode,
+            onStartProcessing: handleStartAnalysis,
+            onResume: () => setShowPreview(true),
+            onExportJson: exportHandlers.handleExportJson,
+            onImportJson: exportHandlers.handleImportJson
+          }}
+          featureHandlers={{
+            onPdfButtonClick: () => modals.setShowPdfLoadDialog(true),
+            onClearCache: cacheHandlers.handleClearCache,
+            onShowPreview: () => setShowPreview(true),
+            onOpenSettings: () => modals.setShowApiKeySetup(true),
+            onManualPairing: handleManualPairing,
+            onShowHistory: () => modals.setShowHistory(true),
+            onOpenMasterEditor: () => modals.setShowMasterEditor(true),
+            onOpenHealthDashboard: () => modals.setShowHealthDashboard(true),
+            onOpenAIFramework: () => modals.setShowAIFramework(true),
+            onAskAI: analysisHandlers.handleAskAI,
+            onClearLogs: processing.clearLogs,
+            onTestOneInteractive: handleTestOneInteractive
+          }}
         />
       ) : (
         <PreviewView
-          lang={lang} photos={photos} stats={stats} appMode={appMode} isProcessing={processing.isProcessing}
-          currentStep={processing.currentStep} errorMsg={processing.errorMsg} successMsg={processing.successMsg}
-          logs={processing.logs} initialLayout={initialLayout} fsCacheEnabled={fsCacheState.fsCacheEnabled}
-          fsCacheStats={fsCacheState.fsCacheStats} onClearLogs={processing.clearLogs}
-          onGoHome={() => { analysisHandlers.shouldAbortRef.current = true; setShowPreview(false); setInitialLayout(3); }}
-          onCloseProject={projectHandlers.handleCloseProject} onRefine={() => modals.setShowRefineModal(true)}
-          onExportExcel={(layout) => generateExcel(photos, appMode, layout)} onUpdatePhoto={updatePhoto}
-          onDeletePhoto={(fileName) => deletePhoto(fileName, lang)} onAutoPair={analysisHandlers.handleAutoPair}
-          onManualPair={() => { pending.setManualPairingPhotos(photos); modals.setShowManualPairing(true); }}
-          onSortByDate={analysisHandlers.handleSmartSort} onSendInstruction={projectHandlers.handleConsoleInstruction}
-          onSelectCacheFolder={cacheHandlers.handleSelectCacheFolder} onClearFileSystemCache={cacheHandlers.handleClearFileSystemCache}
-          onReanalyzePhoto={projectHandlers.handleInteractiveAnalysis}
-          onAbort={() => { analysisHandlers.shouldAbortRef.current = true; processing.addLog("解析を中断しています...", 'info'); }}
-          onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onReorderPhotos={reorderPhotos}
-          onOpenBulkEditor={() => modals.setShowBulkEditor(true)}
-          onApplyAliases={photoManagement.handleApplyAliases} onOpenGitHubSync={() => modals.setShowGitHubSync(true)}
+          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout }}
+          state={{ isProcessing: processing.isProcessing, currentStep: processing.currentStep, errorMsg: processing.errorMsg, successMsg: processing.successMsg }}
+          photoHandlers={{
+            onUpdatePhoto: updatePhoto,
+            onDeletePhoto: (fileName) => deletePhoto(fileName, lang),
+            onReanalyzePhoto: projectHandlers.handleInteractiveAnalysis,
+            onReorderPhotos: reorderPhotos
+          }}
+          actionHandlers={{
+            onClearLogs: processing.clearLogs,
+            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setShowPreview(false); setInitialLayout(3); },
+            onRefine: () => modals.setShowRefineModal(true),
+            onExportExcel: (layout) => generateExcel(photos, appMode, layout),
+            onAutoPair: analysisHandlers.handleAutoPair,
+            onManualPair: () => { pending.setManualPairingPhotos(photos); modals.setShowManualPairing(true); },
+            onSendInstruction: projectHandlers.handleConsoleInstruction,
+            onAbort: () => { analysisHandlers.shouldAbortRef.current = true; processing.addLog("解析を中断しています...", 'info'); },
+            onOpenMasterEditor: () => modals.setShowMasterEditor(true),
+            onOpenBulkEditor: () => modals.setShowBulkEditor(true),
+            onApplyAliases: photoManagement.handleApplyAliases,
+            onOpenGitHubSync: () => modals.setShowGitHubSync(true)
+          }}
         />
       )}
 

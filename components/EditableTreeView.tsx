@@ -4,7 +4,7 @@ import { CustomizationData } from '../utils/masterEditorStorage';
 import { useTreeEditing } from '../hooks/useTreeEditing';
 
 // Grouped tree actions for cleaner interface
-export interface TreeActions {
+interface TreeActions {
   onDelete: (path: string) => void;
   onRename: (path: string, newName: string) => void;
   onAdd: (parentPath: string, name: string) => void;

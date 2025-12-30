@@ -75,12 +75,15 @@ describe('履歴機能', () => {
       lastModified: Date.now(),
       status: 'done' as const,
       analysis: {
+        fileName: `photo_${i + 1}.jpg`,
         workType: '土工',
         variety: '掘削',
         detail: `作業${i + 1}`,
         station: 'No.1',
         remarks: '',
         description: '',
+        hasBoard: false,
+        detectedText: '',
       },
     }));
   };

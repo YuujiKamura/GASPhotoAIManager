@@ -37,17 +37,6 @@ export type {
   LearnedSettings,
 } from './learning';
 
-// Storage types
-export type {
-  ProjectConfig,
-  PersonalConfig,
-  EncryptedCredentials,
-  SessionData,
-  SyncResult,
-  ConflictInfo,
-  StorageState,
-} from './storage';
-
 // Usage types
 export type {
   UsageRecord,
