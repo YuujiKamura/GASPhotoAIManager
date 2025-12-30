@@ -13,9 +13,11 @@ export { getFileKey, generateSessionKey, getCachedAnalysis, cacheAnalysis, clear
 export { saveRule, getRules, deleteRule } from './rules';
 export type { AnalysisRule } from './rules';
 
+// Category Utils
+export { detectPhotoCategory } from './categoryUtils';
+
 // Examples
 export {
-  detectPhotoCategory,
   saveExample,
   getExamples,
   getRelevantExamples

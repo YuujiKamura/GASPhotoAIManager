@@ -2,7 +2,7 @@
 
 import { PhotoRecord, AnalysisExample, AnalysisSession } from "../../types";
 import { openDB, STORE_SESSIONS, KEY_ACTIVE_SESSION } from "./dbCore";
-import { detectPhotoCategory } from "./examples";
+import { detectPhotoCategory } from "./categoryUtils";
 
 /**
  * Save current session as example session
