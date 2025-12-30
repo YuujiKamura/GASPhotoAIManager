@@ -100,3 +100,23 @@ export const clearAnalysisCache = async (): Promise<void> => {
     request.onerror = () => reject(request.error);
   });
 };
+
+/**
+ * Get cached analysis by key directly
+ */
+export const getCachedAnalysisByKey = async (key: string): Promise<AIAnalysisResult | null> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_CACHE, 'readonly');
+    const store = transaction.objectStore(STORE_CACHE);
+    const request = store.get(key);
+
+    request.onsuccess = () => {
+      resolve(request.result as AIAnalysisResult || null);
+    };
+    request.onerror = () => {
+      console.warn("Cache lookup by key failed", request.error);
+      resolve(null);
+    };
+  });
+};

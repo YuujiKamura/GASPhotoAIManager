@@ -17,7 +17,7 @@ import { PhotoRecord, AIAnalysisResult, AppMode } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { formatHierarchyForPrompt } from "../../utils/constructionMaster";
 import { trackUsage } from "../usageTracker";
-import { getRelevantExamples, getActiveSession } from "../../utils/storage";
+import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
 // Core module - サブモジュールを統合
@@ -221,10 +221,21 @@ async function prepareAnalysisInputs(
   let examplesPrompt = "";
   if (appMode === 'construction') {
     try {
+      // セッションベースのお手本をチェック
       const activeSession = await getActiveSession();
       if (activeSession) {
         onLog?.(`[EXAMPLES] お手本セッション適用中: "${activeSession.name}" (${activeSession.photoCount}枚)`, "info");
       }
+
+      // 履歴ベースのお手本をチェック（新機能）
+      const activeHistoryId = getActiveExampleHistoryId();
+      if (activeHistoryId && !activeSession) {
+        const historyEntry = await getAnalysisHistoryEntry(activeHistoryId);
+        if (historyEntry && historyEntry.isExampleSession) {
+          onLog?.(`[EXAMPLES] 履歴お手本適用中: "${historyEntry.name}" (${historyEntry.photoCount}枚)`, "info");
+        }
+      }
+
       const examples = await getRelevantExamples(undefined, undefined, 5);
       if (examples.length > 0) {
         examplesPrompt = formatExamplesForPrompt(examples);
