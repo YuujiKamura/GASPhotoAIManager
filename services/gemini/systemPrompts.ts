@@ -56,39 +56,78 @@ The master data JSON has this structure. "直接工事費" is the root and shoul
 
 **CRITICAL**: Do NOT output "直接工事費", "施工状況写真", "出来形管理写真" etc. as workType. These are NOT workTypes.
 
-**STEP 1: Select Level 2 (Photo Category) - PRIORITIZATION RULE**
-You must FIRST check if the photo is a static "Before" or "Completion" scene (Landscape/Scenery).
-Only classify as "Construction Status" if there is clear evidence of **ACTIVE WORK**.
+**STEP 1: Select Photo Category - CONDITION-BASED CLASSIFICATION**
+All categories have EQUAL priority. Use the DEFINITE CONDITIONS below to classify.
+Do NOT guess. Match the conditions exactly.
 
-1.  **"着手前及び完成写真"** (Before & Completion) [PRIORITY 1 - DEFAULT]:
-    *   **Definition**: Static photos of the site condition.
-    *   **Pre-Construction (着手前)**: Old asphalt, cracked pavement, raw earth, grass/weeds. The site is untouched before work begins.
-    *   **Completion (完成/竣工)**: Brand new black asphalt, fresh concrete, clean white lines, swept/clean surface.
-    *   **Key Feature**: NO active heavy machinery operating, NO workers performing tasks.
-    *   **Note**: The presence of a measuring pole/ribbon ALONE does NOT make it "Status". If nobody is holding it or working, it is likely "Before" or "Completion".
+1.  **"着手前及び完成写真"** (Before & Completion) [CONDITION-BASED]:
+    *   **着手前 - DEFINITE if:**
+        - Static scene of site BEFORE work (old asphalt, cracks, raw earth, weeds)
+        - NO workers performing tasks, NO machinery operating
+        - Site appears untouched/deteriorated
+    *   **完成/竣工 - DEFINITE if:**
+        - Static scene of site AFTER work (new black asphalt, fresh concrete, clean lines)
+        - NO workers performing tasks, NO machinery operating
+        - Site appears finished/clean
+    *   **Note**: Measuring pole/ribbon WITHOUT active measurement = likely Before/Completion
 
-2.  **"施工状況写真"** (Construction Status) [PRIORITY 2 - REQUIRES ACTION]:
-    *   **Definition**: Photos of the work in progress.
-    *   **Visuals**: Heavy machinery (Excavators, Rollers) IN MOTION, dump trucks dumping, workers with shovels/rakes/tools actually working.
-    *   **Midway States**: Piles of rubble, half-dug holes, measuring dimensions *during* the process (e.g., checking depth while digging).
+2.  **"施工状況写真"** (Construction Status) [CONDITION-BASED - REQUIRES ACTIVE WORK]:
+    *   **DEFINITE if ANY of these visible:**
+        - Heavy machinery (excavators, rollers) actively OPERATING
+        - Dump trucks actively dumping material
+        - Workers with shovels/rakes/tools actively WORKING
+        - Midway construction states (piles of rubble, half-dug holes)
     *   **CRITICAL DISTINCTION - SPRAYING**:
         *   **Emulsion Spraying (乳剤散布)**: Worker holding a **THIN NOZZLE/HOSE** connected to a tank/truck. Liquid spray.
         *   **Curing Sand Spraying (養生砂散布)**: Worker using a **SHOVEL** or **BROAD SPREADER**. Sand cannot be sprayed from a thin nozzle.
         *   *Note*: Do NOT rely solely on surface color (black vs gray) as both can look similar. Look at the **EQUIPMENT**.
 
-3.  **"安全管理写真"** (Safety Management) [PRIORITY - VISUAL DETECTION]:
+3.  **"安全管理写真"** (Safety Management) [DEFINITE CLASSIFICATION RULES]:
     *   **CRITICAL**: For safety management photos, set workType="", variety="", detail="".
-    *   **朝礼状況**: Group of workers standing together (morning assembly). Even WITHOUT blackboard.
-        - Visual cues: Workers in circle/line, safety vests/helmets, morning gathering
-    *   **KY活動状況**: Workers looking at documents/boards together (hazard prediction activity)
-    *   **保安施設設置状況**: Traffic cones, barriers, warning signs being set up
-    *   **点灯確認状況**: Checking lights on safety equipment at dusk/night
-    *   **新規入場者教育状況**: Training session, workers watching presentation
-    *   **安全巡視状況**: Inspection walk, supervisor checking site
-    *   **NOTE**: If you see a GROUP of workers NOT actively doing construction work, it's likely 安全管理写真.
 
-4.  **"使用材料写真"**: Material checks.
-5.  **"品質管理写真"** (Quality Control) [PRIORITY - TEMPERATURE/DENSITY MEASUREMENT]:
+    **=== DEFINITE RULES (100% certainty) ===**
+
+    **朝礼状況 - DEFINITE if ALL conditions met:**
+    1. 5+ workers gathered in one location (円形・列)
+    2. Workers wearing helmets/safety vests
+    3. NO heavy machinery actively operating
+    4. One person holding clipboard/documents (説明者)
+    5. Shooting time 7:00-8:30 AM (if available) → CONFIRMS 朝礼
+    → If conditions 1-4 met: remarksCategory = "朝礼状況" (DEFINITE)
+
+    **KY活動状況 - DEFINITE if:**
+    - Workers gathered around a whiteboard/poster with hazard info
+    - Workers pointing at or writing on KY board
+    → remarksCategory = "KY活動状況" (DEFINITE)
+
+    **点灯確認状況 - DEFINITE if:**
+    - Safety lights/warning lights visible AND illuminated
+    - Shooting time 17:00-18:30 (dusk/evening)
+    → remarksCategory = "点灯確認状況" (DEFINITE)
+
+    **保安施設設置状況 - DEFINITE if:**
+    - Workers actively placing/adjusting traffic cones, barriers, signs
+    - Focus is on the safety equipment, not construction work
+    → remarksCategory = "保安施設設置状況" (DEFINITE)
+
+    **新規入場者教育状況 - DEFINITE if:**
+    - Indoor/tent setting with workers seated facing presenter
+    - Presentation screen or training materials visible
+    → remarksCategory = "新規入場者教育状況" (DEFINITE)
+
+    **安全巡視状況 - DEFINITE if:**
+    - 1-2 people (supervisors) walking/inspecting site
+    - Carrying inspection clipboard, not performing construction
+    → remarksCategory = "安全巡視状況" (DEFINITE)
+
+    **=== KEY DISTINCTION ===**
+    - Workers GATHERED + NOT WORKING = 安全管理写真 (CERTAIN)
+    - Workers OPERATING machinery/tools = 施工状況写真 (CERTAIN)
+
+4.  **"使用材料写真"** (Materials) [CONDITION-BASED]:
+    *   **DEFINITE if:** Photo focuses on construction materials (asphalt bags, aggregate piles, pipes) with labels/specs visible
+
+5.  **"品質管理写真"** (Quality Control) [CONDITION-BASED - MEASUREMENT EQUIPMENT]:
     *   **Definition**: Photos documenting quality measurements during construction.
     *   **Visual Cues**:
         - Thermometers measuring asphalt temperature (デジタル温度計, 棒状温度計)
@@ -106,7 +145,7 @@ Only classify as "Construction Status" if there is clear evidence of **ACTIVE WO
         - The actual temperature VALUE visible on thermometer or blackboard (e.g., 161.1℃)
         - Example: "到着温度 161.1℃", "敷均し温度 155.3℃", "初期締固め前温度 148.8℃"
     *   **NEVER use just** "温度測定" or "アスファルト混合物温度測定" without the actual value.
-6.  **"出来形管理写真"** (Finished Dimension Management) [PRIORITY - MEASUREMENT PHOTOS]:
+6.  **"出来形管理写真"** (Finished Dimension Management) [CONDITION-BASED - COMPLETED MEASUREMENT]:
     *   **Definition**: Photos documenting COMPLETED work dimensions with measuring tools.
     *   **Visual Cues**:
         - Measuring ribbons/poles placed on FINISHED surfaces
