@@ -40,6 +40,7 @@ interface PreviewViewProps {
   onOpenMasterEditor?: () => void;
   onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
   onOpenStationReplace?: () => void;
+  onOpenBulkEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
 }
@@ -48,7 +49,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   lang, photos, stats, appMode, isProcessing, currentStep, errorMsg, successMsg, logs,
   initialLayout = 3 as const, onClearLogs, onGoHome, onRefine, onExportExcel, onUpdatePhoto,
   onDeletePhoto, onAutoPair, onManualPair, onSendInstruction, onReanalyzePhoto, onAbort,
-  onOpenMasterEditor, onReorderPhotos, onOpenStationReplace, onApplyAliases, onOpenGitHubSync
+  onOpenMasterEditor, onReorderPhotos, onOpenStationReplace, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync
 }) => {
   const txt = TRANS[lang];
   const reorder = useReorderMode(photos, onReorderPhotos);
@@ -141,6 +142,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               onRefine={onRefine}
               onShowHistory={() => setShowHistoryPanel(true)}
               onOpenStationReplace={onOpenStationReplace}
+              onOpenBulkEditor={onOpenBulkEditor}
               onOpenMasterEditor={onOpenMasterEditor}
               onApplyAliases={onApplyAliases}
               onOpenGitHubSync={onOpenGitHubSync}

@@ -37,6 +37,12 @@ export {
   addStationToHistory
 } from './stationHistory';
 
+// WorkType History
+export {
+  getWorkTypeHistory,
+  addWorkTypeToHistory
+} from './workTypeHistory';
+
 // Export/Import
 export {
   exportDataToJson,
