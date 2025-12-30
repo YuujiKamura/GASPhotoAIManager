@@ -131,7 +131,7 @@ export const SimilarModuleCard: React.FC<{ pair: any }> = ({ pair }) => {
 
 export const BackendModuleGroupCard: React.FC<{ group: any }> = ({ group }) => {
   const [expanded, setExpanded] = useState(false);
-  const icons: Record<string, string> = { 'AI/解析': '🤖', 'ストレージ': '💾', 'ソート/整列': '📊', 'エクスポート': '📤', '正規化': '🔄', 'ユーティリティ': '🔧', 'API/通信': '🌐', '状態管理': '📦' };
+  const icons: Record<string, string> = { 'AI/解析': '🤖', 'ストレージ': '💾', 'ソート/整列': '📊', 'エクスポート': '📤', '正規化': '🔄', 'ユーティリティ': '🔧', 'API/通信': '🌐', '状態管理': '📦', 'その他': '📁' };
 
   return (
     <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
@@ -190,6 +190,18 @@ export const FeatureFlowTree: React.FC<{ node: any; level: number }> = ({ node, 
             <span className="text-xs text-gray-400 font-mono">{node.component}</span>
           </div>
           <p className="text-xs text-gray-500">{node.description}</p>
+          {node.backendModules && node.backendModules.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {node.backendModules.slice(0, 3).map((mod: string, i: number) => (
+                <span key={i} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                  {mod.split('/').pop()}
+                </span>
+              ))}
+              {node.backendModules.length > 3 && (
+                <span className="text-xs text-gray-400">+{node.backendModules.length - 3}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {expanded && hasChildren && node.children.map((child: any, i: number) => <FeatureFlowTree key={i} node={child} level={level + 1} />)}

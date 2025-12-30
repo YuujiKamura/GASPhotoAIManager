@@ -36,35 +36,65 @@ export const DEPS = [
 
 export const HEALTH_FIX_PROMPTS: Record<string, string> = {
   TypeScript: `# TypeScript型エラー修正
+
 ## 実行コマンド
 \`\`\`bash
 npx tsc --noEmit
 \`\`\`
+
 ## 修正手順
 1. エラー箇所を特定
-2. 型定義の追加または修正
-3. \`npx tsc --noEmit\` で再確認
+2. エラーの種類を判断:
+   - \`import.meta.env\` → vite-env.d.ts の型定義確認
+   - \`Property 'X' does not exist\` → 型定義の追加または修正
+3. 修正を適用
+4. \`npx tsc --noEmit\` で再確認
+5. エラーがなくなるまで繰り返す
+
 ## 完了条件
-- \`npx tsc --noEmit\` がエラー0で完了`,
+- \`npx tsc --noEmit\` がエラー0で完了
+- \`npm run build\` が成功`,
 
   knip: `# 未使用ファイル整理
+
 ## 実行コマンド
 \`\`\`bash
 npx knip --reporter compact
 \`\`\`
+
 ## 修正手順
 1. 未使用ファイル一覧を取得
-2. 削除可能なファイルは \`git rm\` で削除
-3. 除外設定が必要なファイルは knip.json に追加`,
+2. 各ファイルを分類:
+   - 削除可能: 本当に使われていない古いコード
+   - 除外設定: 手動実行スクリプト、設定ファイル等
+3. 削除可能なファイルは \`git rm\` で削除
+4. 除外設定が必要なファイルは knip.json に追加
+
+## 除外すべきパターン
+- scripts/ - 手動実行ユーティリティ
+- .claude/ - Claude Code設定
+- *.config.* - 設定ファイル
+
+## 完了条件
+- \`npx knip\` の警告が妥当な範囲
+- \`npm run build\` が成功`,
 
   depcheck: `# 未使用依存関係の整理
+
 ## 実行コマンド
 \`\`\`bash
 npx depcheck
 \`\`\`
+
 ## 修正手順
 1. 未使用と報告された依存関係を確認
-2. 不要なら \`npm uninstall パッケージ名\``,
+2. 本当に使われていないか確認（動的importに注意）
+3. 不要なら \`npm uninstall パッケージ名\`
+4. 必要なら .depcheckrc で除外設定
+
+## 完了条件
+- depcheck の警告が妥当な範囲
+- \`npm run build\` が成功`,
 };
 
 export const generateTaskPrompt = (task: { title: string; description: string; file?: string; priority: string; estimatedLines?: number; id: string }) => `# タスク: ${task.title}
