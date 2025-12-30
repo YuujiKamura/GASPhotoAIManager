@@ -112,6 +112,8 @@ export function useAnalysisHandlers(p: Props) {
         setShowPreview(true);
         setSuccessMsg(lang === 'ja' ? `${records.length}枚の手動入力準備完了` : `${records.length} photos ready for manual input`);
         addLog(`手動入力: ${records.length}枚`, 'success');
+        // 手動読み込みも履歴に保存
+        saveAnalysisHistory(records, '手動入力', 'manual').catch(() => {});
       } else {
         // 従来のペアリングUI
         setManualPairingPhotos(r);
@@ -131,6 +133,8 @@ export function useAnalysisHandlers(p: Props) {
     setPhotos(ps); setStats({ total: ps.length, processed: ps.length, success: ps.length, failed: 0, cached: 0 });
     setInitialLayout(2); setShowPreview(true); setShowManualPairing(false);
     setSuccessMsg(lang === 'ja' ? `${pairs.length}組作成` : `${pairs.length} pairs`); addLog(`手動ペアリング: ${pairs.length}組`, 'success');
+    // 手動ペアリングも履歴に保存
+    saveAnalysisHistory(ps, '手動ペアリング', 'manual').catch(() => {});
   }, [activeInstruction, initialInstruction, setPhotos, setStats, setInitialLayout, setShowPreview, setShowManualPairing, setSuccessMsg, addLog, lang]);
 
   const handleLoadHistory = useCallback(async (e: AnalysisHistoryEntry) => {
