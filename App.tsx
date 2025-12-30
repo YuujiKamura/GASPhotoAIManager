@@ -41,6 +41,7 @@ const GitHubSyncPanel = lazy(() => import('./components/GitHubSyncPanel'));
 const CodebaseHealthDashboard = lazy(() => import('./components/CodebaseHealthDashboard'));
 const InteractiveAnalysisDialog = lazy(() => import('./components/InteractiveAnalysisDialog').then(m => ({ default: m.InteractiveAnalysisDialog })));
 const PdfLoadDialog = lazy(() => import('./components/PdfLoadDialog'));
+const AIFrameworkDashboard = lazy(() => import('./components/AIFrameworkDashboard'));
 
 const MAX_PHOTOS = 30;
 
@@ -209,7 +210,7 @@ export default function App() {
           onClearCache={cacheHandlers.handleClearCache} onShowPreview={() => setShowPreview(true)} onOpenSettings={() => modals.setShowApiKeySetup(true)}
           onManualPairing={handleManualPairing} onShowHistory={() => modals.setShowHistory(true)}
           onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onOpenHealthDashboard={() => modals.setShowHealthDashboard(true)}
-          onAskAI={analysisHandlers.handleAskAI} onClearLogs={processing.clearLogs}
+          onOpenAIFramework={() => modals.setShowAIFramework(true)} onAskAI={analysisHandlers.handleAskAI} onClearLogs={processing.clearLogs}
           onTestOneInteractive={handleTestOneInteractive}
         />
       ) : (
@@ -275,6 +276,12 @@ export default function App() {
       {modals.showGitHubSync && (
         <Suspense fallback={<LoadingFallback />}>
           <GitHubSyncPanel onClose={() => modals.setShowGitHubSync(false)} />
+        </Suspense>
+      )}
+
+      {modals.showAIFramework && (
+        <Suspense fallback={<LoadingFallback />}>
+          <AIFrameworkDashboard onClose={() => modals.setShowAIFramework(false)} appMode={appMode} />
         </Suspense>
       )}
 

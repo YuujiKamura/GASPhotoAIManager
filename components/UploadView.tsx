@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, LogEntry } from '../types';
-import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity } from 'lucide-react';
+import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity, Brain } from 'lucide-react';
 import { getSelectedModel } from '../services/geminiService';
 import ConsolePanel from './ConsolePanel';
 import AnalysisSetupModal from './AnalysisSetupModal';
@@ -28,6 +28,7 @@ interface UploadViewProps {
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
   onOpenHealthDashboard?: () => void;
+  onOpenAIFramework?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
   onClearLogs?: () => void;
   onTestOneInteractive?: (file: File) => void;
@@ -53,7 +54,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   lang, isProcessing, photos, appMode, apiKey, logs, isAskingAI,
   setAppMode, onStartProcessing, onResume, onCloseProject, onExportJson, onImportJson,
   onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onManualPairing,
-  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onAskAI, onClearLogs,
+  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onOpenAIFramework, onAskAI, onClearLogs,
   onTestOneInteractive
 }) => {
   const txt = TRANS[lang];
@@ -123,7 +124,8 @@ const UploadView: React.FC<UploadViewProps> = ({
           )}
           {onOpenMasterEditor && <HeaderButton onClick={onOpenMasterEditor} icon={<FolderTree className="w-4 h-4" />} label="マスタ" title="マスタ設定" />}
           {onOpenHealthDashboard && <HeaderButton onClick={onOpenHealthDashboard} icon={<Activity className="w-4 h-4" />} label="Health" title="コードベース健全性ダッシュボード" className="bg-blue-100 hover:bg-blue-200 text-blue-600" />}
-          {onShowHistory && <HeaderButton onClick={onShowHistory} icon={<History className="w-4 h-4" />} label="履歴" title="解析履歴" className="bg-purple-100 hover:bg-purple-200 text-purple-600" />}
+          {onOpenAIFramework && <HeaderButton onClick={onOpenAIFramework} icon={<Brain className="w-4 h-4" />} label="AI" title="AIフレームワーク ダッシュボード" className="bg-purple-100 hover:bg-purple-200 text-purple-600" />}
+          {onShowHistory && <HeaderButton onClick={onShowHistory} icon={<History className="w-4 h-4" />} label="履歴" title="解析履歴" className="bg-indigo-100 hover:bg-indigo-200 text-indigo-600" />}
           <HeaderButton
             onClick={onOpenSettings}
             icon={<Settings className="w-4 h-4" />}

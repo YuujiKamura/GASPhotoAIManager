@@ -52,8 +52,9 @@ const openDB = (): Promise<IDBDatabase> => {
 /**
  * 学習設定をローカルに保存
  */
-const saveSettingsLocally = async (settings: LearnedSettings): Promise<void> => {
+export const saveSettingsLocally = async (settings: LearnedSettings): Promise<void> => {
   const db = await openDB();
+  cachedSettings = settings;
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_LEARNED, 'readwrite');
     const store = transaction.objectStore(STORE_LEARNED);
