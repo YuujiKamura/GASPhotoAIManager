@@ -56,69 +56,116 @@ The master data JSON has this structure. "直接工事費" is the root and shoul
 
 **CRITICAL**: Do NOT output "直接工事費", "施工状況写真", "出来形管理写真" etc. as workType. These are NOT workTypes.
 
-**STEP 1: Select Level 2 (Photo Category) - PRIORITIZATION RULE**
-You must FIRST check if the photo is a static "Before" or "Completion" scene (Landscape/Scenery).
-Only classify as "Construction Status" if there is clear evidence of **ACTIVE WORK**.
+**STEP 1: Select Photo Category (土木工事の写真管理基準 - 9区分)**
+Based on MLIT (Ministry of Land, Infrastructure, Transport and Tourism) photo management standards.
 
-1.  **"着手前及び完成写真"** (Before & Completion) [PRIORITY 1 - DEFAULT]:
-    *   **Definition**: Static photos of the site condition.
-    *   **Pre-Construction (着手前)**: Old asphalt, cracked pavement, raw earth, grass/weeds. The site is untouched before work begins.
-    *   **Completion (完成/竣工)**: Brand new black asphalt, fresh concrete, clean white lines, swept/clean surface.
-    *   **Key Feature**: NO active heavy machinery operating, NO workers performing tasks.
-    *   **Note**: The presence of a measuring pole/ribbon ALONE does NOT make it "Status". If nobody is holding it or working, it is likely "Before" or "Completion".
+**THE 9 PHOTO CATEGORIES (写真区分):**
+1. 着手前及び完成写真（既済部分写真等含む）
+2. 施工状況写真
+3. 安全管理写真
+4. 使用材料写真
+5. 品質管理写真
+6. 出来形管理写真
+7. 災害写真
+8. 事故写真
+9. その他（公害、環境、補償等）
 
-2.  **"施工状況写真"** (Construction Status) [PRIORITY 2 - REQUIRES ACTION]:
-    *   **Definition**: Photos of the work in progress.
-    *   **Visuals**: Heavy machinery (Excavators, Rollers) IN MOTION, dump trucks dumping, workers with shovels/rakes/tools actually working.
-    *   **Midway States**: Piles of rubble, half-dug holes, measuring dimensions *during* the process (e.g., checking depth while digging).
-    *   **CRITICAL DISTINCTION - SPRAYING**:
-        *   **Emulsion Spraying (乳剤散布)**: Worker holding a **THIN NOZZLE/HOSE** connected to a tank/truck. Liquid spray.
-        *   **Curing Sand Spraying (養生砂散布)**: Worker using a **SHOVEL** or **BROAD SPREADER**. Sand cannot be sprayed from a thin nozzle.
-        *   *Note*: Do NOT rely solely on surface color (black vs gray) as both can look similar. Look at the **EQUIPMENT**.
+---
 
-3.  **"安全管理写真"** (Safety Management) [PRIORITY - VISUAL DETECTION]:
-    *   **CRITICAL**: For safety management photos, set workType="", variety="", detail="".
-    *   **朝礼状況**: Group of workers standing together (morning assembly). Even WITHOUT blackboard.
-        - Visual cues: Workers in circle/line, safety vests/helmets, morning gathering
-    *   **KY活動状況**: Workers looking at documents/boards together (hazard prediction activity)
-    *   **保安施設設置状況**: Traffic cones, barriers, warning signs being set up
-    *   **点灯確認状況**: Checking lights on safety equipment at dusk/night
-    *   **新規入場者教育状況**: Training session, workers watching presentation
-    *   **安全巡視状況**: Inspection walk, supervisor checking site
-    *   **NOTE**: If you see a GROUP of workers NOT actively doing construction work, it's likely 安全管理写真.
+**CATEGORY 1: "着手前及び完成写真"** (Before & Completion) [PRIORITY 1 - DEFAULT]:
+*   **Definition**: Static photos of the site condition.
+*   **Pre-Construction (着手前)**: Old asphalt, cracked pavement, raw earth, grass/weeds. The site is untouched before work begins.
+*   **Completion (完成/竣工)**: Brand new black asphalt, fresh concrete, clean white lines, swept/clean surface.
+*   **既済部分写真**: Partial completion photos for progress payment.
+*   **Key Feature**: NO active heavy machinery operating, NO workers performing tasks.
+*   **Note**: The presence of a measuring pole/ribbon ALONE does NOT make it "Status". If nobody is holding it or working, it is likely "Before" or "Completion".
 
-4.  **"使用材料写真"**: Material checks.
-5.  **"品質管理写真"** (Quality Control) [PRIORITY - TEMPERATURE/DENSITY MEASUREMENT]:
-    *   **Definition**: Photos documenting quality measurements during construction.
-    *   **Visual Cues**:
-        - Thermometers measuring asphalt temperature (デジタル温度計, 棒状温度計)
-        - Density meters (RI計器, 砂置換法の器具)
-        - Blackboard showing temperature readings (到着温度, 敷均し温度, 初期締固め前温度, 開放温度)
-    *   **Temperature Photo Cycles** (温度管理写真のサイクル):
-        - Per truck (1台につき3温度 × 3枚 = 9枚):
-          1. 到着温度 (arrival temp): 全景 + ボードアップ + 温度計アップ
-          2. 敷均し温度 (spread temp): 全景 + ボードアップ + 温度計アップ
-          3. 初期締固め前温度 (initial compaction temp): 全景 + ボードアップ + 温度計アップ
-        - Per day/location (1日1回 × 3枚):
-          4. 開放温度 (release temp): 全景 + ボードアップ + 温度計アップ
-    *   **Remarks for 品質管理写真** MUST include:
-        - The temperature TYPE (到着温度, 敷均し温度, 初期締固め前温度, 開放温度)
-        - The actual temperature VALUE visible on thermometer or blackboard (e.g., 161.1℃)
-        - Example: "到着温度 161.1℃", "敷均し温度 155.3℃", "初期締固め前温度 148.8℃"
-    *   **NEVER use just** "温度測定" or "アスファルト混合物温度測定" without the actual value.
-6.  **"出来形管理写真"** (Finished Dimension Management) [PRIORITY - MEASUREMENT PHOTOS]:
-    *   **Definition**: Photos documenting COMPLETED work dimensions with measuring tools.
-    *   **Visual Cues**:
-        - Measuring ribbons/poles placed on FINISHED surfaces
-        - Blackboard showing 設計値 (design value), 実測値 (measured value), 差 (difference)
-        - Static scene - NO active work, just measurement verification
-    *   **CRITICAL DISTINCTION from 施工状況**:
-        - 「〜状況」(status) = DURING work (e.g., 転圧状況 = compacting NOW)
-        - 「〜出来形」(finished form) = AFTER work, measuring result (e.g., 不陸整正出来形 = measuring flatness AFTER grading)
-    *   **Remarks for 出来形管理写真** should end with 「出来形」:
-        - 不陸整正出来形, 表層厚出来形, 路盤厚出来形, 幅員出来形, etc.
-    *   **Example**: Photo shows a measuring pole on flat graded surface with blackboard "設計値 0mm / 実測値 +3mm"
-        → This is 出来形管理写真, remarks = "不陸整正出来形", NOT "不陸整正状況"
+**CATEGORY 2: "施工状況写真"** (Construction Status) [REQUIRES ACTIVE WORK]:
+*   **Definition**: Photos of the work in progress.
+*   **Visuals**: Heavy machinery (Excavators, Rollers) IN MOTION, dump trucks dumping, workers with shovels/rakes/tools actually working.
+*   **Midway States**: Piles of rubble, half-dug holes, measuring dimensions *during* the process (e.g., checking depth while digging).
+*   **CRITICAL DISTINCTION - SPRAYING**:
+    *   **Emulsion Spraying (乳剤散布)**: Worker holding a **THIN NOZZLE/HOSE** connected to a tank/truck. Liquid spray.
+    *   **Curing Sand Spraying (養生砂散布)**: Worker using a **SHOVEL** or **BROAD SPREADER**. Sand cannot be sprayed from a thin nozzle.
+    *   *Note*: Do NOT rely solely on surface color (black vs gray) as both can look similar. Look at the **EQUIPMENT**.
+
+**CATEGORY 3: "安全管理写真"** (Safety Management) [HIGHEST PRIORITY - CHECK FIRST]:
+*   **CRITICAL**: This category MUST be checked BEFORE施工状況写真. Many photos with workers are 安全管理写真, NOT 施工状況写真.
+*   **CRITICAL**: For safety management photos, set workType="", variety="", detail="".
+*   **DETECTION PRIORITY ORDER**:
+    1. **朝礼実施状況 / 朝礼・KYミーティング実施状況**:
+        - **Visual Cues**: Group of workers (3+ people) standing together, often in a circle or line
+        - Workers wearing safety vests/helmets, facing a speaker or each other
+        - Morning gathering, outdoor meeting scene
+        - **Blackboard keywords**: 朝礼, KY, ミーティング, 危険予知
+        - **IMPORTANT**: Workers standing in a group = 朝礼状況, even WITHOUT blackboard!
+    2. **KY活動状況 (危険予知活動)**:
+        - Workers looking at documents/boards together
+        - Discussion/pointing at safety board
+        - Small group reviewing hazards
+    3. **新規入場者教育状況**:
+        - Training session, workers watching presentation
+        - Classroom-style seating, instructor with materials
+    4. **安全巡視状況**:
+        - Inspection walk, supervisor checking site with clipboard
+        - Walking through site observing conditions
+    5. **保安施設設置状況**:
+        - Traffic cones, barriers, warning signs being set up
+        - Safety barricades, caution tape installation
+    6. **点灯確認状況**:
+        - Checking lights on safety equipment at dusk/night
+*   **GOLDEN RULE**: If you see a GROUP of workers NOT actively doing construction work (not operating machinery, not digging, not paving), it is almost certainly 安全管理写真 (朝礼・KY).
+
+**CATEGORY 4: "使用材料写真"** (Materials):
+*   Material checks, delivery slips, material samples
+*   Close-up of materials before use
+
+**CATEGORY 5: "品質管理写真"** (Quality Control) [TEMPERATURE/DENSITY MEASUREMENT]:
+*   **Definition**: Photos documenting quality measurements during construction.
+*   **Visual Cues**:
+    - Thermometers measuring asphalt temperature (デジタル温度計, 棒状温度計)
+    - Density meters (RI計器, 砂置換法の器具)
+    - Blackboard showing temperature readings (到着温度, 敷均し温度, 初期締固め前温度, 開放温度)
+*   **Temperature Photo Cycles** (温度管理写真のサイクル):
+    - Per truck (1台につき3温度 × 3枚 = 9枚):
+      1. 到着温度 (arrival temp): 全景 + ボードアップ + 温度計アップ
+      2. 敷均し温度 (spread temp): 全景 + ボードアップ + 温度計アップ
+      3. 初期締固め前温度 (initial compaction temp): 全景 + ボードアップ + 温度計アップ
+    - Per day/location (1日1回 × 3枚):
+      4. 開放温度 (release temp): 全景 + ボードアップ + 温度計アップ
+*   **Remarks for 品質管理写真** MUST include:
+    - The temperature TYPE (到着温度, 敷均し温度, 初期締固め前温度, 開放温度)
+    - The actual temperature VALUE visible on thermometer or blackboard (e.g., 161.1℃)
+    - Example: "到着温度 161.1℃", "敷均し温度 155.3℃", "初期締固め前温度 148.8℃"
+*   **NEVER use just** "温度測定" or "アスファルト混合物温度測定" without the actual value.
+
+**CATEGORY 6: "出来形管理写真"** (Finished Dimension Management) [MEASUREMENT PHOTOS]:
+*   **Definition**: Photos documenting COMPLETED work dimensions with measuring tools.
+*   **Visual Cues**:
+    - Measuring ribbons/poles placed on FINISHED surfaces
+    - Blackboard showing 設計値 (design value), 実測値 (measured value), 差 (difference)
+    - Static scene - NO active work, just measurement verification
+*   **CRITICAL DISTINCTION from 施工状況**:
+    - 「〜状況」(status) = DURING work (e.g., 転圧状況 = compacting NOW)
+    - 「〜出来形」(finished form) = AFTER work, measuring result (e.g., 不陸整正出来形 = measuring flatness AFTER grading)
+*   **Remarks for 出来形管理写真** should end with 「出来形」:
+    - 不陸整正出来形, 表層厚出来形, 路盤厚出来形, 幅員出来形, etc.
+*   **Example**: Photo shows a measuring pole on flat graded surface with blackboard "設計値 0mm / 実測値 +3mm"
+    → This is 出来形管理写真, remarks = "不陸整正出来形", NOT "不陸整正状況"
+
+**CATEGORY 7: "災害写真"** (Disaster):
+*   Photos documenting natural disaster damage (typhoon, earthquake, flood, landslide)
+*   Emergency response to disaster events
+
+**CATEGORY 8: "事故写真"** (Accident):
+*   Photos documenting workplace accidents
+*   Incident investigation documentation
+
+**CATEGORY 9: "その他"** (Others):
+*   公害関連 (pollution)
+*   環境対策 (environmental measures)
+*   補償関連 (compensation)
+*   Other documentation not fitting above categories
 
 **STEP 2: Traverse & Map Columns**
 Traverse the hierarchy directly:
@@ -271,11 +318,18 @@ export const REMARKS_CATEGORIES = [
   "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
   "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
   // 着手前・完成
-  "着手前", "完了", "竣工", "施工完了",
+  "着手前", "完了", "竣工", "施工完了", "既済部分",
   // 出来形
   "不陸整正出来形", "路盤厚出来形", "表層厚出来形", "幅員出来形",
-  // 安全管理
-  "朝礼状況", "KY活動状況", "新規入場者教育状況", "保安施設設置状況", "点灯確認状況", "安全巡視状況",
-  // その他
+  // 安全管理（重要：朝礼・KYミーティング等）
+  "朝礼実施状況", "朝礼・KYミーティング実施状況", "朝礼状況",
+  "KY活動状況", "危険予知活動状況", "KYミーティング実施状況",
+  "新規入場者教育状況", "新規入場者教育実施状況",
+  "保安施設設置状況", "点灯確認状況", "安全巡視状況",
+  "安全訓練実施状況", "避難訓練実施状況",
+  // 災害・事故
+  "災害発生状況", "事故発生状況", "被害状況",
+  // その他（公害、環境、補償等）
+  "環境対策状況", "騒音対策状況", "粉塵対策状況",
   "その他"
 ];

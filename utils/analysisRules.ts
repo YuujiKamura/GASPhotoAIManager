@@ -33,7 +33,7 @@ export const RULE_CATEGORIES: RuleCategoryInfo[] = [
     id: 'photoCategory',
     label: '写真区分ルール',
     icon: '📷',
-    description: '写真を5つの区分に分類するルール'
+    description: '土木工事の写真管理基準に基づく9区分で分類'
   },
   {
     id: 'hierarchy',
@@ -57,12 +57,20 @@ export const RULE_CATEGORIES: RuleCategoryInfo[] = [
 
 // 全ルール定義
 export const ANALYSIS_RULES: AnalysisRule[] = [
-  // === 写真区分ルール ===
+  // === 写真区分ルール（土木工事の写真管理基準準拠・9区分） ===
   {
-    id: 'pc_five_categories',
+    id: 'pc_nine_categories',
     category: 'photoCategory',
-    label: '5区分分類',
-    description: '着手前・施工状況・品質管理・出来形管理・完了の5区分で分類',
+    label: '9区分分類（写真管理基準準拠）',
+    description: '着手前及び完成・施工状況・安全管理・使用材料・品質管理・出来形管理・災害・事故・その他',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'pc_safety_management',
+    category: 'photoCategory',
+    label: '安全管理写真判定',
+    description: '朝礼・KYミーティング・新規入場者教育・安全巡視・保安施設設置等を安全管理写真に分類',
     isFixed: true,
     defaultEnabled: true
   },
@@ -95,6 +103,14 @@ export const ANALYSIS_RULES: AnalysisRule[] = [
     category: 'photoCategory',
     label: '施工状況デフォルト',
     description: '他の区分に該当しない作業中写真は施工状況',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'pc_disaster_accident',
+    category: 'photoCategory',
+    label: '災害・事故写真判定',
+    description: '災害発生時・事故発生時の写真を適切に分類',
     isFixed: true,
     defaultEnabled: true
   },
