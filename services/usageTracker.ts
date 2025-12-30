@@ -3,6 +3,11 @@
  * すべてのGemini APIコールを追跡し、コストを可視化する
  */
 
+import type { UsageRecord, UsageSummary, CostEstimate } from '../types/usage';
+
+// 型を再エクスポート（後方互換性）
+export type { UsageRecord, UsageSummary, CostEstimate } from '../types/usage';
+
 // Gemini料金表 (2024年12月時点、USD)
 const PRICING = {
   // Gemini 1.5 Flash
@@ -36,27 +41,6 @@ const TOKENS_PER_IMAGE = 258;
 // 1文字あたりの推定トークン数（日本語）
 const TOKENS_PER_CHAR_JP = 0.5;
 const TOKENS_PER_CHAR_EN = 0.25;
-
-export interface UsageRecord {
-  timestamp: Date;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  imageCount: number;
-  estimatedCost: number;
-  operation: string;
-}
-
-export interface UsageSummary {
-  totalCalls: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  totalImages: number;
-  totalImageSizeBytes: number;
-  estimatedCostUSD: number;
-  estimatedCostJPY: number;
-  records: UsageRecord[];
-}
 
 // セッション中の使用量を保持
 let usageSummary: UsageSummary = {
@@ -109,16 +93,6 @@ export const estimateImageTokens = (imageCount: number): number => {
 };
 
 /**
- * Base64画像のサイズを取得
- */
-const getBase64Size = (base64: string): number => {
-  // data:image/jpeg;base64, の部分を除去
-  const data = base64.includes(',') ? base64.split(',')[1] : base64;
-  // Base64は3バイトを4文字で表現
-  return Math.ceil(data.length * 0.75);
-};
-
-/**
  * コストを計算
  */
 const calculateCost = (model: string, inputTokens: number, outputTokens: number): number => {
@@ -163,14 +137,6 @@ export const trackUsage = (
   notifyListeners();
 
   return record;
-};
-
-/**
- * 画像サイズを追加（別途トラッキング）
- */
-const trackImageSize = (sizeBytes: number) => {
-  usageSummary.totalImageSizeBytes += sizeBytes;
-  notifyListeners();
 };
 
 /**
@@ -220,24 +186,11 @@ export const formatCostJPY = (costUSD: number): string => {
 };
 
 /**
- * 解析前のコスト見積もり
- */
-export interface CostEstimate {
-  imageCount: number;
-  estimatedInputTokens: number;
-  estimatedOutputTokens: number;
-  estimatedCostUSD: number;
-  estimatedCostJPY: number;
-  breakdown: { operation: string; model: string; cost: number }[];
-  notes: string[];
-}
-
-/**
  * 解析前にコストを見積もる
  * @param imageCount 画像枚数
  * @param mode 処理モード (auto, landscape, construction)
  */
-const estimateAnalysisCost = (
+export const estimateAnalysisCost = (
   imageCount: number,
   mode: 'auto' | 'landscape' | 'construction' = 'auto'
 ): CostEstimate => {
