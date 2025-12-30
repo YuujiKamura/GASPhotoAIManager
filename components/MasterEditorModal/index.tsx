@@ -113,29 +113,37 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang, onApplyAliasesToSes
   if (state.viewMode === 'alias') {
     return (
       <AliasSettingsView
-        aliasSettings={alias.aliasSettings}
-        workTypeAliasEntries={alias.workTypeAliasEntries}
-        varietyAliasEntries={alias.varietyAliasEntries}
-        newWorkTypeFrom={alias.newWorkTypeFrom}
-        newWorkTypeTo={alias.newWorkTypeTo}
-        newVarietyFrom={alias.newVarietyFrom}
-        newVarietyTo={alias.newVarietyTo}
-        hasAnyAliases={alias.hasAnyAliases}
-        applyResult={alias.applyResult}
-        onBack={() => state.setViewMode('list')}
-        onToggleEnabled={alias.handleToggleAliasEnabled}
-        onApplyPreset={alias.handleApplyPreset}
-        onReset={alias.handleResetAliases}
-        onRemoveWorkTypeAlias={alias.handleRemoveWorkTypeAlias}
-        onRemoveVarietyAlias={alias.handleRemoveVarietyAlias}
-        onAddWorkTypeAlias={alias.handleAddWorkTypeAlias}
-        onAddVarietyAlias={alias.handleAddVarietyAlias}
-        setNewWorkTypeFrom={alias.setNewWorkTypeFrom}
-        setNewWorkTypeTo={alias.setNewWorkTypeTo}
-        setNewVarietyFrom={alias.setNewVarietyFrom}
-        setNewVarietyTo={alias.setNewVarietyTo}
-        onApplyToSession={alias.handleApplyToSession}
-        canApplyToSession={!!onApplyAliasesToSession}
+        data={{
+          aliasSettings: alias.aliasSettings,
+          workTypeAliasEntries: alias.workTypeAliasEntries,
+          varietyAliasEntries: alias.varietyAliasEntries,
+          hasAnyAliases: alias.hasAnyAliases,
+          applyResult: alias.applyResult,
+          canApplyToSession: !!onApplyAliasesToSession
+        }}
+        inputState={{
+          newWorkTypeFrom: alias.newWorkTypeFrom,
+          newWorkTypeTo: alias.newWorkTypeTo,
+          newVarietyFrom: alias.newVarietyFrom,
+          newVarietyTo: alias.newVarietyTo
+        }}
+        inputSetters={{
+          setNewWorkTypeFrom: alias.setNewWorkTypeFrom,
+          setNewWorkTypeTo: alias.setNewWorkTypeTo,
+          setNewVarietyFrom: alias.setNewVarietyFrom,
+          setNewVarietyTo: alias.setNewVarietyTo
+        }}
+        handlers={{
+          onBack: () => state.setViewMode('list'),
+          onToggleEnabled: alias.handleToggleAliasEnabled,
+          onApplyPreset: alias.handleApplyPreset,
+          onReset: alias.handleResetAliases,
+          onRemoveWorkTypeAlias: alias.handleRemoveWorkTypeAlias,
+          onRemoveVarietyAlias: alias.handleRemoveVarietyAlias,
+          onAddWorkTypeAlias: alias.handleAddWorkTypeAlias,
+          onAddVarietyAlias: alias.handleAddVarietyAlias,
+          onApplyToSession: alias.handleApplyToSession
+        }}
         txt={{
           aliasTitle: txt.aliasTitle,
           aliasDescription: txt.aliasDescription,
@@ -148,7 +156,7 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang, onApplyAliasesToSes
           from: txt.from,
           to: txt.to,
           add: txt.add,
-          noAliases: txt.noAliases,
+          noAliases: txt.noAliases
         }}
       />
     );
