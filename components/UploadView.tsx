@@ -97,6 +97,15 @@ const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const menuItems = [
+    // 設定系
+    ...(onOpenMasterEditor ? [{ label: 'マスタ管理', icon: <FolderTree className="w-4 h-4" />, onClick: onOpenMasterEditor }] : []),
+    ...(onShowHistory ? [{ label: '解析履歴', icon: <History className="w-4 h-4" />, onClick: onShowHistory }] : []),
+    { divider: true },
+    // ダッシュボード
+    ...(onOpenHealthDashboard ? [{ label: 'Health Dashboard', icon: <Activity className="w-4 h-4" />, onClick: onOpenHealthDashboard }] : []),
+    ...(onOpenAIFramework ? [{ label: 'AI Framework', icon: <Brain className="w-4 h-4" />, onClick: onOpenAIFramework }] : []),
+    { divider: true },
+    // データ管理
     { label: 'Backup (JSON)', icon: '💾', onClick: onExportJson },
     { label: 'Restore (JSON)', icon: '📂', onClick: () => fileInputImportRef.current?.click() },
     ...(onPdfButtonClick ? [{ label: 'Load PDF', icon: <FileText className="w-4 h-4" />, onClick: onPdfButtonClick }] : []),
@@ -121,10 +130,6 @@ const UploadView: React.FC<UploadViewProps> = ({
               <span className="text-xs">📋</span>{txt.resumeLabel}
             </button>
           )}
-          {onOpenMasterEditor && <HeaderButton onClick={onOpenMasterEditor} icon={<FolderTree className="w-4 h-4" />} label="マスタ" title="マスタ設定" />}
-          {onOpenHealthDashboard && <HeaderButton onClick={onOpenHealthDashboard} icon={<Activity className="w-4 h-4" />} label="Health" title="コードベース健全性ダッシュボード" className="bg-blue-100 hover:bg-blue-200 text-blue-600" />}
-          {onOpenAIFramework && <HeaderButton onClick={onOpenAIFramework} icon={<Brain className="w-4 h-4" />} label="AI" title="AIフレームワーク ダッシュボード" className="bg-purple-100 hover:bg-purple-200 text-purple-600" />}
-          {onShowHistory && <HeaderButton onClick={onShowHistory} icon={<History className="w-4 h-4" />} label="履歴" title="解析履歴" className="bg-indigo-100 hover:bg-indigo-200 text-indigo-600" />}
           <HeaderButton
             onClick={onOpenSettings}
             icon={<Settings className="w-4 h-4" />}
