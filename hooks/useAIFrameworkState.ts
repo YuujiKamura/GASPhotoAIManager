@@ -22,6 +22,34 @@ const STORAGE_KEYS = {
   temperature: 'ai_temperature',
 };
 
+const DEFAULT_FLOW_SETTINGS = { detect: true, worktype: true, normalize: true, scene: true };
+
+const loadFlowSettingsSafely = (): Record<string, boolean> => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.flowSettings);
+    if (!saved) return { ...DEFAULT_FLOW_SETTINGS };
+
+    const parsed = JSON.parse(saved);
+    if (parsed && typeof parsed === 'object') {
+      return { ...DEFAULT_FLOW_SETTINGS, ...parsed };
+    }
+  } catch (e) {
+    console.warn('Failed to load flow settings, resetting to defaults:', e);
+  }
+
+  localStorage.removeItem(STORAGE_KEYS.flowSettings);
+  return { ...DEFAULT_FLOW_SETTINGS };
+};
+
+const loadTemperatureSafely = (): number => {
+  const raw = localStorage.getItem(STORAGE_KEYS.temperature);
+  const parsed = raw !== null ? parseFloat(raw) : 0.1;
+  if (Number.isFinite(parsed)) return parsed;
+
+  localStorage.removeItem(STORAGE_KEYS.temperature);
+  return 0.1;
+};
+
 export function useAIFrameworkState(appMode: AppMode) {
   // UI State
   const [activeTab, setActiveTab] = useState<TabType>('prompt');
@@ -34,13 +62,10 @@ export function useAIFrameworkState(appMode: AppMode) {
   const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
   const [customInstruction, setCustomInstruction] = useState(() => localStorage.getItem(STORAGE_KEYS.customInstruction) || '');
   const [selectedModel, setSelectedModelState] = useState<ModelType>(getSelectedModel());
-  const [temperature, setTemperature] = useState(() => parseFloat(localStorage.getItem(STORAGE_KEYS.temperature) || '0.1'));
+  const [temperature, setTemperature] = useState(loadTemperatureSafely);
   const [systemOverride, setSystemOverride] = useState(() => localStorage.getItem(STORAGE_KEYS.systemOverride) || '');
   const [hierarchyOverride, setHierarchyOverride] = useState(() => localStorage.getItem(STORAGE_KEYS.hierarchyOverride) || '');
-  const [flowSettings, setFlowSettings] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.flowSettings);
-    return saved ? JSON.parse(saved) : { detect: true, worktype: true, normalize: true, scene: true };
-  });
+  const [flowSettings, setFlowSettings] = useState<Record<string, boolean>>(loadFlowSettingsSafely);
 
   // Async Loaded Data
   const [learnedSettings, setLearnedSettings] = useState<LearnedSettings | null>(null);
