@@ -4,6 +4,7 @@ import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 import { analyzePhotoBatch, identifyTargetPhotos, getNormalizationProposals, assignSceneIds, getSelectedModel, NormalizationCorrection } from '../services/geminiService';
 import { processPhotosWithSmartFlow } from '../services/smartFlowService';
 import { getCachedAnalysis, cacheAnalysis, saveAnalysisHistory } from '../utils/storage';
+import { loadRuleSettings } from '../utils/analysisRules';
 import { runAIAgent } from '../services/aiAgentService';
 import { loadAliasSettings, hasAliases, applyAliasesToRecords } from '../utils/workTypeAliases';
 import { extractLocationName } from '../utils/locationUtils';
@@ -172,7 +173,7 @@ export function useAnalysisHandlers(p: Props) {
           setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
         } else {
           const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
-            try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
+            try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings()); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
             catch { return b.map(r => ({ ...r, status: 'error' as const })); }
           }, (n, t) => setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`), () => abortRef.current);
           setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
@@ -204,7 +205,7 @@ export function useAnalysisHandlers(p: Props) {
       const tgt = photos.filter(x => fns.includes(x.fileName)), loc = extractLocationName(inst), hasLoc = inst && inst !== "__REANALYZE__" && /測点|付近|地点/.test(inst);
       const up = await runBatches(tgt, bs, PARALLEL, async b => {
         if (!apiKey) return b;
-        try { const rs = await analyzePhotoBatch(b, inst === "__REANALYZE__" ? "" : inst, bs, appMode, apiKey, addLog, logResult, () => abortRef.current);
+        try { const rs = await analyzePhotoBatch(b, inst === "__REANALYZE__" ? "" : inst, bs, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings());
           return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { let f = x; if (r.analysis?.editedFields) { f = { ...x, editedFields: r.analysis.editedFields }; r.analysis.editedFields.forEach(k => (f as any)[k] = (r.analysis as any)[k]); } if (r.analysis?.sceneId) { f.sceneId = r.analysis.sceneId; f.phase = r.analysis.phase; f.visualAnchors = r.analysis.visualAnchors; } cacheAnalysis(r, f).catch(() => {}); return { ...r, analysis: f, status: 'done' as const }; } return r; }); }
         catch { return b; }
       }, (n, t) => setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`), () => abortRef.current);

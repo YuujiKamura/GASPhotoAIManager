@@ -486,11 +486,30 @@ interface PromptTabContentProps {
   getLayerContent: (layer: PromptLayerType) => React.ReactNode;
 }
 
-const PromptTabContent: React.FC<PromptTabContentProps> = ({ state, getLayerContent }) => (
+const PromptTabContent: React.FC<PromptTabContentProps> = ({ state, getLayerContent }) => {
+  const enabledRulesCount = Object.entries(state.ruleSettings).filter(([, v]) => v).length;
+  return (
   <div className="space-y-3">
-    <div className="bg-green-50 border border-green-200 rounded p-3 text-sm">
-      <div className="flex items-center gap-2 font-medium text-green-800"><Edit3 size={16} />全レイヤー編集可能</div>
-      <div className="text-green-600 mt-1">各レイヤーを展開して編集できます。変更は即座に保存されます。</div>
+    <div className="bg-blue-50 border border-blue-200 rounded p-3">
+      <div className="text-sm font-medium text-blue-800 mb-2">現在のAI設定</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <div className="bg-white rounded p-2 border">
+          <div className="text-gray-500">有効ルール</div>
+          <div className="text-lg font-bold text-blue-600">{enabledRulesCount}/{ANALYSIS_RULES.length}</div>
+        </div>
+        <div className="bg-white rounded p-2 border">
+          <div className="text-gray-500">お手本</div>
+          <div className="text-lg font-bold text-purple-600">{state.examples.length}件</div>
+        </div>
+        <div className="bg-white rounded p-2 border">
+          <div className="text-gray-500">学習ルール</div>
+          <div className="text-lg font-bold text-green-600">{state.learnedSettings?.rules.length || 0}件</div>
+        </div>
+        <div className="bg-white rounded p-2 border">
+          <div className="text-gray-500">モデル</div>
+          <div className="text-sm font-bold text-gray-700">{state.selectedModel.replace('gemini-', '')}</div>
+        </div>
+      </div>
     </div>
     {PROMPT_LAYERS.map((layer, index) => (
       <PromptLayerItem
@@ -511,7 +530,8 @@ const PromptTabContent: React.FC<PromptTabContentProps> = ({ state, getLayerCont
       </div>
     )}
   </div>
-);
+  );
+};
 
 interface PromptLayerItemProps {
   layer: PromptLayer;

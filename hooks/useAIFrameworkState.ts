@@ -25,7 +25,7 @@ const STORAGE_KEYS = {
 export function useAIFrameworkState(appMode: AppMode) {
   // UI State
   const [activeTab, setActiveTab] = useState<TabType>('prompt');
-  const [expandedLayers, setExpandedLayers] = useState<Set<PromptLayerType>>(new Set(['rules']));
+  const [expandedLayers, setExpandedLayers] = useState<Set<PromptLayerType>>(new Set(['system', 'hierarchy', 'rules', 'examples', 'learned', 'custom']));
   const [showFullPreview, setShowFullPreview] = useState(false);
   const [editingHierarchy, setEditingHierarchy] = useState(false);
   const [hierarchyError, setHierarchyError] = useState('');
