@@ -186,46 +186,112 @@ async function analyzeCodebase(): Promise<CodebaseStats> {
   };
 }
 
+function generateClaudeInstructions(stats: CodebaseStats): string {
+  const lines: string[] = [];
+
+  lines.push('以下のタスクを順番に実行してください。各タスク完了後にビルド確認（npm run build）を行い、エラーがなければ次に進んでください。\n');
+
+  // 1. 緊急: ビルドエラー・型エラー
+  const criticalHealth = stats.health.filter(h => h.status === 'error');
+  if (criticalHealth.length > 0) {
+    lines.push('## 緊急（ビルド不可）');
+    criticalHealth.forEach(h => {
+      lines.push(`- **${h.name}**: ${h.details.join(', ')}`);
+    });
+    lines.push('');
+  }
+
+  // 2. 高優先度タスク
+  const highTasks = stats.tasks.filter(t => t.priority === 'high' && t.status !== 'done');
+  const highSuggestions = stats.suggestions.filter(s => s.priority === 'high');
+  if (highTasks.length > 0 || highSuggestions.length > 0) {
+    lines.push('## 高優先度');
+    highTasks.forEach(t => {
+      lines.push(`- **${t.title}**: ${t.description}`);
+    });
+    highSuggestions.forEach(s => {
+      lines.push(`- **[${s.category}] ${s.title}**: ${s.description}`);
+      if (s.affectedFiles) lines.push(`  - 対象: ${s.affectedFiles.slice(0, 3).join(', ')}`);
+    });
+    lines.push('');
+  }
+
+  // 3. 中優先度タスク
+  const mediumTasks = stats.tasks.filter(t => t.priority === 'medium' && t.status !== 'done');
+  const mediumSuggestions = stats.suggestions.filter(s => s.priority === 'medium');
+  if (mediumTasks.length > 0 || mediumSuggestions.length > 0) {
+    lines.push('## 中優先度');
+    mediumTasks.forEach(t => {
+      lines.push(`- **${t.title}**: ${t.description}`);
+    });
+    mediumSuggestions.forEach(s => {
+      lines.push(`- **[${s.category}] ${s.title}**: ${s.description}`);
+    });
+    lines.push('');
+  }
+
+  // 4. 低優先度タスク
+  const lowTasks = stats.tasks.filter(t => t.priority === 'low' && t.status !== 'done');
+  const lowSuggestions = stats.suggestions.filter(s => s.priority === 'low');
+  if (lowTasks.length > 0 || lowSuggestions.length > 0) {
+    lines.push('## 低優先度');
+    lowTasks.slice(0, 5).forEach(t => {
+      lines.push(`- **${t.title}**: ${t.description}`);
+    });
+    lowSuggestions.forEach(s => {
+      lines.push(`- **[${s.category}] ${s.title}**: ${s.description}`);
+    });
+    lines.push('');
+  }
+
+  // 5. アーキテクチャ問題
+  if (stats.architectureIssues.length > 0) {
+    lines.push('## アーキテクチャ改善');
+    stats.architectureIssues.slice(0, 3).forEach(issue => {
+      lines.push(`- ${issue}`);
+    });
+    lines.push('');
+  }
+
+  // 6. 類似モジュール統合候補
+  if (stats.similarModules.length > 0) {
+    lines.push('## 統合検討（類似モジュール）');
+    stats.similarModules.slice(0, 3).forEach(p => {
+      lines.push(`- ${p.modules[0]} と ${p.modules[1]} (類似度${Math.round(p.similarity * 100)}%)`);
+    });
+    lines.push('');
+  }
+
+  // タスクがない場合
+  if (lines.length === 1) {
+    lines.push('現在、対応が必要なタスクはありません。');
+  }
+
+  return lines.join('\n');
+}
+
 function printSummary(stats: CodebaseStats) {
   console.log(`\n✅ Generated: ${OUTPUT}`);
   console.log(`   Total: ${stats.totalFiles} files, ${stats.totalLines.toLocaleString()} lines`);
-  console.log(`   Large files (300+): ${stats.largeFiles.length}`);
 
-  if (stats.largeFiles.length > 0) {
-    console.log('\n📊 Top large files:');
-    stats.largeFiles.slice(0, 5).forEach(f => console.log(`   ${f.lines.toString().padStart(5)} lines: ${f.path}`));
-  }
+  // ステータスサマリー
+  const okCount = stats.health.filter(h => h.status === 'ok').length;
+  const warnCount = stats.health.filter(h => h.status === 'warning').length;
+  const errCount = stats.health.filter(h => h.status === 'error').length;
+  console.log(`   Health: ✅${okCount} ⚠️${warnCount} ❌${errCount}`);
 
-  console.log('\n🏥 Health checks:');
-  for (const c of stats.health) {
-    const icon = c.status === 'ok' ? '✅' : c.status === 'warning' ? '⚠️' : '❌';
-    console.log(`   ${icon} ${c.name}: ${c.details[0]}`);
-  }
+  const todoTasks = stats.tasks.filter(t => t.status !== 'done').length;
+  console.log(`   Pending tasks: ${todoTasks}`);
 
-  if (stats.architectureIssues.length > 0) {
-    console.log('\n🏛️ Architecture issues:');
-    stats.architectureIssues.slice(0, 5).forEach(i => console.log(`   ⚠️ ${i}`));
-  }
+  // Claude用指示文を生成・表示
+  console.log('\n' + '='.repeat(60));
+  console.log('📋 CLAUDE用指示文（以下をコピーしてClaudeに貼り付け）:');
+  console.log('='.repeat(60) + '\n');
 
-  if (stats.suggestions.length > 0) {
-    console.log('\n💡 Suggestions:');
-    stats.suggestions.slice(0, 3).forEach(s => {
-      const icon = s.priority === 'high' ? '🔴' : s.priority === 'medium' ? '🟡' : '🔵';
-      console.log(`   ${icon} [${s.category}] ${s.title}`);
-    });
-  }
+  const instructions = generateClaudeInstructions(stats);
+  console.log(instructions);
 
-  console.log('\n🌳 Feature flow:');
-  console.log(`   ${stats.featureFlow.name}`);
-  for (const c of stats.featureFlow.children) console.log(`   ├─ ${c.name} (${c.children.length}機能)`);
-
-  console.log('\n📦 Backend groups:');
-  for (const g of stats.backendGroups.slice(0, 5)) console.log(`   📂 ${g.category}: ${g.modules.length}モジュール`);
-
-  if (stats.similarModules.length > 0) {
-    console.log('\n🔍 Similar modules:');
-    stats.similarModules.slice(0, 3).forEach(p => console.log(`   ${Math.round(p.similarity * 100)}%: ${p.modules[0]} ⟷ ${p.modules[1]}`));
-  }
+  console.log('='.repeat(60));
 }
 
 async function main() {
