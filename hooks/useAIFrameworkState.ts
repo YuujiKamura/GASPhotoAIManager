@@ -250,3 +250,4 @@ export function useAIFrameworkState(appMode: AppMode) {
 }
 
 export type { PromptLayerType, TabType };
+export type AIFrameworkState = ReturnType<typeof useAIFrameworkState>;
