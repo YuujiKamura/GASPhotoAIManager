@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, GitBranch, CheckCircle, AlertTriangle, RefreshCw,
-  ChevronDown, ChevronRight, Scale, AlertCircle, PackageX, MoreVertical, ExternalLink
+  ChevronDown, ChevronRight, Scale, AlertCircle, PackageX, MoreVertical, ExternalLink,
+  Network, Layers, Zap, FileCode, Copy, Check, ArrowRight
 } from 'lucide-react';
 import codebaseStats from '../src/generated/codebase-stats.json';
 
@@ -172,6 +173,209 @@ const DEPS = [
   { name: 'react + react-dom', size: '~140KB' }, { name: 'pdfjs-dist', size: '~1.1MB', issue: true },
   { name: 'pdf-lib', size: '~280KB' }, { name: 'lucide-react', size: '~25KB' }, { name: '@google/genai', size: '~50KB' },
 ];
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  architecture: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  performance: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  maintainability: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  ui: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+};
+
+const EFFORT_LABELS: Record<string, { label: string; color: string }> = {
+  small: { label: '小', color: 'bg-green-100 text-green-700' },
+  medium: { label: '中', color: 'bg-yellow-100 text-yellow-700' },
+  large: { label: '大', color: 'bg-red-100 text-red-700' },
+};
+
+// コピーボタンコンポーネント
+const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label = '📋 指示をコピー' }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`text-xs px-3 py-1.5 rounded flex items-center gap-1 transition-colors ${
+        copied ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'
+      }`}
+    >
+      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+      {copied ? 'コピー済み' : label}
+    </button>
+  );
+};
+
+// 改善提案カード
+const SuggestionCard: React.FC<{ suggestion: any; lang: 'en' | 'ja' }> = ({ suggestion, lang }) => {
+  const [expanded, setExpanded] = useState(false);
+  const categoryStyle = CATEGORY_COLORS[suggestion.category] || CATEGORY_COLORS.maintainability;
+  const effortStyle = EFFORT_LABELS[suggestion.effort] || EFFORT_LABELS.medium;
+  const priorityStyle = PRIORITY_STYLES[suggestion.priority as Priority] || PRIORITY_STYLES.low;
+
+  return (
+    <div className={`rounded-xl border-2 p-4 ${categoryStyle.bg} ${categoryStyle.border}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${priorityStyle.badge}`}>
+              {suggestion.priority.toUpperCase()}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded ${categoryStyle.text} bg-white/50`}>
+              {suggestion.category}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded ${effortStyle.color}`}>
+              工数: {effortStyle.label}
+            </span>
+          </div>
+          <p className="text-gray-900 font-semibold">{suggestion.title}</p>
+          <p className="mt-1 text-sm text-gray-600">{suggestion.description}</p>
+          {suggestion.files && suggestion.files.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {suggestion.files.slice(0, 3).map((f: string, i: number) => (
+                <span key={i} className="text-xs bg-white/70 px-2 py-0.5 rounded font-mono">{f}</span>
+              ))}
+              {suggestion.files.length > 3 && (
+                <span className="text-xs text-gray-500">+{suggestion.files.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <CopyButton text={suggestion.prompt} />
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-gray-600 hover:text-gray-900"
+          >
+            {expanded ? '詳細を隠す' : '詳細を見る'}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="mt-4 p-3 bg-white/70 rounded-lg">
+          <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-auto max-h-64">
+            {suggestion.prompt}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// コンポーネント分析カード
+const ComponentAnalysisCard: React.FC<{ component: any }> = ({ component }) => {
+  const hasIssues = component.issues && component.issues.length > 0;
+
+  return (
+    <div className={`rounded-lg border p-3 ${hasIssues ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="font-mono text-sm text-gray-900">{component.path}</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+              Props: {component.propsCount}
+            </span>
+            <span className={`px-2 py-0.5 rounded ${component.stateCount > 3 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-700'}`}>
+              useState: {component.stateCount}
+            </span>
+            <span className={`px-2 py-0.5 rounded ${component.effectCount > 2 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-700'}`}>
+              useEffect: {component.effectCount}
+            </span>
+            <span className={`px-2 py-0.5 rounded ${component.jsxDepth > 6 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-700'}`}>
+              JSX深度: {component.jsxDepth}
+            </span>
+          </div>
+          {hasIssues && (
+            <div className="mt-2">
+              {component.issues.map((issue: string, i: number) => (
+                <p key={i} className="text-xs text-yellow-700">⚠️ {issue}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// モジュール依存関係の簡易ビジュアライゼーション
+const DependencyGraph: React.FC<{ modules: any[] }> = ({ modules }) => {
+  // カテゴリ別に集計
+  const categoryStats = {
+    components: { count: 0, totalImports: 0, totalImportedBy: 0 },
+    services: { count: 0, totalImports: 0, totalImportedBy: 0 },
+    hooks: { count: 0, totalImports: 0, totalImportedBy: 0 },
+    utils: { count: 0, totalImports: 0, totalImportedBy: 0 },
+    other: { count: 0, totalImports: 0, totalImportedBy: 0 },
+  };
+
+  for (const mod of modules) {
+    const cat = mod.category as keyof typeof categoryStats;
+    if (categoryStats[cat]) {
+      categoryStats[cat].count++;
+      categoryStats[cat].totalImports += mod.imports?.length || 0;
+      categoryStats[cat].totalImportedBy += mod.importedBy?.length || 0;
+    }
+  }
+
+  const categories = [
+    { key: 'components', label: 'Components', color: 'bg-blue-500' },
+    { key: 'hooks', label: 'Hooks', color: 'bg-purple-500' },
+    { key: 'services', label: 'Services', color: 'bg-green-500' },
+    { key: 'utils', label: 'Utils', color: 'bg-orange-500' },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <Network className="w-4 h-4 text-purple-500" />
+        モジュール依存関係サマリー
+      </h4>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {categories.map(cat => {
+          const stats = categoryStats[cat.key as keyof typeof categoryStats];
+          return (
+            <div key={cat.key} className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className={`w-12 h-12 ${cat.color} rounded-full mx-auto mb-2 flex items-center justify-center text-white font-bold`}>
+                {stats.count}
+              </div>
+              <p className="text-sm font-medium text-gray-900">{cat.label}</p>
+              <p className="text-xs text-gray-500">
+                → {stats.totalImports} imports
+              </p>
+              <p className="text-xs text-gray-500">
+                ← {stats.totalImportedBy} refs
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 高依存モジュール */}
+      <div className="mt-4 pt-4 border-t">
+        <h5 className="text-sm font-medium text-gray-700 mb-2">🔥 高影響モジュール（参照数Top5）</h5>
+        <div className="space-y-1">
+          {modules
+            .filter(m => m.importedBy && m.importedBy.length > 0)
+            .sort((a, b) => (b.importedBy?.length || 0) - (a.importedBy?.length || 0))
+            .slice(0, 5)
+            .map((mod, i) => (
+              <div key={i} className="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-1">
+                <span className="font-mono text-xs truncate flex-1">{mod.path}</span>
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded ml-2">
+                  {mod.importedBy?.length || 0} refs
+                </span>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang, onClose }) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks']));
@@ -371,6 +575,95 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                 </div>
               )}
             </section>
+
+            {/* 改善提案 */}
+            {(codebaseStats as any).suggestions && (codebaseStats as any).suggestions.length > 0 && (
+              <section className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border-2 border-purple-200 overflow-hidden">
+                <button onClick={() => toggle('suggestions')} className="w-full flex items-center justify-between p-5 text-left hover:bg-purple-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('suggestions') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      💡 {t('改善提案', 'Improvement Suggestions')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('アーキテクチャ・パフォーマンス・保守性の改善提案', 'Architecture, performance, and maintainability suggestions')}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {(codebaseStats as any).suggestions.length}
+                    </span>
+                  </div>
+                </button>
+                {expandedSections.has('suggestions') && (
+                  <div className="p-5 pt-0 space-y-3">
+                    {(codebaseStats as any).suggestions.map((suggestion: any, i: number) => (
+                      <SuggestionCard key={i} suggestion={suggestion} lang={lang} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* モジュール依存関係 */}
+            {(codebaseStats as any).moduleDependencies && (codebaseStats as any).moduleDependencies.length > 0 && (
+              <section>
+                <SectionToggle expanded={expandedSections.has('dependencies')} onClick={() => toggle('dependencies')}>
+                  <Network className="w-5 h-5 text-purple-500" />
+                  {t('モジュール依存関係', 'Module Dependencies')}
+                </SectionToggle>
+                {expandedSections.has('dependencies') && (
+                  <DependencyGraph modules={(codebaseStats as any).moduleDependencies} />
+                )}
+              </section>
+            )}
+
+            {/* コンポーネント分析 */}
+            {(codebaseStats as any).componentAnalysis && (codebaseStats as any).componentAnalysis.length > 0 && (
+              <section>
+                <SectionToggle expanded={expandedSections.has('componentAnalysis')} onClick={() => toggle('componentAnalysis')}>
+                  <FileCode className="w-5 h-5 text-blue-500" />
+                  {t('コンポーネント分析', 'Component Analysis')}
+                  {(codebaseStats as any).componentAnalysis.filter((c: any) => c.issues?.length > 0).length > 0 && (
+                    <span className="ml-2 bg-yellow-500 text-white text-xs px-2 py-0.5 rounded-full">
+                      {(codebaseStats as any).componentAnalysis.filter((c: any) => c.issues?.length > 0).length}
+                    </span>
+                  )}
+                </SectionToggle>
+                {expandedSections.has('componentAnalysis') && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-5">
+                    <div className="space-y-3">
+                      {(codebaseStats as any).componentAnalysis.slice(0, 10).map((comp: any, i: number) => (
+                        <ComponentAnalysisCard key={i} component={comp} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* アーキテクチャ問題 */}
+            {(codebaseStats as any).architectureIssues && (codebaseStats as any).architectureIssues.length > 0 && (
+              <section>
+                <SectionToggle expanded={expandedSections.has('archIssues')} onClick={() => toggle('archIssues')}>
+                  <Layers className="w-5 h-5 text-red-500" />
+                  {t('アーキテクチャ問題', 'Architecture Issues')}
+                  <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {(codebaseStats as any).architectureIssues.length}
+                  </span>
+                </SectionToggle>
+                {expandedSections.has('archIssues') && (
+                  <div className="bg-white rounded-xl border border-red-200 p-5">
+                    <div className="space-y-2">
+                      {(codebaseStats as any).architectureIssues.map((issue: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2 p-3 bg-red-50 rounded-lg">
+                          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-red-700">{issue}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
       </div>
