@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, GitBranch, CheckCircle, AlertTriangle, RefreshCw,
   ChevronDown, ChevronRight, Scale, AlertCircle, PackageX, MoreVertical, ExternalLink,
-  Network, Layers, Zap, FileCode, Copy, Check, ArrowRight
+  Network, Layers, Zap, FileCode, Copy, Check, ArrowRight, TreePine, Folder, GitCompare
 } from 'lucide-react';
 import codebaseStats from '../src/generated/codebase-stats.json';
 
@@ -377,6 +377,174 @@ const DependencyGraph: React.FC<{ modules: any[] }> = ({ modules }) => {
   );
 };
 
+// 機能フローツリー表示
+const FeatureFlowTree: React.FC<{ node: any; level: number }> = ({ node, level }) => {
+  const [expanded, setExpanded] = useState(level < 2);
+  const hasChildren = node.children && node.children.length > 0;
+
+  const typeIcons: Record<string, { icon: string; color: string }> = {
+    screen: { icon: '🖥️', color: 'text-blue-600' },
+    modal: { icon: '📦', color: 'text-purple-600' },
+    panel: { icon: '📋', color: 'text-green-600' },
+    action: { icon: '⚡', color: 'text-orange-600' },
+  };
+
+  const { icon, color } = typeIcons[node.type] || typeIcons.screen;
+
+  return (
+    <div className={`${level > 0 ? 'ml-6 border-l-2 border-gray-200 pl-4' : ''}`}>
+      <div className="flex items-start gap-2 py-1">
+        {hasChildren && (
+          <button onClick={() => setExpanded(!expanded)} className="text-gray-400 hover:text-gray-600 mt-0.5">
+            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+        )}
+        {!hasChildren && <span className="w-4" />}
+        <span className="text-lg">{icon}</span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`font-semibold ${color}`}>{node.name}</span>
+            <span className="text-xs text-gray-400 font-mono">{node.component}</span>
+          </div>
+          <p className="text-xs text-gray-500">{node.description}</p>
+          {node.backendModules && node.backendModules.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {node.backendModules.slice(0, 3).map((mod: string, i: number) => (
+                <span key={i} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                  {mod.split('/').pop()}
+                </span>
+              ))}
+              {node.backendModules.length > 3 && (
+                <span className="text-xs text-gray-400">+{node.backendModules.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {expanded && hasChildren && (
+        <div className="mt-1">
+          {node.children.map((child: any, i: number) => (
+            <FeatureFlowTree key={i} node={child} level={level + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 裏方モジュールグループカード
+const BackendModuleGroupCard: React.FC<{ group: any }> = ({ group }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const categoryIcons: Record<string, string> = {
+    'AI/解析': '🤖',
+    'ストレージ': '💾',
+    'ソート/整列': '📊',
+    'エクスポート': '📤',
+    '正規化': '🔄',
+    'ユーティリティ': '🔧',
+    'API/通信': '🌐',
+    '状態管理': '📦',
+    'その他': '📁',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-amber-50"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{categoryIcons[group.category] || '📁'}</span>
+          <div>
+            <h3 className="font-semibold text-gray-900">{group.category}</h3>
+            <p className="text-xs text-gray-500">{group.description}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
+            {group.modules.length} モジュール
+          </span>
+          {expanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-amber-100 p-4 space-y-2">
+          {group.modules.map((mod: any, i: number) => (
+            <div key={i} className="bg-amber-50 rounded-lg p-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-mono text-sm text-gray-900">{mod.path}</p>
+                  {mod.exports.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {mod.exports.map((exp: string, j: number) => (
+                        <span key={j} className="text-xs bg-white text-gray-600 px-1.5 py-0.5 rounded border">
+                          {exp}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {mod.usedBy.length > 0 && (
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">使用元:</p>
+                    <p className="text-xs text-gray-700">{mod.usedBy.slice(0, 2).join(', ')}</p>
+                    {mod.usedBy.length > 2 && <p className="text-xs text-gray-400">+{mod.usedBy.length - 2}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 類似モジュールカード
+const SimilarModuleCard: React.FC<{ pair: any }> = ({ pair }) => {
+  const [showPrompt, setShowPrompt] = useState(false);
+  const similarityColor = pair.similarity >= 0.5 ? 'bg-red-100 text-red-700' :
+                          pair.similarity >= 0.4 ? 'bg-orange-100 text-orange-700' :
+                          'bg-yellow-100 text-yellow-700';
+
+  return (
+    <div className="bg-white rounded-xl border border-rose-200 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`text-xs font-bold px-2 py-0.5 rounded ${similarityColor}`}>
+              {Math.round(pair.similarity * 100)}% 類似
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{pair.modules[0]}</span>
+            <ArrowRight className="w-4 h-4 text-gray-400" />
+            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{pair.modules[1]}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">{pair.reason}</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <CopyButton text={pair.comparisonPrompt} label="比較指示をコピー" />
+          <button
+            onClick={() => setShowPrompt(!showPrompt)}
+            className="text-xs text-gray-600 hover:text-gray-900"
+          >
+            {showPrompt ? '詳細を隠す' : '詳細を見る'}
+          </button>
+        </div>
+      </div>
+      {showPrompt && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+          <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-auto max-h-64">
+            {pair.comparisonPrompt}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang, onClose }) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks']));
   const [isLoading, setIsLoading] = useState(true);
@@ -660,6 +828,85 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* 機能フローツリー */}
+            {(codebaseStats as any).featureFlow && (
+              <section className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border-2 border-emerald-200 overflow-hidden">
+                <button onClick={() => toggle('featureFlow')} className="w-full flex items-center justify-between p-5 text-left hover:bg-emerald-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('featureFlow') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      <TreePine className="w-5 h-5 text-emerald-600" />
+                      {t('機能フローツリー', 'Feature Flow Tree')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('画面とモーダルの階層構造', 'Screen and modal hierarchy')}</p>
+                  </div>
+                </button>
+                {expandedSections.has('featureFlow') && (
+                  <div className="p-5 pt-0">
+                    <div className="bg-white rounded-xl border border-emerald-200 p-4">
+                      <FeatureFlowTree node={(codebaseStats as any).featureFlow} level={0} />
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* 裏方モジュールグループ */}
+            {(codebaseStats as any).backendGroups && (codebaseStats as any).backendGroups.length > 0 && (
+              <section className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border-2 border-amber-200 overflow-hidden">
+                <button onClick={() => toggle('backendGroups')} className="w-full flex items-center justify-between p-5 text-left hover:bg-amber-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('backendGroups') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      <Folder className="w-5 h-5 text-amber-600" />
+                      {t('裏方モジュール', 'Backend Modules')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('機能別にグループ化されたサービス・ユーティリティ', 'Services and utilities grouped by function')}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {(codebaseStats as any).backendGroups.length} {t('カテゴリ', 'categories')}
+                    </span>
+                  </div>
+                </button>
+                {expandedSections.has('backendGroups') && (
+                  <div className="p-5 pt-0 space-y-3">
+                    {(codebaseStats as any).backendGroups.map((group: any, i: number) => (
+                      <BackendModuleGroupCard key={i} group={group} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* 類似モジュール検出 */}
+            {(codebaseStats as any).similarModules && (codebaseStats as any).similarModules.length > 0 && (
+              <section className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl border-2 border-rose-200 overflow-hidden">
+                <button onClick={() => toggle('similarModules')} className="w-full flex items-center justify-between p-5 text-left hover:bg-rose-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('similarModules') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      <GitCompare className="w-5 h-5 text-rose-600" />
+                      {t('類似モジュール', 'Similar Modules')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('統合や役割分担の検討が必要な可能性があるモジュール', 'Modules that may need consolidation or role clarification')}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-rose-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {(codebaseStats as any).similarModules.length} {t('ペア', 'pairs')}
+                    </span>
+                  </div>
+                </button>
+                {expandedSections.has('similarModules') && (
+                  <div className="p-5 pt-0 space-y-3">
+                    {(codebaseStats as any).similarModules.map((pair: any, i: number) => (
+                      <SimilarModuleCard key={i} pair={pair} />
+                    ))}
                   </div>
                 )}
               </section>
