@@ -265,7 +265,7 @@ const HistoryDropdown: React.FC<{
     </div>
     {history.map((s, i) => (
       <button
-        key={i}
+        key={`${s}-${i}`}
         type="button"
         onClick={() => onSelect(s)}
         className="w-full text-left px-3 py-2 hover:bg-blue-50 font-mono text-sm border-b last:border-b-0"
