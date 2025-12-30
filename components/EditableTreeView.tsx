@@ -2,6 +2,23 @@ import React, { useState } from 'react';
 import { Check, Trash2, Edit2, X, Plus } from 'lucide-react';
 import { CustomizationData } from '../utils/masterEditorStorage';
 
+// Grouped tree actions for cleaner interface
+export interface TreeActions {
+  onDelete: (path: string) => void;
+  onRename: (path: string, newName: string) => void;
+  onAdd: (parentPath: string, name: string) => void;
+}
+
+// Internal props with grouped actions
+interface InternalTreeViewProps {
+  data: any;
+  path: string;
+  customization: CustomizationData;
+  actions: TreeActions;
+  depth?: number;
+}
+
+// Legacy props for backwards compatibility
 export interface EditableTreeViewProps {
   data: any;
   path: string;
@@ -111,17 +128,16 @@ const AddEntryForm: React.FC<AddEntryFormProps> = ({ value, onChange, onAdd, onC
   </div>
 );
 
-// --- Main Component ---
+// --- Internal Component with grouped actions ---
 
-export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
+const EditableTreeViewInner: React.FC<InternalTreeViewProps> = ({
   data,
   path,
   customization,
-  onDelete,
-  onRename,
-  onAdd,
+  actions,
   depth = 0
 }) => {
+  const { onDelete, onRename, onAdd } = actions;
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [addingTo, setAddingTo] = useState<string | null>(null);
@@ -212,13 +228,11 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
             )}
             {hasChildren && !isAdded && (
               <div className="ml-5 border-l border-gray-200 pl-1">
-                <EditableTreeView
+                <EditableTreeViewInner
                   data={childData}
                   path={fullPath}
                   customization={customization}
-                  onDelete={onDelete}
-                  onRename={onRename}
-                  onAdd={onAdd}
+                  actions={actions}
                   depth={depth + 1}
                 />
               </div>
@@ -229,3 +243,17 @@ export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
     </div>
   );
 };
+
+// --- Public Component (wrapper for backwards compatibility) ---
+
+export const EditableTreeView: React.FC<EditableTreeViewProps> = ({
+  data, path, customization, onDelete, onRename, onAdd, depth = 0
+}) => (
+  <EditableTreeViewInner
+    data={data}
+    path={path}
+    customization={customization}
+    actions={{ onDelete, onRename, onAdd }}
+    depth={depth}
+  />
+);
