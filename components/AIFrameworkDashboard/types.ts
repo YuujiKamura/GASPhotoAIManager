@@ -1,3 +1,7 @@
+/**
+ * AIFrameworkDashboard 共通型定義
+ */
+
 import React from 'react';
 import { PromptLayerType } from '../../hooks/useAIFrameworkState';
 
