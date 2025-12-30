@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft, GitBranch, CheckCircle, AlertTriangle, RefreshCw,
   ChevronDown, ChevronRight, Scale, AlertCircle, PackageX, MoreVertical, ExternalLink,
@@ -36,7 +36,7 @@ const StatusIcon: React.FC<{ status: Status }> = ({ status }) => {
 
 const SectionToggle: React.FC<{ expanded: boolean; onClick: () => void; children: React.ReactNode }> =
   ({ expanded, onClick, children }) => (
-    <button onClick={onClick} className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-4 hover:text-blue-600 transition-colors">
+    <button type="button" onClick={onClick} className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-4 hover:text-blue-600 transition-colors">
       {expanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
       {children}
     </button>
@@ -243,6 +243,7 @@ const SuggestionCard: React.FC<{ suggestion: any; lang: 'en' | 'ja' }> = ({ sugg
         <div className="flex flex-col gap-2">
           <CopyButton text={suggestion.prompt} />
           <button
+            type="button"
             onClick={toggle}
             className="text-xs text-gray-600 hover:text-gray-900"
           >
@@ -390,7 +391,7 @@ const FeatureFlowTree: React.FC<{ node: any; level: number }> = ({ node, level }
     <div className={`${level > 0 ? 'ml-6 border-l-2 border-gray-200 pl-4' : ''}`}>
       <div className="flex items-start gap-2 py-1">
         {hasChildren && (
-          <button onClick={() => setExpanded(!expanded)} className="text-gray-400 hover:text-gray-600 mt-0.5">
+          <button type="button" onClick={() => setExpanded(!expanded)} className="text-gray-400 hover:text-gray-600 mt-0.5">
             {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         )}
@@ -446,6 +447,7 @@ const BackendModuleGroupCard: React.FC<{ group: any }> = ({ group }) => {
   return (
     <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between p-4 text-left hover:bg-amber-50"
       >
@@ -522,6 +524,7 @@ const SimilarModuleCard: React.FC<{ pair: any }> = ({ pair }) => {
         <div className="flex flex-col gap-2">
           <CopyButton text={pair.comparisonPrompt} label="比較指示をコピー" />
           <button
+            type="button"
             onClick={() => setShowPrompt(!showPrompt)}
             className="text-xs text-gray-600 hover:text-gray-900"
           >
@@ -623,7 +626,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
           <div className="space-y-6">
             {/* Task List */}
             <section className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border-2 border-slate-200 overflow-hidden">
-              <button onClick={() => toggle('tasks')} className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-100/50">
+              <button type="button" onClick={() => toggle('tasks')} className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-100/50">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                     {expandedSections.has('tasks') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
@@ -728,7 +731,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             {/* 改善提案 */}
             {(codebaseStats as any).suggestions && (codebaseStats as any).suggestions.length > 0 && (
               <section className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border-2 border-purple-200 overflow-hidden">
-                <button onClick={() => toggle('suggestions')} className="w-full flex items-center justify-between p-5 text-left hover:bg-purple-100/50">
+                <button type="button" onClick={() => toggle('suggestions')} className="w-full flex items-center justify-between p-5 text-left hover:bg-purple-100/50">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                       {expandedSections.has('suggestions') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
@@ -817,7 +820,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             {/* 機能フローツリー */}
             {(codebaseStats as any).featureFlow && (
               <section className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border-2 border-emerald-200 overflow-hidden">
-                <button onClick={() => toggle('featureFlow')} className="w-full flex items-center justify-between p-5 text-left hover:bg-emerald-100/50">
+                <button type="button" onClick={() => toggle('featureFlow')} className="w-full flex items-center justify-between p-5 text-left hover:bg-emerald-100/50">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                       {expandedSections.has('featureFlow') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
@@ -840,7 +843,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             {/* 裏方モジュールグループ */}
             {(codebaseStats as any).backendGroups && (codebaseStats as any).backendGroups.length > 0 && (
               <section className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border-2 border-amber-200 overflow-hidden">
-                <button onClick={() => toggle('backendGroups')} className="w-full flex items-center justify-between p-5 text-left hover:bg-amber-100/50">
+                <button type="button" onClick={() => toggle('backendGroups')} className="w-full flex items-center justify-between p-5 text-left hover:bg-amber-100/50">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                       {expandedSections.has('backendGroups') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
@@ -868,7 +871,7 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
             {/* 類似モジュール検出 */}
             {(codebaseStats as any).similarModules && (codebaseStats as any).similarModules.length > 0 && (
               <section className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl border-2 border-rose-200 overflow-hidden">
-                <button onClick={() => toggle('similarModules')} className="w-full flex items-center justify-between p-5 text-left hover:bg-rose-100/50">
+                <button type="button" onClick={() => toggle('similarModules')} className="w-full flex items-center justify-between p-5 text-left hover:bg-rose-100/50">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                       {expandedSections.has('similarModules') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
