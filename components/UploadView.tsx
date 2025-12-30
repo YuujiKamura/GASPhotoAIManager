@@ -73,12 +73,12 @@ const UploadView: React.FC<UploadViewProps> = ({
     }
   }, [showMenu]);
 
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); if (!isProcessing && apiKey) setIsDragging(true); };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); if (!isProcessing) setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (!isProcessing && apiKey && e.dataTransfer.files?.length) setPendingFiles(Array.from(e.dataTransfer.files));
+    if (!isProcessing && e.dataTransfer.files?.length) setPendingFiles(Array.from(e.dataTransfer.files));
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,8 +87,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const handleClick = () => {
-    if (!isProcessing && apiKey) fileInputRef.current?.click();
-    else if (!apiKey) onOpenSettings?.();
+    if (!isProcessing) fileInputRef.current?.click();
   };
 
   const handleSendInstruction = async (prompt: string) => {
@@ -184,6 +183,7 @@ const UploadView: React.FC<UploadViewProps> = ({
           <AnalysisSetupModal
             files={pendingFiles}
             lang={lang}
+            apiKey={apiKey}
             onCancel={() => setPendingFiles(null)}
             onStartAnalysis={(files, sortPolicy, useCache) => {
               onStartProcessing(files, sortPolicy, useCache);
@@ -192,6 +192,7 @@ const UploadView: React.FC<UploadViewProps> = ({
             onManualPairing={onManualPairing ? (files) => { onManualPairing(files); setPendingFiles(null); } : undefined}
             onInteractiveTest={(file) => onTestOneInteractive?.(file)}
             onOpenMasterEditor={() => onOpenMasterEditor?.()}
+            onOpenSettings={onOpenSettings}
           />
         )}
       </div>

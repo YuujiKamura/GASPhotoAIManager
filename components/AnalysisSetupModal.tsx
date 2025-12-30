@@ -10,11 +10,13 @@ const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
 interface Props {
   files: File[];
   lang: 'ja' | 'en';
+  apiKey?: string;
   onCancel: () => void;
   onStartAnalysis: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
   onManualPairing?: (files: File[]) => void;
   onInteractiveTest: (file: File) => void;
   onOpenMasterEditor: () => void;
+  onOpenSettings?: () => void;
 }
 
 interface FileEntry {
@@ -256,7 +258,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
 // --- Main Component ---
 
 const AnalysisSetupModal: React.FC<Props> = ({
-  files, lang, onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor
+  files, lang, apiKey, onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor, onOpenSettings
 }) => {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [model, setModel] = useState<ModelType>(getSelectedModel());
@@ -300,6 +302,10 @@ const AnalysisSetupModal: React.FC<Props> = ({
 
   const handleStart = () => {
     if (selectedFiles.length === 0) return;
+    if (!apiKey) {
+      onOpenSettings?.();
+      return;
+    }
     setSelectedModel(model);
     onStartAnalysis(selectedFiles, sortPolicy, useCache);
   };
