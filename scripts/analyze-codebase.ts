@@ -76,6 +76,37 @@ interface ImprovementSuggestion {
   prompt: string;  // Claude用の詳細指示
 }
 
+// 機能フローツリー（ユーザー視点の画面遷移）
+interface FeatureFlowNode {
+  id: string;
+  name: string;
+  type: 'screen' | 'modal' | 'panel' | 'action';
+  component: string;  // コンポーネントファイル
+  description: string;
+  children: FeatureFlowNode[];
+  backendModules: string[];  // 使用しているサービス/ユーティリティ
+}
+
+// 裏方モジュールのグループ
+interface BackendModuleGroup {
+  category: string;
+  description: string;
+  modules: {
+    path: string;
+    name: string;
+    exports: string[];
+    usedBy: string[];  // どの画面から使われているか
+  }[];
+}
+
+// 類似モジュール
+interface SimilarModulePair {
+  modules: [string, string];
+  similarity: number;  // 0-1
+  reason: string;
+  comparisonPrompt: string;  // 比較評価のためのClaudeプロンプト
+}
+
 interface CodebaseStats {
   generatedAt: string;
   totalFiles: number;
@@ -92,6 +123,10 @@ interface CodebaseStats {
   componentAnalysis: ComponentAnalysis[];
   suggestions: ImprovementSuggestion[];
   architectureIssues: string[];
+  // 機能フロー・可視化
+  featureFlow: FeatureFlowNode;
+  backendGroups: BackendModuleGroup[];
+  similarModules: SimilarModulePair[];
 }
 
 const ROOT = path.resolve(__dirname, '..');
@@ -564,6 +599,303 @@ ${largeComponents.slice(0, 5).map(c => `- ${c.path}: JSX深度${c.jsxDepth}, use
   return suggestions;
 }
 
+// 機能フローツリーを解析（App.tsxからユーザー画面遷移を抽出）
+function analyzeFeatureFlow(modules: ModuleNode[]): FeatureFlowNode {
+  const appPath = 'App.tsx';
+  const appModule = modules.find(m => m.path === appPath);
+
+  // App.tsx の内容を読み取って画面構造を解析
+  let appContent = '';
+  try {
+    appContent = fs.readFileSync(path.join(ROOT, appPath), 'utf-8');
+  } catch {
+    // ファイルが読めない場合は空のツリーを返す
+    return {
+      id: 'root',
+      name: 'アプリケーション',
+      type: 'screen',
+      component: appPath,
+      description: 'メインエントリーポイント',
+      children: [],
+      backendModules: []
+    };
+  }
+
+  // コンポーネントのインポートを抽出
+  const componentImports = new Map<string, string>();
+  const importRegex = /import\s+(\w+)\s+from\s+['"]\.\/components\/([^'"]+)['"]/g;
+  const lazyRegex = /const\s+(\w+)\s*=\s*lazy\s*\(\s*\(\)\s*=>\s*import\s*\(\s*['"]\.\/components\/([^'"]+)['"]\s*\)/g;
+  let match;
+  while ((match = importRegex.exec(appContent)) !== null) {
+    componentImports.set(match[1], `components/${match[2]}.tsx`);
+  }
+  while ((match = lazyRegex.exec(appContent)) !== null) {
+    const componentPath = match[2].endsWith('.tsx') ? match[2] : `${match[2]}.tsx`;
+    componentImports.set(match[1], `components/${componentPath}`);
+  }
+
+  // hooksのインポートを抽出
+  const hooksUsed: string[] = [];
+  const hooksMatch = appContent.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/hooks['"]/);
+  if (hooksMatch) {
+    hooksUsed.push(...hooksMatch[1].split(',').map(h => h.trim()).filter(h => h));
+  }
+
+  // 画面構造を定義
+  const createFlowNode = (
+    id: string,
+    name: string,
+    type: FeatureFlowNode['type'],
+    component: string,
+    description: string,
+    children: FeatureFlowNode[] = []
+  ): FeatureFlowNode => {
+    // このコンポーネントが使用するバックエンドモジュールを特定
+    const backendModules: string[] = [];
+    const compModule = modules.find(m => m.path === component || m.path === component.replace('.tsx', '/index.tsx'));
+    if (compModule) {
+      for (const imp of compModule.imports) {
+        if (imp.startsWith('services/') || imp.startsWith('utils/')) {
+          backendModules.push(imp);
+        }
+      }
+    }
+    return { id, name, type, component, description, children, backendModules };
+  };
+
+  // メイン画面のフロー構造
+  const uploadViewChildren: FeatureFlowNode[] = [
+    createFlowNode('pdf-load', 'PDF読み込み', 'modal', 'components/PdfLoadDialog.tsx', 'PDFファイルから写真を抽出'),
+    createFlowNode('api-key', 'APIキー設定', 'modal', 'components/ApiKeySetup.tsx', 'Gemini APIキーを設定'),
+    createFlowNode('model-validation', 'モデル検証', 'modal', 'components/ModelValidation.tsx', 'APIキーの有効性を確認'),
+    createFlowNode('history', 'セッション履歴', 'panel', 'components/SessionHistoryPanel.tsx', '過去のセッションを読み込み'),
+    createFlowNode('master-editor-upload', 'マスターエディタ', 'modal', 'components/MasterEditorModal.tsx', '工種マスターを編集'),
+    createFlowNode('health-dashboard', 'コードベース健全性', 'panel', 'components/CodebaseHealthDashboard.tsx', 'コードベースの状態を確認'),
+  ];
+
+  const previewViewChildren: FeatureFlowNode[] = [
+    createFlowNode('refine', '再解析', 'modal', 'components/RefineModal.tsx', '写真の分類を再解析'),
+    createFlowNode('manual-pairing', '手動ペアリング', 'modal', 'components/ManualPairingModal.tsx', '写真の手動ペアリング'),
+    createFlowNode('station-replace', '測点置換', 'modal', 'components/StationReplaceModal.tsx', '測点名を一括置換'),
+    createFlowNode('normalization', '正規化プレビュー', 'modal', 'components/NormalizationPreviewModal.tsx', '表記揺れの正規化を確認'),
+    createFlowNode('github-sync', 'GitHub同期', 'panel', 'components/GitHubSyncPanel.tsx', 'マスターをGitHubと同期'),
+    createFlowNode('master-editor-preview', 'マスターエディタ', 'modal', 'components/MasterEditorModal.tsx', '工種マスターを編集'),
+    createFlowNode('interactive-analysis', '対話式解析', 'modal', 'components/InteractiveAnalysisDialog.tsx', '個別写真を対話形式で解析'),
+    createFlowNode('usage-panel', '使用状況', 'panel', 'components/UsagePanel.tsx', 'API使用状況を表示'),
+    createFlowNode('export-excel', 'Excel出力', 'action', 'utils/excelGenerator.ts', '写真台帳をExcelで出力'),
+  ];
+
+  const root: FeatureFlowNode = {
+    id: 'app',
+    name: 'GASPhotoAIManager',
+    type: 'screen',
+    component: appPath,
+    description: '写真管理・AI解析アプリケーション',
+    backendModules: hooksUsed.map(h => `hooks/${h}.ts`),
+    children: [
+      {
+        id: 'upload-view',
+        name: 'アップロード画面',
+        type: 'screen',
+        component: 'components/UploadView.tsx',
+        description: '初期画面。写真のアップロードと設定',
+        backendModules: [],
+        children: uploadViewChildren
+      },
+      {
+        id: 'preview-view',
+        name: 'プレビュー画面',
+        type: 'screen',
+        component: 'components/PreviewView/index.tsx',
+        description: '解析結果のプレビューと編集',
+        backendModules: [],
+        children: previewViewChildren
+      }
+    ]
+  };
+
+  return root;
+}
+
+// 裏方モジュールをカテゴリ別にグループ化
+function groupBackendModules(modules: ModuleNode[], featureFlow: FeatureFlowNode): BackendModuleGroup[] {
+  const groups: BackendModuleGroup[] = [];
+
+  // カテゴリ定義
+  const categoryDefs: { category: string; description: string; patterns: string[] }[] = [
+    { category: 'AI/解析', description: 'Gemini APIを使った画像解析・分類', patterns: ['gemini', 'analysis', 'classifier'] },
+    { category: 'ストレージ', description: 'データの保存・読み込み（IndexedDB、ファイルシステム）', patterns: ['storage', 'cache', 'db', 'indexed'] },
+    { category: 'ソート/整列', description: '写真の並び替え・グルーピング', patterns: ['sort', 'group', 'order', 'layout'] },
+    { category: 'エクスポート', description: 'Excel/PDF出力', patterns: ['excel', 'pdf', 'export', 'generator'] },
+    { category: '正規化', description: '測点名・工種名の表記揺れ統一', patterns: ['normaliz', 'station', 'worktype'] },
+    { category: 'ユーティリティ', description: '汎用ヘルパー関数', patterns: ['util', 'helper', 'common'] },
+    { category: 'API/通信', description: '外部API連携', patterns: ['api', 'fetch', 'http', 'github'] },
+    { category: '状態管理', description: 'アプリ状態のフック', patterns: ['hook', 'state', 'use'] },
+  ];
+
+  // 全コンポーネントから使用されているバックエンドモジュールを収集
+  const usageMap = new Map<string, string[]>();
+  function collectUsage(node: FeatureFlowNode) {
+    for (const backend of node.backendModules) {
+      const existing = usageMap.get(backend) || [];
+      if (!existing.includes(node.name)) {
+        existing.push(node.name);
+      }
+      usageMap.set(backend, existing);
+    }
+    for (const child of node.children) {
+      collectUsage(child);
+    }
+  }
+  collectUsage(featureFlow);
+
+  // サービスとユーティリティモジュールをフィルタ
+  const backendModules = modules.filter(m =>
+    m.path.startsWith('services/') || m.path.startsWith('utils/') || m.path.startsWith('hooks/')
+  );
+
+  // 各カテゴリにモジュールを割り当て
+  const categorized = new Set<string>();
+  for (const def of categoryDefs) {
+    const categoryModules = backendModules.filter(m => {
+      const name = m.path.toLowerCase();
+      return def.patterns.some(p => name.includes(p)) && !categorized.has(m.path);
+    });
+
+    if (categoryModules.length > 0) {
+      const modulesInfo = categoryModules.map(m => {
+        categorized.add(m.path);
+        // export を抽出
+        let exports: string[] = [];
+        try {
+          const content = fs.readFileSync(path.join(ROOT, m.path), 'utf-8');
+          const exportMatches = content.match(/export\s+(?:async\s+)?(?:function|const|class|interface|type)\s+(\w+)/g) || [];
+          exports = exportMatches.map(e => {
+            const match = e.match(/(?:function|const|class|interface|type)\s+(\w+)/);
+            return match ? match[1] : '';
+          }).filter(Boolean);
+        } catch { /* ignore */ }
+
+        return {
+          path: m.path,
+          name: m.path.split('/').pop()?.replace(/\.tsx?$/, '') || m.path,
+          exports: exports.slice(0, 5),  // 最大5つ
+          usedBy: usageMap.get(m.path) || []
+        };
+      });
+
+      groups.push({
+        category: def.category,
+        description: def.description,
+        modules: modulesInfo
+      });
+    }
+  }
+
+  // カテゴリ未分類のモジュール
+  const uncategorized = backendModules.filter(m => !categorized.has(m.path));
+  if (uncategorized.length > 0) {
+    groups.push({
+      category: 'その他',
+      description: '分類されていないモジュール',
+      modules: uncategorized.map(m => ({
+        path: m.path,
+        name: m.path.split('/').pop()?.replace(/\.tsx?$/, '') || m.path,
+        exports: [],
+        usedBy: usageMap.get(m.path) || []
+      }))
+    });
+  }
+
+  return groups;
+}
+
+// 類似モジュールを検出
+function detectSimilarModules(modules: ModuleNode[]): SimilarModulePair[] {
+  const pairs: SimilarModulePair[] = [];
+
+  // 類似判定の基準
+  // 1. 同じカテゴリ内のモジュール
+  // 2. 名前が似ている
+  // 3. import/exportが似ている
+
+  const backendModules = modules.filter(m =>
+    m.path.startsWith('services/') || m.path.startsWith('utils/')
+  );
+
+  // モジュールの内容を読み込んでトークン化
+  const moduleTokens = new Map<string, Set<string>>();
+  for (const mod of backendModules) {
+    try {
+      const content = fs.readFileSync(path.join(ROOT, mod.path), 'utf-8');
+      // 関数名、変数名、キーワードを抽出
+      const tokens = new Set<string>();
+      const matches = content.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+      for (const m of matches) {
+        if (m.length > 3) tokens.add(m.toLowerCase());
+      }
+      moduleTokens.set(mod.path, tokens);
+    } catch { /* ignore */ }
+  }
+
+  // ペアワイズで類似度を計算
+  for (let i = 0; i < backendModules.length; i++) {
+    for (let j = i + 1; j < backendModules.length; j++) {
+      const mod1 = backendModules[i];
+      const mod2 = backendModules[j];
+      const tokens1 = moduleTokens.get(mod1.path);
+      const tokens2 = moduleTokens.get(mod2.path);
+
+      if (!tokens1 || !tokens2 || tokens1.size < 10 || tokens2.size < 10) continue;
+
+      // Jaccard係数で類似度を計算
+      const intersection = new Set([...tokens1].filter(t => tokens2.has(t)));
+      const union = new Set([...tokens1, ...tokens2]);
+      const similarity = intersection.size / union.size;
+
+      // 閾値以上なら類似モジュールとして記録
+      if (similarity > 0.3) {
+        // 共通するトークンから機能を推定
+        const commonTokens = [...intersection].slice(0, 10).join(', ');
+
+        pairs.push({
+          modules: [mod1.path, mod2.path],
+          similarity: Math.round(similarity * 100) / 100,
+          reason: `共通キーワード: ${commonTokens}`,
+          comparisonPrompt: `# モジュール比較: ${mod1.path} vs ${mod2.path}
+
+## 類似度: ${Math.round(similarity * 100)}%
+
+## 比較タスク
+以下の2つのモジュールを比較し、統合または役割分担の改善を検討してください。
+
+### ファイル1: ${mod1.path}
+- インポート数: ${mod1.imports.length}
+- 参照元: ${mod1.importedBy.length}ファイル
+
+### ファイル2: ${mod2.path}
+- インポート数: ${mod2.imports.length}
+- 参照元: ${mod2.importedBy.length}ファイル
+
+## 確認ポイント
+1. 両モジュールの責務は明確に分離されているか
+2. 重複する機能はないか
+3. 統合すべきか、または片方に機能を集約すべきか
+4. 命名規則は一貫しているか
+
+## 出力
+- 現状の問題点（あれば）
+- 改善提案
+- 統合する場合の具体的な手順`
+        });
+      }
+    }
+  }
+
+  // 類似度順にソートして上位を返す
+  return pairs.sort((a, b) => b.similarity - a.similarity).slice(0, 10);
+}
+
 // 健全性チェックを並列実行
 async function runHealthChecks(): Promise<HealthCheck[]> {
   const checkFns = [
@@ -800,6 +1132,18 @@ async function analyzeCodebase(): Promise<CodebaseStats> {
   console.log('💡 Generating improvement suggestions...');
   const suggestions = generateSuggestions(moduleDependencies, componentAnalysis, architectureIssues);
 
+  // 新規分析: 機能フローツリー
+  console.log('🌳 Analyzing feature flow...');
+  const featureFlow = analyzeFeatureFlow(moduleDependencies);
+
+  // 新規分析: 裏方モジュールのグループ化
+  console.log('📦 Grouping backend modules...');
+  const backendGroups = groupBackendModules(moduleDependencies, featureFlow);
+
+  // 新規分析: 類似モジュール検出
+  console.log('🔍 Detecting similar modules...');
+  const similarModules = detectSimilarModules(moduleDependencies);
+
   const stats: CodebaseStats = {
     generatedAt: new Date().toISOString(),
     totalFiles: allFiles.length,
@@ -827,7 +1171,11 @@ async function analyzeCodebase(): Promise<CodebaseStats> {
     moduleDependencies: moduleDependencies.slice(0, 50), // 上位50モジュール
     componentAnalysis: componentAnalysis.slice(0, 20), // 上位20コンポーネント
     suggestions,
-    architectureIssues
+    architectureIssues,
+    // 機能フロー・可視化
+    featureFlow,
+    backendGroups,
+    similarModules
   };
 
   return stats;
@@ -887,6 +1235,27 @@ async function main() {
     console.log('\n🧩 Components needing attention:');
     problematicComponents.slice(0, 3).forEach(c => {
       console.log(`   ⚠️ ${c.path}: ${c.issues.join(', ')}`);
+    });
+  }
+
+  // 機能フローツリー
+  console.log('\n🌳 Feature flow:');
+  console.log(`   ${stats.featureFlow.name}`);
+  for (const child of stats.featureFlow.children) {
+    console.log(`   ├─ ${child.name} (${child.children.length}機能)`);
+  }
+
+  // 裏方モジュールグループ
+  console.log('\n📦 Backend module groups:');
+  for (const group of stats.backendGroups.slice(0, 5)) {
+    console.log(`   📂 ${group.category}: ${group.modules.length}モジュール`);
+  }
+
+  // 類似モジュール
+  if (stats.similarModules.length > 0) {
+    console.log('\n🔍 Similar modules (may need review):');
+    stats.similarModules.slice(0, 3).forEach(pair => {
+      console.log(`   ${Math.round(pair.similarity * 100)}%: ${pair.modules[0]} ⟷ ${pair.modules[1]}`);
     });
   }
 }
