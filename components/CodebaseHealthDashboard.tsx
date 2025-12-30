@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   ArrowLeft, GitBranch, CheckCircle, AlertTriangle, RefreshCw,
   ChevronDown, ChevronRight, Scale, AlertCircle, PackageX, MoreVertical, ExternalLink,
   Network, Layers, Zap, FileCode, Copy, Check, ArrowRight, TreePine, Folder, GitCompare
 } from 'lucide-react';
 import codebaseStats from '../src/generated/codebase-stats.json';
+import { useDashboardState, useCopyState, useExpandedState } from '../hooks/useDashboardState';
 
 interface CodebaseHealthDashboardProps {
   lang: 'en' | 'ja';
@@ -189,17 +190,11 @@ const EFFORT_LABELS: Record<string, { label: string; color: string }> = {
 
 // コピーボタンコンポーネント
 const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label = '📋 指示をコピー' }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const { copied, handleCopy } = useCopyState();
 
   return (
     <button
-      onClick={handleCopy}
+      onClick={() => handleCopy(text)}
       className={`text-xs px-3 py-1.5 rounded flex items-center gap-1 transition-colors ${
         copied ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'
       }`}
@@ -212,7 +207,7 @@ const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label = 
 
 // 改善提案カード
 const SuggestionCard: React.FC<{ suggestion: any; lang: 'en' | 'ja' }> = ({ suggestion, lang }) => {
-  const [expanded, setExpanded] = useState(false);
+  const { expanded, toggle } = useExpandedState();
   const categoryStyle = CATEGORY_COLORS[suggestion.category] || CATEGORY_COLORS.maintainability;
   const effortStyle = EFFORT_LABELS[suggestion.effort] || EFFORT_LABELS.medium;
   const priorityStyle = PRIORITY_STYLES[suggestion.priority as Priority] || PRIORITY_STYLES.low;
@@ -248,7 +243,7 @@ const SuggestionCard: React.FC<{ suggestion: any; lang: 'en' | 'ja' }> = ({ sugg
         <div className="flex flex-col gap-2">
           <CopyButton text={suggestion.prompt} />
           <button
-            onClick={() => setExpanded(!expanded)}
+            onClick={toggle}
             className="text-xs text-gray-600 hover:text-gray-900"
           >
             {expanded ? '詳細を隠す' : '詳細を見る'}
@@ -546,31 +541,17 @@ const SimilarModuleCard: React.FC<{ pair: any }> = ({ pair }) => {
 };
 
 const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang, onClose }) => {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['tasks']));
-  const [isLoading, setIsLoading] = useState(true);
-  const [showMenu, setShowMenu] = useState(false);
-  const [healthChecks, setHealthChecks] = useState<any[]>([]);
+  const {
+    expandedSections,
+    isLoading,
+    showMenu,
+    healthChecks,
+    toggle,
+    setShowMenu,
+    runAnalysis,
+  } = useDashboardState();
 
   const t = (ja: string, en: string) => lang === 'ja' ? ja : en;
-  const toggle = (s: string) => setExpandedSections(prev => {
-    const next = new Set(prev);
-    next.has(s) ? next.delete(s) : next.add(s);
-    return next;
-  });
-
-  useEffect(() => {
-    setHealthChecks((codebaseStats as any).health || []);
-    setIsLoading(false);
-  }, []);
-
-  const runAnalysis = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/analyze');
-      if ((await res.json()).success) window.location.reload();
-      else setIsLoading(false);
-    } catch { setIsLoading(false); }
-  };
 
   const tasks = codebaseStats.tasks?.filter((t: any) => t.status === 'todo')
     .sort((a: any, b: any) => ({ high: 0, medium: 1, low: 2 }[a.priority as Priority] ?? 2) - ({ high: 0, medium: 1, low: 2 }[b.priority as Priority] ?? 2)) || [];
