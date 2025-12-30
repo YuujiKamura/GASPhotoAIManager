@@ -42,7 +42,7 @@ export function usePreviewViewState(initialLayout: 2 | 3): PreviewViewState & Pr
   const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
-  const [showConsole, setShowConsole] = useState(true);
+  const [showConsole, setShowConsole] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
