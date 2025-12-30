@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft, GitBranch, RefreshCw, ChevronDown, ChevronRight,
-  Scale, PackageX, MoreVertical, ExternalLink, Network, Layers, Zap, FileCode, AlertTriangle
+  Scale, PackageX, MoreVertical, ExternalLink, Network, Layers, Zap, FileCode, AlertTriangle,
+  TreePine, Folder, GitCompare
 } from 'lucide-react';
 import { useCodebaseHealth } from '../hooks/useCodebaseHealth';
 import {
   Status, STATUS_STYLES, DEPS, generateHealthFixPrompt
 } from './CodebaseHealthDashboard/constants';
 import {
-  StatusIcon, SectionToggle, TaskCard, SuggestionCard, ComponentAnalysisCard, DependencyGraph
+  StatusIcon, SectionToggle, TaskCard, SuggestionCard, ComponentAnalysisCard, DependencyGraph,
+  FeatureFlowTree, BackendModuleGroupCard, SimilarModuleCard
 } from './CodebaseHealthDashboard/components';
 
 interface CodebaseHealthDashboardProps {
@@ -256,6 +258,85 @@ const CodebaseHealthDashboard: React.FC<CodebaseHealthDashboardProps> = ({ lang,
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* 機能フローツリー */}
+            {stats.featureFlow && (
+              <section className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border-2 border-emerald-200 overflow-hidden">
+                <button onClick={() => toggle('featureFlow')} className="w-full flex items-center justify-between p-5 text-left hover:bg-emerald-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('featureFlow') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      <TreePine className="w-5 h-5 text-emerald-600" />
+                      {t('機能フローツリー', 'Feature Flow Tree')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('画面とモーダルの階層構造', 'Screen and modal hierarchy')}</p>
+                  </div>
+                </button>
+                {expandedSections.has('featureFlow') && (
+                  <div className="p-5 pt-0">
+                    <div className="bg-white rounded-xl border border-emerald-200 p-4">
+                      <FeatureFlowTree node={stats.featureFlow} level={0} />
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* 裏方モジュールグループ */}
+            {stats.backendGroups && stats.backendGroups.length > 0 && (
+              <section className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border-2 border-amber-200 overflow-hidden">
+                <button onClick={() => toggle('backendGroups')} className="w-full flex items-center justify-between p-5 text-left hover:bg-amber-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('backendGroups') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      <Folder className="w-5 h-5 text-amber-600" />
+                      {t('裏方モジュール', 'Backend Modules')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('機能別にグループ化されたサービス・ユーティリティ', 'Services and utilities grouped by function')}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {stats.backendGroups.length} {t('カテゴリ', 'categories')}
+                    </span>
+                  </div>
+                </button>
+                {expandedSections.has('backendGroups') && (
+                  <div className="p-5 pt-0 space-y-3">
+                    {stats.backendGroups.map((group: any, i: number) => (
+                      <BackendModuleGroupCard key={i} group={group} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* 類似モジュール検出 */}
+            {stats.similarModules && stats.similarModules.length > 0 && (
+              <section className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl border-2 border-rose-200 overflow-hidden">
+                <button onClick={() => toggle('similarModules')} className="w-full flex items-center justify-between p-5 text-left hover:bg-rose-100/50">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {expandedSections.has('similarModules') ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      <GitCompare className="w-5 h-5 text-rose-600" />
+                      {t('類似モジュール', 'Similar Modules')}
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1 ml-7">{t('統合や役割分担の検討が必要な可能性があるモジュール', 'Modules that may need consolidation or role clarification')}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-rose-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                      {stats.similarModules.length} {t('ペア', 'pairs')}
+                    </span>
+                  </div>
+                </button>
+                {expandedSections.has('similarModules') && (
+                  <div className="p-5 pt-0 space-y-3">
+                    {stats.similarModules.map((pair: any, i: number) => (
+                      <SimilarModuleCard key={i} pair={pair} />
+                    ))}
                   </div>
                 )}
               </section>

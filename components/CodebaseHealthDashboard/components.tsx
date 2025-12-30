@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   CheckCircle, AlertTriangle, AlertCircle, ChevronDown, ChevronRight,
-  Network, Copy, Check
+  Network, Copy, Check, ArrowRight
 } from 'lucide-react';
 import {
   Priority, Status, PRIORITY_STYLES, CATEGORY_COLORS, EFFORT_LABELS,
@@ -231,6 +231,174 @@ export const DependencyGraph: React.FC<{ modules: any[] }> = ({ modules }) => {
             ))}
         </div>
       </div>
+    </div>
+  );
+};
+
+// 機能フローツリー表示
+export const FeatureFlowTree: React.FC<{ node: any; level: number }> = ({ node, level }) => {
+  const [expanded, setExpanded] = useState(level < 2);
+  const hasChildren = node.children && node.children.length > 0;
+
+  const typeIcons: Record<string, { icon: string; color: string }> = {
+    screen: { icon: '🖥️', color: 'text-blue-600' },
+    modal: { icon: '📦', color: 'text-purple-600' },
+    panel: { icon: '📋', color: 'text-green-600' },
+    action: { icon: '⚡', color: 'text-orange-600' },
+  };
+
+  const { icon, color } = typeIcons[node.type] || typeIcons.screen;
+
+  return (
+    <div className={`${level > 0 ? 'ml-6 border-l-2 border-gray-200 pl-4' : ''}`}>
+      <div className="flex items-start gap-2 py-1">
+        {hasChildren && (
+          <button onClick={() => setExpanded(!expanded)} className="text-gray-400 hover:text-gray-600 mt-0.5">
+            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+        )}
+        {!hasChildren && <span className="w-4" />}
+        <span className="text-lg">{icon}</span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`font-semibold ${color}`}>{node.name}</span>
+            <span className="text-xs text-gray-400 font-mono">{node.component}</span>
+          </div>
+          <p className="text-xs text-gray-500">{node.description}</p>
+          {node.backendModules && node.backendModules.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {node.backendModules.slice(0, 3).map((mod: string, i: number) => (
+                <span key={i} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                  {mod.split('/').pop()}
+                </span>
+              ))}
+              {node.backendModules.length > 3 && (
+                <span className="text-xs text-gray-400">+{node.backendModules.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {expanded && hasChildren && (
+        <div className="mt-1">
+          {node.children.map((child: any, i: number) => (
+            <FeatureFlowTree key={i} node={child} level={level + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 裏方モジュールグループカード
+export const BackendModuleGroupCard: React.FC<{ group: any }> = ({ group }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const categoryIcons: Record<string, string> = {
+    'AI/解析': '🤖',
+    'ストレージ': '💾',
+    'ソート/整列': '📊',
+    'エクスポート': '📤',
+    '正規化': '🔄',
+    'ユーティリティ': '🔧',
+    'API/通信': '🌐',
+    '状態管理': '📦',
+    'その他': '📁',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-amber-50"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{categoryIcons[group.category] || '📁'}</span>
+          <div>
+            <h3 className="font-semibold text-gray-900">{group.category}</h3>
+            <p className="text-xs text-gray-500">{group.description}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
+            {group.modules.length} モジュール
+          </span>
+          {expanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-amber-100 p-4 space-y-2">
+          {group.modules.map((mod: any, i: number) => (
+            <div key={i} className="bg-amber-50 rounded-lg p-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-mono text-sm text-gray-900">{mod.path}</p>
+                  {mod.exports.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {mod.exports.map((exp: string, j: number) => (
+                        <span key={j} className="text-xs bg-white text-gray-600 px-1.5 py-0.5 rounded border">
+                          {exp}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {mod.usedBy.length > 0 && (
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">使用元:</p>
+                    <p className="text-xs text-gray-700">{mod.usedBy.slice(0, 2).join(', ')}</p>
+                    {mod.usedBy.length > 2 && <p className="text-xs text-gray-400">+{mod.usedBy.length - 2}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 類似モジュールカード
+export const SimilarModuleCard: React.FC<{ pair: any }> = ({ pair }) => {
+  const [showPrompt, setShowPrompt] = useState(false);
+  const similarityColor = pair.similarity >= 0.5 ? 'bg-red-100 text-red-700' :
+                          pair.similarity >= 0.4 ? 'bg-orange-100 text-orange-700' :
+                          'bg-yellow-100 text-yellow-700';
+
+  return (
+    <div className="bg-white rounded-xl border border-rose-200 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`text-xs font-bold px-2 py-0.5 rounded ${similarityColor}`}>
+              {Math.round(pair.similarity * 100)}% 類似
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{pair.modules[0]}</span>
+            <ArrowRight className="w-4 h-4 text-gray-400" />
+            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{pair.modules[1]}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">{pair.reason}</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <CopyButton text={pair.comparisonPrompt} label="比較指示をコピー" />
+          <button
+            onClick={() => setShowPrompt(!showPrompt)}
+            className="text-xs text-gray-600 hover:text-gray-900"
+          >
+            {showPrompt ? '詳細を隠す' : '詳細を見る'}
+          </button>
+        </div>
+      </div>
+      {showPrompt && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+          <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-auto max-h-64">
+            {pair.comparisonPrompt}
+          </pre>
+        </div>
+      )}
     </div>
   );
 };
