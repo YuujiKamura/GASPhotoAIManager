@@ -1,6 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { PhotoRecord, AIAnalysisResult } from '../types';
-import { getWorkTypeHistory, addWorkTypeToHistory, getStationHistory, addStationToHistory } from '../utils/storage';
+import {
+  getWorkTypeHistory, addWorkTypeToHistory,
+  getStationHistory, addStationToHistory,
+  getRemarksHistory, addRemarksToHistory,
+  getMeasurementsHistory, addMeasurementsToHistory
+} from '../utils/storage';
 
 type FieldKey = keyof AIAnalysisResult;
 
@@ -15,12 +20,21 @@ export function useBulkEditorState(photos: PhotoRecord[]) {
 
   // Load history when field changes
   useEffect(() => {
-    if (selectedField === 'station') {
-      setFieldHistory(getStationHistory());
-    } else if (selectedField === 'workType') {
-      setFieldHistory(getWorkTypeHistory());
-    } else {
-      setFieldHistory([]);
+    switch (selectedField) {
+      case 'station':
+        setFieldHistory(getStationHistory());
+        break;
+      case 'workType':
+        setFieldHistory(getWorkTypeHistory());
+        break;
+      case 'remarks':
+        setFieldHistory(getRemarksHistory());
+        break;
+      case 'measurements':
+        setFieldHistory(getMeasurementsHistory());
+        break;
+      default:
+        setFieldHistory([]);
     }
   }, [selectedField]);
 
@@ -108,8 +122,22 @@ export function useBulkEditorState(photos: PhotoRecord[]) {
       updates.push({ fileName, field: selectedField, value: newValue });
     });
     // Add to history
-    if (selectedField === 'station' && newValue) addStationToHistory(newValue);
-    else if (selectedField === 'workType' && newValue) addWorkTypeToHistory(newValue);
+    if (newValue) {
+      switch (selectedField) {
+        case 'station':
+          addStationToHistory(newValue);
+          break;
+        case 'workType':
+          addWorkTypeToHistory(newValue);
+          break;
+        case 'remarks':
+          addRemarksToHistory(newValue);
+          break;
+        case 'measurements':
+          addMeasurementsToHistory(newValue);
+          break;
+      }
+    }
     return updates;
   }, [selectedPhotos, newValue, selectedField]);
 

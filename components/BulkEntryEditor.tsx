@@ -25,7 +25,7 @@ const FIELD_LABELS: Record<string, { ja: string; en: string }> = {
 };
 
 // マスタから選択可能なフィールド
-const MASTER_SELECTABLE_FIELDS = ['workType', 'variety', 'detail'] as const;
+const MASTER_SELECTABLE_FIELDS = ['workType', 'variety', 'detail', 'remarks'] as const;
 
 // マスタ選択コンポーネント
 const MasterSelector: React.FC<{
@@ -37,7 +37,7 @@ const MasterSelector: React.FC<{
   const [searchQuery, setSearchQuery] = useState('');
 
   const masterValues = useMemo(() => {
-    const { workTypes, varieties, details } = extractAllValidValues();
+    const { workTypes, varieties, details, remarks } = extractAllValidValues();
     switch (field) {
       case 'workType':
         return Array.from(workTypes).sort();
@@ -45,6 +45,8 @@ const MasterSelector: React.FC<{
         return Array.from(varieties).sort();
       case 'detail':
         return Array.from(details).sort();
+      case 'remarks':
+        return Array.from(remarks).sort();
       default:
         return [];
     }
