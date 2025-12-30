@@ -7,10 +7,8 @@ import { fileToBase64 } from '../utils/fileHandlers';
 
 const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
 
-interface Props {
-  files: File[];
-  lang: 'ja' | 'en';
-  apiKey?: string;
+// Grouped callback props for cleaner interface
+interface AnalysisActions {
   onCancel: () => void;
   onStartAnalysis: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
   onManualPairing?: (files: File[]) => void;
@@ -18,6 +16,16 @@ interface Props {
   onOpenMasterEditor: () => void;
   onOpenSettings?: () => void;
 }
+
+interface Props {
+  files: File[];
+  lang: 'ja' | 'en';
+  apiKey?: string;
+  actions: AnalysisActions;
+}
+
+// Legacy props interface for backwards compatibility
+export interface AnalysisSetupModalProps extends Omit<Props, 'actions'>, AnalysisActions {}
 
 interface FileEntry {
   file: File;
@@ -257,9 +265,9 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
 
 // --- Main Component ---
 
-const AnalysisSetupModal: React.FC<Props> = ({
-  files, lang, apiKey, onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor, onOpenSettings
-}) => {
+// Inner component with grouped props
+const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions }) => {
+  const { onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor, onOpenSettings } = actions;
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [model, setModel] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
@@ -381,5 +389,18 @@ const AnalysisSetupModal: React.FC<Props> = ({
     </div>
   );
 };
+
+// Wrapper component for backwards compatibility with individual props
+const AnalysisSetupModal: React.FC<AnalysisSetupModalProps> = ({
+  files, lang, apiKey,
+  onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor, onOpenSettings
+}) => (
+  <AnalysisSetupModalInner
+    files={files}
+    lang={lang}
+    apiKey={apiKey}
+    actions={{ onCancel, onStartAnalysis, onManualPairing, onInteractiveTest, onOpenMasterEditor, onOpenSettings }}
+  />
+);
 
 export default AnalysisSetupModal;
