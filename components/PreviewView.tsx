@@ -123,8 +123,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             <PreviewToolsMenu
               lang={lang}
               isProcessing={isProcessing}
-              onAutoPair={handleAutoPairClick}
-              onManualPair={handleManualPairClick}
+              onAutoPair={() => handleAutoPairClick(onAutoPair)}
+              onManualPair={() => handleManualPairClick(onManualPair)}
               onEnterReorderMode={reorder.enterReorderMode}
               onRefine={onRefine}
               onShowHistory={actions.openHistoryPanel}

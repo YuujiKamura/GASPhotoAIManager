@@ -26,6 +26,8 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
     );
   };
 
+  const onSubmit = handleSubmit;
+
   return (
     <div className="fixed inset-0 bg-slate-900 z-[130] flex flex-col">
       {/* ヘッダー */}
@@ -113,7 +115,7 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
       <div className="p-4 border-t border-slate-800 bg-slate-900">
         <div className="max-w-md mx-auto">
           <button
-            onClick={handleSubmit}
+            onClick={onSubmit}
             disabled={isValidating || !hasAnyAvailable}
             className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
           >
