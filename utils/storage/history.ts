@@ -18,7 +18,8 @@ const generateHistoryName = (workTypes: string[], createdAt: number): string => 
 };
 
 /**
- * Save analysis history
+ * Save or update analysis history
+ * If a session with the same sessionKey exists, update it; otherwise create new
  */
 export const saveAnalysisHistory = async (
   photos: PhotoRecord[],
@@ -41,26 +42,46 @@ export const saveAnalysisHistory = async (
     .slice(0, 6)
     .map(p => p.base64);
 
-  const createdAt = Date.now();
-  const entry: AnalysisHistoryEntry = {
-    id: crypto.randomUUID(),
-    sessionKey,
-    createdAt,
-    photoCount: photos.length,
-    instruction,
-    workTypes,
-    photoKeys,
-    modelUsed,
-    isExampleSession: false,
-    name: generateHistoryName(workTypes, createdAt),
-    thumbnails
-  };
+  // Check for existing entry with same sessionKey
+  const existingHistory = await getAnalysisHistory();
+  const existingEntry = existingHistory.find(h => h.sessionKey === sessionKey);
+
+  const now = Date.now();
+  const entry: AnalysisHistoryEntry = existingEntry
+    ? {
+        ...existingEntry,
+        // Keep original id, createdAt, name, isExampleSession
+        photoCount: photos.length,
+        instruction: instruction || existingEntry.instruction,
+        workTypes,
+        photoKeys,
+        modelUsed: modelUsed || existingEntry.modelUsed,
+        thumbnails,
+        updatedAt: now  // Track last update time
+      }
+    : {
+        id: crypto.randomUUID(),
+        sessionKey,
+        createdAt: now,
+        photoCount: photos.length,
+        instruction,
+        workTypes,
+        photoKeys,
+        modelUsed,
+        isExampleSession: false,
+        name: generateHistoryName(workTypes, now),
+        thumbnails
+      };
 
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_HISTORY, 'readwrite');
     const store = transaction.objectStore(STORE_HISTORY);
-    const request = store.add(entry);
-    request.onsuccess = () => resolve(entry);
+    // Use put() instead of add() to allow updates
+    const request = store.put(entry);
+    request.onsuccess = () => {
+      console.log(existingEntry ? 'Updated existing history:' : 'Added new history:', sessionKey);
+      resolve(entry);
+    };
     request.onerror = () => reject(request.error);
   });
 };
