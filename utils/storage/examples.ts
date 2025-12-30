@@ -4,6 +4,8 @@ import { PhotoRecord, AnalysisExample, PhotoCategory } from "../../types";
 import { openDB, STORE_EXAMPLES } from "./dbCore";
 import { detectPhotoCategory } from "./categoryUtils";
 import { getSession, getActiveSessionId } from "./sessions";
+import { getActiveExampleHistoryId, getAnalysisHistoryEntry } from "./history";
+import { getCachedAnalysisByKey } from "./analysisCache";
 
 /**
  * Save example from PhotoRecord
@@ -115,12 +117,14 @@ export const clearExamples = async (): Promise<void> => {
 
 /**
  * Get relevant examples for analysis
+ * Checks both session examples and history-based examples
  */
 export const getRelevantExamples = async (
   workType?: string,
   category?: PhotoCategory,
   limit: number = 3
 ): Promise<AnalysisExample[]> => {
+  // 1. まずセッションベースのお手本をチェック
   const activeSessionId = getActiveSessionId();
   if (activeSessionId) {
     const session = await getSession(activeSessionId);
@@ -139,6 +143,48 @@ export const getRelevantExamples = async (
     }
   }
 
+  // 2. 履歴ベースのお手本をチェック（新機能）
+  const activeHistoryId = getActiveExampleHistoryId();
+  if (activeHistoryId) {
+    const historyEntry = await getAnalysisHistoryEntry(activeHistoryId);
+    if (historyEntry && historyEntry.isExampleSession && historyEntry.photoKeys.length > 0) {
+      // 履歴のphotoKeysからキャッシュを取得してお手本に変換
+      const examplesFromHistory: AnalysisExample[] = [];
+      for (let i = 0; i < Math.min(historyEntry.photoKeys.length, limit * 2); i++) {
+        const key = historyEntry.photoKeys[i];
+        const analysis = await getCachedAnalysisByKey(key);
+        if (analysis) {
+          examplesFromHistory.push({
+            id: `hist_${historyEntry.id}_${i}`,
+            name: `${analysis.workType || ''} - ${analysis.remarks || key}`,
+            thumbnail: historyEntry.thumbnails?.[i] || '',
+            analysis,
+            category: detectPhotoCategory(analysis),
+            tags: [],
+            createdAt: historyEntry.createdAt,
+            updatedAt: historyEntry.createdAt
+          });
+        }
+      }
+
+      if (examplesFromHistory.length > 0) {
+        console.log(`[EXAMPLES] 履歴お手本から${examplesFromHistory.length}件取得: "${historyEntry.name}"`);
+        const scored = examplesFromHistory.map(ex => {
+          let score = 0;
+          if (category && ex.category === category) score += 3;
+          if (workType && ex.analysis.workType === workType) score += 2;
+          score += 1;
+          return { example: ex, score };
+        });
+        return scored
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit)
+          .map(s => s.example);
+      }
+    }
+  }
+
+  // 3. フォールバック: すべてのお手本から取得
   const all = await getExamples();
   if (all.length === 0) return [];
 
