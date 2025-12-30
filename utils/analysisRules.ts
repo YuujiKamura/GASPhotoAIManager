@@ -7,7 +7,6 @@
 
 export type RuleCategory =
   | 'photoCategory'      // 写真区分ルール
-  | 'safetyManagement'   // 安全管理写真ルール
   | 'hierarchy'          // 階層構造制約
   | 'temperature'        // 温度写真ルール
   | 'masterProtection';  // マスタ保護
@@ -34,13 +33,7 @@ export const RULE_CATEGORIES: RuleCategoryInfo[] = [
     id: 'photoCategory',
     label: '写真区分ルール',
     icon: '📷',
-    description: '写真を6つの区分に分類するルール'
-  },
-  {
-    id: 'safetyManagement',
-    label: '安全管理写真ルール',
-    icon: '🦺',
-    description: '朝礼・KY活動等の安全管理写真を判定するルール'
+    description: '土木工事の写真管理基準に基づく9区分で分類'
   },
   {
     id: 'hierarchy',
@@ -64,12 +57,20 @@ export const RULE_CATEGORIES: RuleCategoryInfo[] = [
 
 // 全ルール定義
 export const ANALYSIS_RULES: AnalysisRule[] = [
-  // === 写真区分ルール ===
+  // === 写真区分ルール（土木工事の写真管理基準準拠・9区分） ===
   {
-    id: 'pc_five_categories',
+    id: 'pc_nine_categories',
     category: 'photoCategory',
-    label: '5区分分類',
-    description: '着手前・施工状況・品質管理・出来形管理・完了の5区分で分類',
+    label: '9区分分類（写真管理基準準拠）',
+    description: '着手前及び完成・施工状況・安全管理・使用材料・品質管理・出来形管理・災害・事故・その他',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'pc_safety_management',
+    category: 'photoCategory',
+    label: '安全管理写真判定',
+    description: '黒板に朝礼・KY・危険予知等の記載がある写真を安全管理写真に分類',
     isFixed: true,
     defaultEnabled: true
   },
@@ -105,53 +106,11 @@ export const ANALYSIS_RULES: AnalysisRule[] = [
     isFixed: true,
     defaultEnabled: true
   },
-
-  // === 安全管理写真ルール ===
   {
-    id: 'sm_morning_assembly',
-    category: 'safetyManagement',
-    label: '朝礼状況（条件ベース）',
-    description: '5名以上集合 + ヘルメット + 重機停止 + 説明者 = 朝礼状況（確定）',
-    isFixed: true,
-    defaultEnabled: true
-  },
-  {
-    id: 'sm_time_based',
-    category: 'safetyManagement',
-    label: '撮影時間判定',
-    description: '7:00-8:30の集合写真 = 朝礼、17:00-18:30の点灯 = 点灯確認',
-    isFixed: true,
-    defaultEnabled: true
-  },
-  {
-    id: 'sm_empty_worktype',
-    category: 'safetyManagement',
-    label: '工種・種別・細別は空',
-    description: '安全管理写真は workType="", variety="", detail="" とする',
-    isFixed: true,
-    defaultEnabled: true
-  },
-  {
-    id: 'sm_gathered_not_working',
-    category: 'safetyManagement',
-    label: '集合+非作業 = 安全管理',
-    description: '作業員が集合していて作業していない = 安全管理写真（確定）',
-    isFixed: true,
-    defaultEnabled: true
-  },
-  {
-    id: 'sm_ky_activity',
-    category: 'safetyManagement',
-    label: 'KY活動状況',
-    description: 'KYボード周りに集合 + 書き込み/指差し = KY活動状況',
-    isFixed: true,
-    defaultEnabled: true
-  },
-  {
-    id: 'sm_safety_patrol',
-    category: 'safetyManagement',
-    label: '安全巡視状況',
-    description: '1-2名の監督者が点検クリップボードを持って歩いている',
+    id: 'pc_disaster_accident',
+    category: 'photoCategory',
+    label: '災害・事故写真判定',
+    description: '災害発生時・事故発生時の写真を適切に分類',
     isFixed: true,
     defaultEnabled: true
   },
@@ -291,7 +250,7 @@ export const loadRuleSettings = (): RuleSettings => {
 };
 
 // カテゴリ別にルールをグループ化
-const getRulesByCategory = (category: RuleCategory): AnalysisRule[] => {
+export const getRulesByCategory = (category: RuleCategory): AnalysisRule[] => {
   return ANALYSIS_RULES.filter(rule => rule.category === category);
 };
 
@@ -317,7 +276,7 @@ export interface RuleViolation {
  * @param settings 有効なルール設定
  * @returns 違反リスト
  */
-const checkRuleViolations = (
+export const checkRuleViolations = (
   result: { photoCategory?: string; remarksCategory?: string; remarksValue?: string; detail?: string },
   settings: RuleSettings
 ): RuleViolation[] => {
