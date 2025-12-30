@@ -173,6 +173,7 @@ export interface AnalysisHistoryEntry {
   id: string;                      // ユニークID (UUID)
   sessionKey: string;              // セッション識別キー（重複チェック用）
   createdAt: number;               // 解析日時
+  updatedAt?: number;              // 最終更新日時
   photoCount: number;              // 写真数
   instruction: string;             // 使用した指示文
   workTypes: string[];             // 含まれる工種（サマリー用）

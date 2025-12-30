@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PhotoRecord, ProcessingStats, AIAnalysisResult, SortPolicy } from '../types';
-import { saveProjectData, loadProjectData, clearProjectData, cacheAnalysis } from '../utils/storage';
+import { saveProjectData, loadProjectData, clearProjectData, cacheAnalysis, saveAnalysisHistory } from '../utils/storage';
 import { initLearningService, recordManualEdit } from '../services/learningService';
 import { sortPhotosLogical } from '../utils/sortingUtils';
 import { learnFromOrder } from '../utils/learnedSortOrder';
@@ -102,6 +102,11 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     learnFromOrder(orderedDetails);
     setPhotos(reorderedPhotos);
     addLog?.(`順序を学習しました: ${orderedDetails.filter(d => d).join(' → ')}`, 'info');
+
+    // 履歴を更新（既存セッションがあれば上書き）
+    saveAnalysisHistory(reorderedPhotos, '並べ替え').catch(err => {
+      console.error('履歴更新エラー:', err);
+    });
   }, [addLog]);
 
   // 項目を一括更新
