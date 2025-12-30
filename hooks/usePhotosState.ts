@@ -120,6 +120,33 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     addLog?.(`測点を一括置換: ${replacements.length}枚`, 'success');
   }, [addLog]);
 
+  // 項目を一括更新
+  const bulkUpdateFields = useCallback((updates: Array<{ fileName: string; field: keyof AIAnalysisResult; value: string }>) => {
+    if (updates.length === 0) return;
+
+    setPhotos(prev => prev.map(p => {
+      const photoUpdates = updates.filter(u => u.fileName === p.fileName);
+      if (photoUpdates.length === 0 || !p.analysis) return p;
+
+      let updatedAnalysis = { ...p.analysis };
+      const editedFields = updatedAnalysis.editedFields ? [...updatedAnalysis.editedFields] : [];
+
+      photoUpdates.forEach(update => {
+        updatedAnalysis = { ...updatedAnalysis, [update.field]: update.value };
+        if (!editedFields.includes(update.field as string)) {
+          editedFields.push(update.field as string);
+        }
+      });
+
+      updatedAnalysis.editedFields = editedFields;
+      cacheAnalysis(p, updatedAnalysis).catch(console.error);
+      return { ...p, analysis: updatedAnalysis };
+    }));
+
+    const fieldName = updates[0]?.field || 'field';
+    addLog?.(`${fieldName}を一括更新: ${updates.length}件`, 'success');
+  }, [addLog]);
+
   // プロジェクトをクローズ
   const closeProject = useCallback(async (confirmMsg: string) => {
     if (window.confirm(confirmMsg)) {
@@ -168,6 +195,7 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     deletePhoto,
     reorderPhotos,
     replaceStations,
+    bulkUpdateFields,
     closeProject,
     sortPhotos,
     updateStats,

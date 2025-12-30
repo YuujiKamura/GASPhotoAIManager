@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Replace, Wand2, Star, Settings, RefreshCw, Github } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Replace, Wand2, Star, Settings, RefreshCw, Github, Layers } from 'lucide-react';
 
 interface MenuSection {
   label: { ja: string; en: string };
@@ -25,6 +25,7 @@ interface PreviewToolsMenuProps {
   onRefine: () => void;
   onShowHistory: () => void;
   onOpenStationReplace?: () => void;
+  onOpenBulkEditor?: () => void;
   onOpenMasterEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
@@ -39,6 +40,7 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
   onRefine,
   onShowHistory,
   onOpenStationReplace,
+  onOpenBulkEditor,
   onOpenMasterEditor,
   onApplyAliases,
   onOpenGitHubSync
@@ -107,6 +109,15 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
           label: { ja: '測点の一括置換', en: 'Replace Stations' },
           onClick: () => { onOpenStationReplace?.(); setShowMenu(false); },
           show: !!onOpenStationReplace
+        },
+        {
+          icon: <Layers className="w-4 h-4 text-green-400" />,
+          iconColor: 'text-green-400',
+          hoverBg: 'hover:bg-green-600',
+          label: { ja: '一括編集', en: 'Bulk Edit' },
+          title: { ja: '複数写真の項目を一括編集', en: 'Edit multiple photo fields at once' },
+          onClick: () => { onOpenBulkEditor?.(); setShowMenu(false); },
+          show: !!onOpenBulkEditor
         },
         {
           icon: <Wand2 className="w-4 h-4 text-purple-400" />,
