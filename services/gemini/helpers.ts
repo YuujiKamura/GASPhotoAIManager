@@ -65,19 +65,21 @@ export const trackFieldChange = (
 export const formatExamplesForPrompt = (examples: AnalysisExample[]): string => {
   if (examples.length === 0) return '';
 
-  const exampleTexts = examples.map((ex, i) => {
-    const a = ex.analysis;
-    return `
+  const exampleTexts = examples
+    .filter(ex => ex.analysis) // analysisが存在するもののみ
+    .map((ex, i) => {
+      const a = ex.analysis;
+      return `
 Example ${i + 1}: "${ex.name}"
-- workType: "${a.workType}"
+- workType: "${a.workType || ''}"
 - variety: "${a.variety || ''}"
 - detail: "${a.detail || ''}"
-- station: "${a.station}"
-- remarks: "${a.remarks}"
-- description: "${a.description}"
-- hasBoard: ${a.hasBoard}
+- station: "${a.station || ''}"
+- remarks: "${a.remarks || ''}"
+- description: "${a.description || ''}"
+- hasBoard: ${a.hasBoard ?? false}
 `.trim();
-  });
+    });
 
   return `
 --- FEW-SHOT EXAMPLES (お手本) ---
