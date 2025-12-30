@@ -7,6 +7,7 @@
 
 export type RuleCategory =
   | 'photoCategory'      // 写真区分ルール
+  | 'safetyManagement'   // 安全管理写真ルール
   | 'hierarchy'          // 階層構造制約
   | 'temperature'        // 温度写真ルール
   | 'masterProtection';  // マスタ保護
@@ -33,7 +34,13 @@ export const RULE_CATEGORIES: RuleCategoryInfo[] = [
     id: 'photoCategory',
     label: '写真区分ルール',
     icon: '📷',
-    description: '写真を5つの区分に分類するルール'
+    description: '写真を6つの区分に分類するルール'
+  },
+  {
+    id: 'safetyManagement',
+    label: '安全管理写真ルール',
+    icon: '🦺',
+    description: '朝礼・KY活動等の安全管理写真を判定するルール'
   },
   {
     id: 'hierarchy',
@@ -95,6 +102,56 @@ export const ANALYSIS_RULES: AnalysisRule[] = [
     category: 'photoCategory',
     label: '施工状況デフォルト',
     description: '他の区分に該当しない作業中写真は施工状況',
+    isFixed: true,
+    defaultEnabled: true
+  },
+
+  // === 安全管理写真ルール ===
+  {
+    id: 'sm_morning_assembly',
+    category: 'safetyManagement',
+    label: '朝礼状況（条件ベース）',
+    description: '5名以上集合 + ヘルメット + 重機停止 + 説明者 = 朝礼状況（確定）',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'sm_time_based',
+    category: 'safetyManagement',
+    label: '撮影時間判定',
+    description: '7:00-8:30の集合写真 = 朝礼、17:00-18:30の点灯 = 点灯確認',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'sm_empty_worktype',
+    category: 'safetyManagement',
+    label: '工種・種別・細別は空',
+    description: '安全管理写真は workType="", variety="", detail="" とする',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'sm_gathered_not_working',
+    category: 'safetyManagement',
+    label: '集合+非作業 = 安全管理',
+    description: '作業員が集合していて作業していない = 安全管理写真（確定）',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'sm_ky_activity',
+    category: 'safetyManagement',
+    label: 'KY活動状況',
+    description: 'KYボード周りに集合 + 書き込み/指差し = KY活動状況',
+    isFixed: true,
+    defaultEnabled: true
+  },
+  {
+    id: 'sm_safety_patrol',
+    category: 'safetyManagement',
+    label: '安全巡視状況',
+    description: '1-2名の監督者が点検クリップボードを持って歩いている',
     isFixed: true,
     defaultEnabled: true
   },

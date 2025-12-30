@@ -7,6 +7,7 @@
 import { AppMode } from "../../types";
 import { formatHierarchyForPrompt } from "../../utils/constructionMaster";
 import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../../utils/analysisRules";
+import { getAllRemarksCategories, PHOTO_CATEGORIES, TIME_BASED_RULES, KEY_DISTINCTIONS } from "../../utils/classificationRules";
 
 /**
  * モード別システム指示を生成
@@ -297,24 +298,22 @@ MGS2の無線通信のように、簡潔でプロフェッショナルに対話�
 `;
 
 /**
- * 温度管理・品質管理写真の備考カテゴリ（enumで強制）
+ * 温度管理・品質管理写真の備考カテゴリ（classificationRulesから生成 + 追加）
  */
 export const REMARKS_CATEGORIES = [
-  // 温度管理（品質管理写真）
-  "到着温度", "敷均し温度", "初期締固め前温度", "開放温度",
+  // classificationRules.tsから取得
+  ...getAllRemarksCategories(),
+  // 追加カテゴリ（classificationRulesに定義されていないもの）
   "アスファルト混合物温度測定",
-  // 密度測定（品質管理写真）
-  "現場密度測定",
-  // 施工状況
-  "転圧状況", "敷均し状況", "舗設状況", "初期転圧状況", "2次転圧状況",
-  "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
-  "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
-  // 着手前・完成
-  "着手前", "完了", "竣工", "施工完了",
-  // 出来形
-  "不陸整正出来形", "路盤厚出来形", "表層厚出来形", "幅員出来形",
-  // 安全管理
-  "朝礼状況", "KY活動状況", "新規入場者教育状況", "保安施設設置状況", "点灯確認状況", "安全巡視状況",
+  "初期転圧状況", "2次転圧状況",
+  "端部乳剤塗布状況", "清掃状況",
+  "積込状況", "据付状況", "設置状況",
+  "施工完了",
   // その他
   "その他"
 ];
+
+/**
+ * 写真カテゴリ定義をエクスポート（Dashboard用）
+ */
+export { PHOTO_CATEGORIES, TIME_BASED_RULES, KEY_DISTINCTIONS } from "../../utils/classificationRules";
