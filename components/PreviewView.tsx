@@ -195,7 +195,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         <ConsolePanel logs={logs} isOpen={showConsole} onToggle={() => setShowConsole(!showConsole)} onClear={onClearLogs} isProcessing={isProcessing} onSendInstruction={onSendInstruction} />
       </div>
 
-      {showHistoryPanel && <SessionHistoryPanel onLoad={() => {}} onClose={() => setShowHistoryPanel(false)} />}
+      {showHistoryPanel && <SessionHistoryPanel onLoad={() => {}} onClose={() => setShowHistoryPanel(false)} currentPhotos={photos} />}
     </div>
   );
 };

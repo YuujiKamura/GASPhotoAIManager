@@ -1,15 +1,34 @@
-import React from 'react';
-import { History, Trash2, X, Calendar, Image, FileText, Star, Check, Edit2 } from 'lucide-react';
-import { AnalysisHistoryEntry } from '../types';
+import React, { useState } from 'react';
+import { History, Trash2, X, Calendar, Image, FileText, Star, Check, Edit2, Save } from 'lucide-react';
+import { AnalysisHistoryEntry, PhotoRecord } from '../types';
 import { useSessionHistory, formatFullDate } from '../hooks/useSessionHistory';
+import { saveAnalysisHistory } from '../utils/storage';
 
 interface Props {
   onLoad: (entry: AnalysisHistoryEntry) => void;
   onClose: () => void;
+  currentPhotos?: PhotoRecord[];
 }
 
-const SessionHistoryPanel: React.FC<Props> = ({ onLoad, onClose }) => {
+const SessionHistoryPanel: React.FC<Props> = ({ onLoad, onClose, currentPhotos }) => {
   const state = useSessionHistory();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSaveCurrentSession = async () => {
+    if (!currentPhotos || currentPhotos.length === 0 || saving) return;
+    setSaving(true);
+    try {
+      await saveAnalysisHistory(currentPhotos, '手動保存', 'manual');
+      setSaved(true);
+      state.refresh(); // 履歴リストを更新
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      console.error('Failed to save session:', e);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
@@ -28,6 +47,26 @@ const SessionHistoryPanel: React.FC<Props> = ({ onLoad, onClose }) => {
           </div>
           <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors"><X className="w-5 h-5" /></button>
         </div>
+
+        {/* Save Current Session Banner */}
+        {currentPhotos && currentPhotos.length > 0 && (
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-blue-800">
+              <Image className="w-4 h-4" />
+              <span>現在のセッション: {currentPhotos.length}枚</span>
+            </div>
+            <button
+              onClick={handleSaveCurrentSession}
+              disabled={saving || saved}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                saved ? 'bg-green-500 text-white' : saving ? 'bg-gray-300 text-gray-500' : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {saved ? '保存完了' : saving ? '保存中...' : '履歴に保存'}
+            </button>
+          </div>
+        )}
 
         {/* Active Example Banner */}
         {state.activeExampleId && (

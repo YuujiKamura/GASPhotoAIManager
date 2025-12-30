@@ -289,7 +289,7 @@ export default function App() {
 
       {modals.showHistory && (
         <Suspense fallback={<LoadingFallback />}>
-          <SessionHistoryPanel onLoad={analysisHandlers.handleLoadHistory} onClose={() => modals.setShowHistory(false)} />
+          <SessionHistoryPanel onLoad={analysisHandlers.handleLoadHistory} onClose={() => modals.setShowHistory(false)} currentPhotos={photos} />
         </Suspense>
       )}
 

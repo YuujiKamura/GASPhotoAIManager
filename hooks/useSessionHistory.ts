@@ -133,11 +133,15 @@ export function useSessionHistory() {
 
   const exampleCount = entries.filter(e => e.isExampleSession).length;
 
+  const refresh = useCallback(() => {
+    loadHistory();
+  }, []);
+
   return {
     entries, loading, confirmClear, activeExampleId, editingId, editName, setEditName, exampleCount,
     handleDelete, handleClearAll, cancelClear,
     handleToggleExample, handleSetActive, clearActiveExample,
-    handleStartEdit, handleSaveName, cancelEdit,
+    handleStartEdit, handleSaveName, cancelEdit, refresh,
   };
 }
 
