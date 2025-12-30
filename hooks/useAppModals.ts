@@ -17,6 +17,7 @@ export function useAppModals() {
   const [showHealthDashboard, setShowHealthDashboard] = useState(false);
   const [showNormalizationModal, setShowNormalizationModal] = useState(false);
   const [showPdfLoadDialog, setShowPdfLoadDialog] = useState(false);
+  const [showAIFramework, setShowAIFramework] = useState(false);
 
   // 一括でモーダルを閉じる
   const closeAllModals = () => {
@@ -32,6 +33,7 @@ export function useAppModals() {
     setShowHealthDashboard(false);
     setShowNormalizationModal(false);
     setShowPdfLoadDialog(false);
+    setShowAIFramework(false);
   };
 
   return {
@@ -82,6 +84,10 @@ export function useAppModals() {
     // PDF Load Dialog
     showPdfLoadDialog,
     setShowPdfLoadDialog,
+
+    // AI Framework Dashboard
+    showAIFramework,
+    setShowAIFramework,
 
     // Utility
     closeAllModals,
