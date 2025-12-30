@@ -104,22 +104,6 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     addLog?.(`順序を学習しました: ${orderedDetails.filter(d => d).join(' → ')}`, 'info');
   }, [addLog]);
 
-  // 測点を一括置換
-  const replaceStations = useCallback((replacements: Array<{ fileName: string; newStation: string }>) => {
-    if (replacements.length === 0) return;
-
-    setPhotos(prev => prev.map(p => {
-      const replacement = replacements.find(r => r.fileName === p.fileName);
-      if (replacement && p.analysis) {
-        const updatedAnalysis = { ...p.analysis, station: replacement.newStation };
-        cacheAnalysis(p, updatedAnalysis).catch(console.error);
-        return { ...p, analysis: updatedAnalysis };
-      }
-      return p;
-    }));
-    addLog?.(`測点を一括置換: ${replacements.length}枚`, 'success');
-  }, [addLog]);
-
   // 項目を一括更新
   const bulkUpdateFields = useCallback((updates: Array<{ fileName: string; field: keyof AIAnalysisResult; value: string }>) => {
     if (updates.length === 0) return;
@@ -194,7 +178,6 @@ export function usePhotosState(addLog?: (message: string, type?: 'info' | 'succe
     updatePhoto,
     deletePhoto,
     reorderPhotos,
-    replaceStations,
     bulkUpdateFields,
     closeProject,
     sortPhotos,

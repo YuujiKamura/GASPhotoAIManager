@@ -45,7 +45,9 @@
       "Bash(npx knip:*)",
       "Bash(npx depcheck --json)",
       "Bash(npx depcheck --help:*)",
-      "Bash(npx depcheck:*)"
+      "Bash(npx depcheck:*)",
+      "Bash(gh pr view:*)",
+      "Bash(curl:*)"
     ]
   }
 }

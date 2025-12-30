@@ -10,7 +10,7 @@ interface UsePhotoManagementProps {
 
 /**
  * エイリアス適用のカスタムフック
- * 注: updatePhoto, deletePhoto, reorderPhotos, replaceStations は usePhotosState に統合済み
+ * 注: updatePhoto, deletePhoto, reorderPhotos は usePhotosState に統合済み
  */
 export function usePhotoManagement({
   photos,

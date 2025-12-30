@@ -35,7 +35,6 @@ const ModelValidation = lazy(() => import('./components/ModelValidation'));
 const UsagePanel = lazy(() => import('./components/UsagePanel'));
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
-const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
 const BulkEntryEditor = lazy(() => import('./components/BulkEntryEditor'));
 const NormalizationPreviewModal = lazy(() => import('./components/NormalizationPreviewModal'));
 const SessionHistoryPanel = lazy(() => import('./components/SessionHistoryPanel'));
@@ -72,7 +71,7 @@ export default function App() {
 
   // Photos State (unified state management with auto-save)
   const photosState = usePhotosState(processing.addLog);
-  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, replaceStations, bulkUpdateFields } = photosState;
+  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, bulkUpdateFields } = photosState;
 
   // Analysis Handlers
   const analysisHandlers = useAnalysisHandlers({
@@ -235,7 +234,7 @@ export default function App() {
           onReanalyzePhoto={projectHandlers.handleInteractiveAnalysis}
           onAbort={() => { analysisHandlers.shouldAbortRef.current = true; processing.addLog("解析を中断しています...", 'info'); }}
           onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onReorderPhotos={reorderPhotos}
-          onOpenStationReplace={() => modals.setShowStationReplace(true)} onOpenBulkEditor={() => modals.setShowBulkEditor(true)}
+          onOpenBulkEditor={() => modals.setShowBulkEditor(true)}
           onApplyAliases={photoManagement.handleApplyAliases} onOpenGitHubSync={() => modals.setShowGitHubSync(true)}
         />
       )}
@@ -264,12 +263,6 @@ export default function App() {
       {modals.showManualPairing && (
         <Suspense fallback={<LoadingFallback />}>
           <ManualPairingModal photos={pending.manualPairingPhotos} lang={lang} onComplete={analysisHandlers.handleManualPairingComplete} onCancel={() => modals.setShowManualPairing(false)} />
-        </Suspense>
-      )}
-
-      {modals.showStationReplace && (
-        <Suspense fallback={<LoadingFallback />}>
-          <StationReplaceModal photos={photos} lang={lang} onClose={() => modals.setShowStationReplace(false)} onReplace={replaceStations} />
         </Suspense>
       )}
 

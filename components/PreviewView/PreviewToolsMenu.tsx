@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Replace, Wand2, Star, Settings, RefreshCw, Github, Layers } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers } from 'lucide-react';
 
 interface MenuSection {
   label: { ja: string; en: string };
@@ -24,7 +24,6 @@ interface PreviewToolsMenuProps {
   onEnterReorderMode: () => void;
   onRefine: () => void;
   onShowHistory: () => void;
-  onOpenStationReplace?: () => void;
   onOpenBulkEditor?: () => void;
   onOpenMasterEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
@@ -39,7 +38,6 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
   onEnterReorderMode,
   onRefine,
   onShowHistory,
-  onOpenStationReplace,
   onOpenBulkEditor,
   onOpenMasterEditor,
   onApplyAliases,
@@ -101,14 +99,6 @@ const PreviewToolsMenu: React.FC<PreviewToolsMenuProps> = ({
           hoverBg: 'hover:bg-orange-600',
           label: { ja: '並べ替え', en: 'Reorder' },
           onClick: () => { onEnterReorderMode(); setShowMenu(false); }
-        },
-        {
-          icon: <Replace className="w-4 h-4 text-cyan-400" />,
-          iconColor: 'text-cyan-400',
-          hoverBg: 'hover:bg-cyan-600',
-          label: { ja: '測点の一括置換', en: 'Replace Stations' },
-          onClick: () => { onOpenStationReplace?.(); setShowMenu(false); },
-          show: !!onOpenStationReplace
         },
         {
           icon: <Layers className="w-4 h-4 text-green-400" />,

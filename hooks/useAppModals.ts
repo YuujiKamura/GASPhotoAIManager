@@ -10,7 +10,6 @@ export function useAppModals() {
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [showManualPairing, setShowManualPairing] = useState(false);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
-  const [showStationReplace, setShowStationReplace] = useState(false);
   const [showBulkEditor, setShowBulkEditor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showGitHubSync, setShowGitHubSync] = useState(false);
@@ -27,7 +26,6 @@ export function useAppModals() {
     setShowRefineModal(false);
     setShowManualPairing(false);
     setShowMasterEditor(false);
-    setShowStationReplace(false);
     setShowBulkEditor(false);
     setShowHistory(false);
     setShowGitHubSync(false);
@@ -58,10 +56,6 @@ export function useAppModals() {
     // Master Editor
     showMasterEditor,
     setShowMasterEditor,
-
-    // Station Replace
-    showStationReplace,
-    setShowStationReplace,
 
     // Bulk Editor
     showBulkEditor,
