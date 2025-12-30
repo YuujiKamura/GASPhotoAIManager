@@ -97,6 +97,15 @@ const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const menuItems = [
+    // 設定系
+    ...(onOpenSettings ? [{ label: apiKey ? `API設定 (${getSelectedModel()})` : 'API設定 (未設定)', icon: <Settings className="w-4 h-4" />, onClick: onOpenSettings, warning: !apiKey }] : []),
+    ...(onOpenMasterEditor ? [{ label: 'マスタ管理', icon: <FolderTree className="w-4 h-4" />, onClick: onOpenMasterEditor }] : []),
+    { divider: true },
+    // ダッシュボード
+    ...(onOpenHealthDashboard ? [{ label: 'Health Dashboard', icon: <Activity className="w-4 h-4" />, onClick: onOpenHealthDashboard }] : []),
+    ...(onOpenAIFramework ? [{ label: 'AI Framework', icon: <Brain className="w-4 h-4" />, onClick: onOpenAIFramework }] : []),
+    { divider: true },
+    // データ管理
     { label: 'Backup (JSON)', icon: '💾', onClick: onExportJson },
     { label: 'Restore (JSON)', icon: '📂', onClick: () => fileInputImportRef.current?.click() },
     ...(onPdfButtonClick ? [{ label: 'Load PDF', icon: <FileText className="w-4 h-4" />, onClick: onPdfButtonClick }] : []),
@@ -121,18 +130,7 @@ const UploadView: React.FC<UploadViewProps> = ({
               <span className="text-xs">📋</span>{txt.resumeLabel}
             </button>
           )}
-          {onOpenMasterEditor && <HeaderButton onClick={onOpenMasterEditor} icon={<FolderTree className="w-4 h-4" />} label="マスタ" title="マスタ設定" />}
-          {onOpenHealthDashboard && <HeaderButton onClick={onOpenHealthDashboard} icon={<Activity className="w-4 h-4" />} label="Health" title="コードベース健全性ダッシュボード" className="bg-blue-100 hover:bg-blue-200 text-blue-600" />}
-          {onOpenAIFramework && <HeaderButton onClick={onOpenAIFramework} icon={<Brain className="w-4 h-4" />} label="AI" title="AIフレームワーク ダッシュボード" className="bg-purple-100 hover:bg-purple-200 text-purple-600" />}
           {onShowHistory && <HeaderButton onClick={onShowHistory} icon={<History className="w-4 h-4" />} label="履歴" title="解析履歴" className="bg-indigo-100 hover:bg-indigo-200 text-indigo-600" />}
-          <HeaderButton
-            onClick={onOpenSettings}
-            icon={<Settings className="w-4 h-4" />}
-            label={apiKey ? getSelectedModel() : 'キー未設定'}
-            title={apiKey ? "API設定" : "APIキーを設定してください"}
-            className={apiKey ? 'bg-slate-100 hover:bg-slate-200 text-slate-600' : 'bg-red-100 hover:bg-red-200 text-red-600'}
-            badge={!apiKey && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
-          />
           {/* 3-dot Menu */}
           <div className="relative">
             <button onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }} className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="その他">
@@ -143,7 +141,7 @@ const UploadView: React.FC<UploadViewProps> = ({
                 {menuItems.map((item, i) => 'divider' in item ? (
                   <div key={i} className="border-t border-gray-100 my-1" />
                 ) : (
-                  <button key={i} onClick={() => { item.onClick?.(); setShowMenu(false); }} className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${item.danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'}`}>
+                  <button key={i} onClick={() => { item.onClick?.(); setShowMenu(false); }} className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${item.danger ? 'text-red-600 hover:bg-red-50' : item.warning ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-700 hover:bg-gray-100'}`}>
                     <span>{item.icon}</span> {item.label}
                   </button>
                 ))}
