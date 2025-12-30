@@ -1,8 +1,9 @@
-import React from 'react';
-import { X, Edit3, CheckCircle2, Image, ChevronDown, ChevronUp, History, Layers } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Edit3, CheckCircle2, Image, ChevronDown, ChevronUp, History, Layers, BookOpen, Search } from 'lucide-react';
 import { PhotoRecord, AIAnalysisResult } from '../types';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 import { useBulkEditorState } from '../hooks/useBulkEditorState';
+import { extractAllValidValues } from '../utils/constructionMaster';
 
 const EDITABLE_FIELDS = LAYOUT_FIELDS.filter(f => !f.readOnly);
 type FieldKey = keyof AIAnalysisResult;
@@ -21,6 +22,87 @@ const FIELD_LABELS: Record<string, { ja: string; en: string }> = {
   station: { ja: '測点', en: 'Station' },
   remarks: { ja: '備考', en: 'Remarks' },
   measurements: { ja: '測定値', en: 'Measurements' },
+};
+
+// マスタから選択可能なフィールド
+const MASTER_SELECTABLE_FIELDS = ['workType', 'variety', 'detail', 'remarks'] as const;
+
+// マスタ選択コンポーネント
+const MasterSelector: React.FC<{
+  field: string;
+  lang: 'en' | 'ja';
+  onSelect: (value: string) => void;
+  selectedValue: string;
+}> = ({ field, lang, onSelect, selectedValue }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const masterValues = useMemo(() => {
+    const { workTypes, varieties, details, remarks } = extractAllValidValues();
+    switch (field) {
+      case 'workType':
+        return Array.from(workTypes).sort();
+      case 'variety':
+        return Array.from(varieties).sort();
+      case 'detail':
+        return Array.from(details).sort();
+      case 'remarks':
+        return Array.from(remarks).sort();
+      default:
+        return [];
+    }
+  }, [field]);
+
+  const filteredValues = useMemo(() => {
+    if (!searchQuery) return masterValues;
+    const query = searchQuery.toLowerCase();
+    return masterValues.filter(v => v.toLowerCase().includes(query));
+  }, [masterValues, searchQuery]);
+
+  if (masterValues.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder={lang === 'ja' ? 'マスタを検索...' : 'Search master...'}
+          className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+        />
+      </div>
+      <div className="max-h-40 overflow-y-auto border rounded-lg bg-white">
+        {filteredValues.length === 0 ? (
+          <div className="p-3 text-center text-gray-500 text-sm">
+            {lang === 'ja' ? '一致する項目がありません' : 'No matching items'}
+          </div>
+        ) : (
+          <div className="p-2 flex flex-wrap gap-1">
+            {filteredValues.map(value => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onSelect(value)}
+                className={`text-xs px-2 py-1 rounded transition-colors ${
+                  selectedValue === value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 hover:bg-blue-100 text-gray-700'
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="text-xs text-gray-500">
+        {lang === 'ja'
+          ? `${filteredValues.length}件 / 全${masterValues.length}件`
+          : `${filteredValues.length} / ${masterValues.length} items`}
+      </div>
+    </div>
+  );
 };
 
 const PhotoSelectItem: React.FC<{
@@ -54,8 +136,10 @@ const PhotoSelectItem: React.FC<{
 
 const BulkEntryEditor: React.FC<BulkEntryEditorProps> = ({ photos, lang, onClose, onApply }) => {
   const state = useBulkEditorState(photos);
+  const [inputMode, setInputMode] = useState<'master' | 'free'>('master');
   const fieldLabel = FIELD_LABELS[state.selectedField]?.[lang] || state.selectedField;
   const isMultiline = EDITABLE_FIELDS.find(f => f.key === state.selectedField)?.multiline;
+  const isMasterSelectable = (MASTER_SELECTABLE_FIELDS as readonly string[]).includes(state.selectedField);
 
   const handleApply = () => {
     const updates = state.buildUpdates();
@@ -97,30 +181,86 @@ const BulkEntryEditor: React.FC<BulkEntryEditorProps> = ({ photos, lang, onClose
 
         {/* New Value Input */}
         <div className="p-4 bg-blue-50 border-b">
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            <Edit3 className="w-3 h-3 inline mr-1" />{lang === 'ja' ? `新しい${fieldLabel}` : `New ${fieldLabel}`}
-          </label>
-          <div className="relative">
-            {isMultiline ? (
-              <textarea value={state.newValue} onChange={e => state.setNewValue(e.target.value)} placeholder={lang === 'ja' ? '値を入力...' : 'Enter value...'} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none" rows={3} />
-            ) : (
-              <input type="text" value={state.newValue} onChange={e => state.setNewValue(e.target.value)} placeholder={lang === 'ja' ? '値を入力...' : 'Enter value...'} className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-            )}
-            {state.fieldHistory.length > 0 && !isMultiline && (
-              <button type="button" onClick={() => state.setShowHistory(!state.showHistory)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded" title={lang === 'ja' ? '履歴から選択' : 'Select from history'}>
-                <History className="w-4 h-4 text-gray-500" />
+          {/* Input Mode Tabs - マスタ選択可能なフィールドのみ表示 */}
+          {isMasterSelectable && (
+            <div className="flex gap-1 mb-3">
+              <button
+                onClick={() => setInputMode('master')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  inputMode === 'master'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                {lang === 'ja' ? 'マスタから選択' : 'Select from Master'}
               </button>
+              <button
+                onClick={() => setInputMode('free')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  inputMode === 'free'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                {lang === 'ja' ? '自由入力' : 'Free Input'}
+              </button>
+            </div>
+          )}
+
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            {inputMode === 'master' && isMasterSelectable ? (
+              <><BookOpen className="w-3 h-3 inline mr-1" />{lang === 'ja' ? `${fieldLabel}を選択` : `Select ${fieldLabel}`}</>
+            ) : (
+              <><Edit3 className="w-3 h-3 inline mr-1" />{lang === 'ja' ? `新しい${fieldLabel}` : `New ${fieldLabel}`}</>
             )}
-            {state.showHistory && state.fieldHistory.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                <div className="p-2 text-xs text-gray-500 border-b flex items-center gap-1"><History className="w-3 h-3" />{lang === 'ja' ? '最近使用した値' : 'Recent values'}</div>
-                {state.fieldHistory.map((s, i) => (
-                  <button key={i} type="button" onClick={() => { state.setNewValue(s); state.setShowHistory(false); }} className="w-full text-left px-3 py-2 hover:bg-blue-50 font-mono text-sm border-b last:border-b-0">{s}</button>
-                ))}
-              </div>
-            )}
-          </div>
-          {state.valueStats.length > 0 && (
+          </label>
+
+          {/* Master Selector Mode */}
+          {isMasterSelectable && inputMode === 'master' ? (
+            <div className="space-y-2">
+              <MasterSelector
+                field={state.selectedField}
+                lang={lang}
+                onSelect={(value) => state.setNewValue(value)}
+                selectedValue={state.newValue}
+              />
+              {state.newValue && (
+                <div className="p-2 bg-green-50 border border-green-200 rounded-lg">
+                  <span className="text-xs text-green-700">
+                    {lang === 'ja' ? '選択中: ' : 'Selected: '}
+                  </span>
+                  <span className="font-mono text-sm text-green-800">{state.newValue}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Free Input Mode */
+            <div className="relative">
+              {isMultiline ? (
+                <textarea value={state.newValue} onChange={e => state.setNewValue(e.target.value)} placeholder={lang === 'ja' ? '値を入力...' : 'Enter value...'} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none" rows={3} />
+              ) : (
+                <input type="text" value={state.newValue} onChange={e => state.setNewValue(e.target.value)} placeholder={lang === 'ja' ? '値を入力...' : 'Enter value...'} className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              )}
+              {state.fieldHistory.length > 0 && !isMultiline && (
+                <button type="button" onClick={() => state.setShowHistory(!state.showHistory)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded" title={lang === 'ja' ? '履歴から選択' : 'Select from history'}>
+                  <History className="w-4 h-4 text-gray-500" />
+                </button>
+              )}
+              {state.showHistory && state.fieldHistory.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  <div className="p-2 text-xs text-gray-500 border-b flex items-center gap-1"><History className="w-3 h-3" />{lang === 'ja' ? '最近使用した値' : 'Recent values'}</div>
+                  {state.fieldHistory.map((s, i) => (
+                    <button key={i} type="button" onClick={() => { state.setNewValue(s); state.setShowHistory(false); }} className="w-full text-left px-3 py-2 hover:bg-blue-50 font-mono text-sm border-b last:border-b-0">{s}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 既存の値から選択 - 自由入力モードまたは非マスタフィールドで表示 */}
+          {(!isMasterSelectable || inputMode === 'free') && state.valueStats.length > 0 && (
             <div className="mt-2">
               <div className="text-xs text-gray-500 mb-1">{lang === 'ja' ? '既存の値から選択:' : 'Use existing value:'}</div>
               <div className="flex flex-wrap gap-1">

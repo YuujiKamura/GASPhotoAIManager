@@ -43,6 +43,18 @@ export {
   addWorkTypeToHistory
 } from './workTypeHistory';
 
+// Remarks History
+export {
+  getRemarksHistory,
+  addRemarksToHistory
+} from './remarksHistory';
+
+// Measurements History
+export {
+  getMeasurementsHistory,
+  addMeasurementsToHistory
+} from './measurementsHistory';
+
 // Export/Import
 export {
   exportDataToJson,
