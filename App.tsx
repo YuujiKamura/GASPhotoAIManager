@@ -166,9 +166,9 @@ export default function App() {
     analysisHandlers.startAnalysisPipeline(files, '', useCache);
   }, [setCurrentSortPolicy, analysisHandlers]);
 
-  // 簡素化した手動ペアリングハンドラ
+  // 簡素化した手動入力ハンドラ（ペアリングUIをスキップして直接プレビューへ）
   const handleManualPairing = useCallback((files: File[]) => {
-    analysisHandlers.handleStartManualPairing(files, '');
+    analysisHandlers.handleStartManualPairing(files, '', true); // skipPairingUI = true
   }, [analysisHandlers]);
 
   // Render

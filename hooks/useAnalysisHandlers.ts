@@ -93,11 +93,32 @@ export function useAnalysisHandlers(p: Props) {
 
   const handleSmartSort = useCallback(() => { setPhotos(sortPhotosLogical([...photos], currentSortPolicy)); setSuccessMsg(lang === 'ja' ? "測点・シーン順に並び替え" : "Sorted"); }, [photos, setPhotos, currentSortPolicy, lang, setSuccessMsg]);
 
-  const handleStartManualPairing = useCallback(async (files: File[], inst: string) => {
-    setIsProcessing(true); setErrorMsg(null); addLog('手動ペアリング開始...', 'info'); setInitialInstruction(inst); setActiveInstruction(inst);
-    try { const r = await loadFiles(files, addLog); setManualPairingPhotos(r); setShowManualPairing(true); }
+  const handleStartManualPairing = useCallback(async (files: File[], inst: string, skipPairingUI = false) => {
+    setIsProcessing(true); setErrorMsg(null); addLog('手動入力モード開始...', 'info'); setInitialInstruction(inst); setActiveInstruction(inst);
+    try {
+      const r = await loadFiles(files, addLog);
+      if (skipPairingUI) {
+        // 状況写真など：ペアリングUIをスキップして直接プレビューへ
+        const loc = extractLocationName(inst);
+        const records = r.map((rec, i) => ({
+          ...rec,
+          analysis: { ...emptyAnalysis(rec.fileName), station: loc, sceneId: `MANUAL_S${i + 1}`, phase: 'status' as const },
+          status: 'done' as const
+        }));
+        setPhotos(records);
+        setStats({ total: records.length, processed: records.length, success: records.length, failed: 0, cached: 0 });
+        setInitialLayout(3); // 状況写真は3列レイアウト
+        setShowPreview(true);
+        setSuccessMsg(lang === 'ja' ? `${records.length}枚の手動入力準備完了` : `${records.length} photos ready for manual input`);
+        addLog(`手動入力: ${records.length}枚`, 'success');
+      } else {
+        // 従来のペアリングUI
+        setManualPairingPhotos(r);
+        setShowManualPairing(true);
+      }
+    }
     catch (e: any) { setErrorMsg(e.message); } finally { setIsProcessing(false); }
-  }, [addLog, setIsProcessing, setErrorMsg, setInitialInstruction, setActiveInstruction, setManualPairingPhotos, setShowManualPairing]);
+  }, [addLog, setIsProcessing, setErrorMsg, setInitialInstruction, setActiveInstruction, setManualPairingPhotos, setShowManualPairing, setPhotos, setStats, setInitialLayout, setShowPreview, setSuccessMsg, lang]);
 
   const handleManualPairingComplete = useCallback((pairs: Array<{ before: PhotoRecord; after: PhotoRecord; id: string }>) => {
     const loc = extractLocationName(activeInstruction || initialInstruction);
