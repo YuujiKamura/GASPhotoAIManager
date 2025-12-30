@@ -20,26 +20,39 @@ import { trackUsage } from "../usageTracker";
 import { getRelevantExamples, getActiveSession } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
-import { hasApiKey } from './apiKey';
-import { getSelectedModel, PRIMARY_MODEL, FALLBACK_MODEL, ModelType } from './models';
+// Core module - サブモジュールを統合
+import {
+  hasApiKey,
+  getSelectedModel,
+  PRIMARY_MODEL,
+  FALLBACK_MODEL,
+  type ModelType,
+  type AbortChecker,
+  type LogFunction,
+  checkAbort,
+  formatDuration,
+  formatExamplesForPrompt,
+  sleep,
+  MAX_RETRIES,
+  RETRY_DELAY_MS,
+  BATCH_ANALYSIS_SCHEMA,
+  parseAIResponse,
+  mapToAnalysisResults,
+  matchResultsToRecords,
+  applyContextRelay,
+  validateResults,
+  getSystemInstruction,
+  selectWorkTypes,
+  getFilteredHierarchy,
+} from './core';
 
 // Re-export from submodules for backward compatibility
-export { checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, sleep, MAX_RETRIES, RETRY_DELAY_MS } from './helpers';
-export type { AbortChecker, LogFunction } from './helpers';
-export { getSystemInstruction, REMARKS_CATEGORIES } from './systemPrompts';
-export { selectWorkTypes, getFilteredHierarchy } from './workTypeSelector';
+export { checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, sleep, MAX_RETRIES, RETRY_DELAY_MS, REMARKS_CATEGORIES } from './core';
+export type { AbortChecker, LogFunction } from './core';
+export { getSystemInstruction } from './core';
+export { selectWorkTypes, getFilteredHierarchy } from './core';
 export { analyzePhotoInteractive } from './interactiveAnalysis';
 export type { InteractiveMessage, InteractiveAnalysisResult } from './interactiveAnalysis';
-
-// Import from submodules
-import {
-  AbortChecker, checkAbort, formatDuration, formatExamplesForPrompt,
-  sleep, MAX_RETRIES, RETRY_DELAY_MS, LogFunction,
-  BATCH_ANALYSIS_SCHEMA, parseAIResponse, mapToAnalysisResults,
-  matchResultsToRecords, applyContextRelay, validateResults
-} from './helpers';
-import { getSystemInstruction } from './systemPrompts';
-import { selectWorkTypes, getFilteredHierarchy } from './workTypeSelector';
 
 // ============================================
 // ターゲット写真の特定

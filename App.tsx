@@ -23,15 +23,16 @@ import {
   usePhotosState,
 } from './hooks';
 
-// Core components
+// Core components (UploadViewとPreviewViewは主要ビューなので静的インポート)
 import UploadView from './components/UploadView';
 import PreviewView from './components/PreviewView';
-import LimitModal from './components/LimitModal';
-import RefineModal from './components/RefineModal';
-import ApiKeySetup from './components/ApiKeySetup';
-import ModelValidation from './components/ModelValidation';
-import UsagePanel from './components/UsagePanel';
+
 // Lazy-loaded components
+const LimitModal = lazy(() => import('./components/LimitModal'));
+const RefineModal = lazy(() => import('./components/RefineModal'));
+const ApiKeySetup = lazy(() => import('./components/ApiKeySetup'));
+const ModelValidation = lazy(() => import('./components/ModelValidation'));
+const UsagePanel = lazy(() => import('./components/UsagePanel'));
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
 const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
@@ -185,12 +186,16 @@ export default function App() {
       )}
 
       {modals.showApiKeySetup && (
-        <ApiKeySetup onComplete={handleApiKeyInput} onCancel={() => modals.setShowApiKeySetup(false)}
-          onImportPdf={() => { modals.setShowApiKeySetup(false); modals.setShowPdfLoadDialog(true); }} />
+        <Suspense fallback={<LoadingFallback />}>
+          <ApiKeySetup onComplete={handleApiKeyInput} onCancel={() => modals.setShowApiKeySetup(false)}
+            onImportPdf={() => { modals.setShowApiKeySetup(false); modals.setShowPdfLoadDialog(true); }} />
+        </Suspense>
       )}
 
       {modals.showModelValidation && apiKeyState.pendingApiKey && (
-        <ModelValidation apiKey={apiKeyState.pendingApiKey} onComplete={handleModelValidationComplete} onBack={handleModelValidationBack} />
+        <Suspense fallback={<LoadingFallback />}>
+          <ModelValidation apiKey={apiKeyState.pendingApiKey} onComplete={handleModelValidationComplete} onBack={handleModelValidationBack} />
+        </Suspense>
       )}
 
       {modals.showHealthDashboard ? (
@@ -234,17 +239,25 @@ export default function App() {
         />
       )}
 
-      {showPreview && <UsagePanel photoCount={photos.length} totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)} />}
+      {showPreview && (
+        <Suspense fallback={<LoadingFallback />}>
+          <UsagePanel photoCount={photos.length} totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)} />
+        </Suspense>
+      )}
 
       {pending.pendingFiles && (
-        <LimitModal totalFiles={pending.pendingFiles.length} maxPhotos={MAX_PHOTOS} selectionStart={pending.selectionStart}
-          selectionCount={pending.selectionCount} lang={lang} onStartChange={pending.setSelectionStart}
-          onCountChange={(v) => pending.setSelectionCount(Math.min(v, MAX_PHOTOS))}
-          onCancel={() => pending.setPendingFiles(null)} onConfirm={startProcessingFlow.confirmLimitSelection} />
+        <Suspense fallback={<LoadingFallback />}>
+          <LimitModal totalFiles={pending.pendingFiles.length} maxPhotos={MAX_PHOTOS} selectionStart={pending.selectionStart}
+            selectionCount={pending.selectionCount} lang={lang} onStartChange={pending.setSelectionStart}
+            onCountChange={(v) => pending.setSelectionCount(Math.min(v, MAX_PHOTOS))}
+            onCancel={() => pending.setPendingFiles(null)} onConfirm={startProcessingFlow.confirmLimitSelection} />
+        </Suspense>
       )}
 
       {modals.showRefineModal && (
-        <RefineModal lang={lang} photos={photos} onClose={() => modals.setShowRefineModal(false)} onRunAnalysis={analysisHandlers.handleRefineAnalysis} />
+        <Suspense fallback={<LoadingFallback />}>
+          <RefineModal lang={lang} photos={photos} onClose={() => modals.setShowRefineModal(false)} onRunAnalysis={analysisHandlers.handleRefineAnalysis} />
+        </Suspense>
       )}
 
       {modals.showManualPairing && (
