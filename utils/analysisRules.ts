@@ -291,7 +291,7 @@ export const loadRuleSettings = (): RuleSettings => {
 };
 
 // カテゴリ別にルールをグループ化
-export const getRulesByCategory = (category: RuleCategory): AnalysisRule[] => {
+const getRulesByCategory = (category: RuleCategory): AnalysisRule[] => {
   return ANALYSIS_RULES.filter(rule => rule.category === category);
 };
 

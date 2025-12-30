@@ -46,7 +46,7 @@ interface PreviewViewProps {
 
 const PreviewView: React.FC<PreviewViewProps> = ({
   lang, photos, stats, appMode, isProcessing, currentStep, errorMsg, successMsg, logs,
-  initialLayout = 3, onClearLogs, onGoHome, onRefine, onExportExcel, onUpdatePhoto,
+  initialLayout = 3 as const, onClearLogs, onGoHome, onRefine, onExportExcel, onUpdatePhoto,
   onDeletePhoto, onAutoPair, onManualPair, onSendInstruction, onReanalyzePhoto, onAbort,
   onOpenMasterEditor, onReorderPhotos, onOpenStationReplace, onApplyAliases, onOpenGitHubSync
 }) => {

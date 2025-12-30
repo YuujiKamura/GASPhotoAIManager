@@ -79,7 +79,7 @@ export const hasEncryptedApiKey = (): boolean => {
 };
 
 // マスターパスワードが設定済みか
-export const hasMasterPassword = (): boolean => {
+const hasMasterPassword = (): boolean => {
   return !!localStorage.getItem(MASTER_HASH_KEY);
 };
 

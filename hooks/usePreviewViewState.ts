@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PhotoRecord } from '../types';
 import { generateZip } from '../utils/zipGenerator';
 

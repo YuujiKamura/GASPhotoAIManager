@@ -12,7 +12,6 @@ export {
   setApiKeyEncrypted,
   loadApiKeyEncrypted,
   hasEncryptedApiKey,
-  hasMasterPassword,
   clearApiKey,
   hasApiKey,
   sanitizeErrorMessage,
