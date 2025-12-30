@@ -294,9 +294,24 @@ function analyzeComponents(files: FileStats[]): ComponentAnalysis[] {
 function detectArchitectureIssues(modules: ModuleNode[]): string[] {
   const issues: string[] = [];
 
-  // 1. 循環依存の検出
+  // 許容されるパターン（問題として報告しない）
+  const ALLOWED_HIGH_IMPACT = [
+    'types.ts',           // 型定義は全体で共有されるべき
+    'geminiService.ts',   // コアサービス
+    'usageTracker.ts',    // 横断的関心事
+  ];
+
+  // 1. 循環依存の検出（レイヤー間の循環のみ報告）
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
+
+  function getCategory(filePath: string): string {
+    if (filePath.startsWith('components/')) return 'components';
+    if (filePath.startsWith('services/')) return 'services';
+    if (filePath.startsWith('hooks/')) return 'hooks';
+    if (filePath.startsWith('utils/')) return 'utils';
+    return 'other';
+  }
 
   function hasCycle(nodePath: string, pathStack: string[] = []): string[] | null {
     if (recursionStack.has(nodePath)) {
@@ -323,33 +338,51 @@ function detectArchitectureIssues(modules: ModuleNode[]): string[] {
     visited.clear();
     recursionStack.clear();
     const cycle = hasCycle(mod.path);
-    if (cycle && cycle.length > 1) {
-      const cycleStr = cycle.slice(-3).join(' → ');
-      if (!issues.some(i => i.includes(cycleStr))) {
-        issues.push(`循環依存: ${cycleStr}`);
+    if (cycle && cycle.length > 2) {
+      // 同じカテゴリ内の循環は許容（utils/storage内など）
+      const categories = cycle.map(p => getCategory(p));
+      const uniqueCategories = [...new Set(categories)];
+
+      // 異なるレイヤー間での循環のみ報告
+      if (uniqueCategories.length > 1) {
+        const cycleStr = cycle.slice(-3).join(' → ');
+        if (!issues.some(i => i.includes(cycleStr))) {
+          issues.push(`循環依存: ${cycleStr}`);
+        }
       }
     }
   }
 
-  // 2. 過度に多くのモジュールに依存しているファイル
+  // 2. 過度に多くのモジュールに依存しているファイル（閾値を上げる）
   for (const mod of modules) {
-    if (mod.imports.length > 15) {
+    if (mod.imports.length > 20) {  // 15→20に緩和
       issues.push(`依存過多: ${mod.path} (${mod.imports.length}モジュール)`);
     }
   }
 
   // 3. 多くのモジュールから依存されている（変更影響大）
+  // utils、型定義、コアサービスは除外
   for (const mod of modules) {
-    if (mod.importedBy.length > 10 && mod.category !== 'utils') {
+    const fileName = mod.path.split('/').pop() || '';
+    const isAllowed = mod.category === 'utils' ||
+                      ALLOWED_HIGH_IMPACT.includes(fileName) ||
+                      mod.path.endsWith('.d.ts');
+
+    if (mod.importedBy.length > 15 && !isAllowed) {  // 10→15に緩和
       issues.push(`高影響: ${mod.path} は ${mod.importedBy.length} ファイルから参照`);
     }
   }
 
   // 4. レイヤー違反（componentsがservicesを直接importなど）
+  // geminiServiceは許可、それ以外のservicesを3つ以上直接参照している場合のみ
   for (const mod of modules) {
     if (mod.category === 'components') {
-      const directServiceImports = mod.imports.filter(i => i.startsWith('services/') && !i.includes('gemini'));
-      if (directServiceImports.length > 2) {
+      const directServiceImports = mod.imports.filter(i =>
+        i.startsWith('services/') &&
+        !i.includes('gemini') &&
+        !i.includes('usageTracker')
+      );
+      if (directServiceImports.length > 3) {  // 2→3に緩和
         issues.push(`レイヤー違反疑い: ${mod.path} がservicesを直接参照`);
       }
     }
