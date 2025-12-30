@@ -32,6 +32,7 @@ interface UploadViewProps {
   onOpenHealthDashboard?: () => void;
   onAskAI?: (prompt: string) => Promise<string>;
   onClearLogs?: () => void;
+  onTestOneInteractive?: (file: File) => void;
 }
 
 const STORAGE_KEY_INSTRUCTION = 'gemini_last_upload_instruction';
@@ -56,7 +57,8 @@ const UploadView: React.FC<UploadViewProps> = ({
   lang, isProcessing, photos, appMode, apiKey, logs, isAskingAI,
   setAppMode, onStartProcessing, onResume, onCloseProject, onExportJson, onImportJson,
   onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onManualPairing,
-  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onAskAI, onClearLogs
+  onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onAskAI, onClearLogs,
+  onTestOneInteractive
 }) => {
   const txt = TRANS[lang];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -224,9 +226,9 @@ const UploadView: React.FC<UploadViewProps> = ({
             onRuleSettingsChange={handleRuleSettingsChange}
             onCancel={() => setPendingFiles(null)}
             onTestOne={() => {
-              if (pendingFiles?.length) {
+              if (pendingFiles?.length && onTestOneInteractive) {
                 setSelectedModel(selectedModelLocal);
-                onStartProcessing([pendingFiles[0]], instruction, useCache, sortPolicy);
+                onTestOneInteractive(pendingFiles[0]);
               }
             }}
             onStartAll={handleConfirmStart}

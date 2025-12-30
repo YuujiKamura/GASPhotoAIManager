@@ -1,7 +1,8 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, lazy, Suspense, useCallback } from 'react';
 import { PhotoRecord, AppMode } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
+import { fileToBase64 } from './utils/fileHandlers';
 
 // Hooks
 import {
@@ -141,6 +142,23 @@ export default function App() {
     modals.setShowApiKeySetup(true);
   };
 
+  // Test One Interactive: FileをPhotoRecordに変換して対話型解析を開く
+  const handleTestOneInteractive = useCallback(async (file: File) => {
+    try {
+      const base64 = await fileToBase64(file);
+      const photoRecord: PhotoRecord = {
+        fileName: file.name,
+        base64,
+        mimeType: file.type,
+        status: 'pending',
+      };
+      setInteractiveAnalysisTarget(photoRecord);
+    } catch (error) {
+      console.error('Failed to load file for interactive analysis:', error);
+      processing.setErrorMsg('ファイルの読み込みに失敗しました');
+    }
+  }, [processing]);
+
   // Render
   return (
     <>
@@ -182,6 +200,7 @@ export default function App() {
           onManualPairing={analysisHandlers.handleStartManualPairing} onShowHistory={() => modals.setShowHistory(true)}
           onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onOpenHealthDashboard={() => modals.setShowHealthDashboard(true)}
           onAskAI={analysisHandlers.handleAskAI} onClearLogs={processing.clearLogs}
+          onTestOneInteractive={handleTestOneInteractive}
         />
       ) : (
         <PreviewView
