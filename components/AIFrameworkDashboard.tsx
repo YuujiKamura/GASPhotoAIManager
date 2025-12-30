@@ -19,7 +19,8 @@ import {
   loadRuleSettings, saveRuleSettings, rulesToPromptText, getDefaultRuleSettings
 } from '../utils/analysisRules';
 import { AVAILABLE_MODELS, getSelectedModel, setSelectedModel, ModelType } from '../services/gemini/models';
-import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText, LearnedSettings, saveSettingsLocally } from '../services/learningService';
+import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText, saveSettingsLocally } from '../services/learningService';
+import type { LearnedSettings } from '../types';
 import { getRelevantExamples, getExamples, deleteExample, clearExamples } from '../utils/storage/examples';
 import { formatExamplesForPrompt } from '../services/gemini/helpers';
 import { AppMode, AnalysisExample } from '../types';
@@ -65,7 +66,7 @@ const STORAGE_KEYS = {
   temperature: 'ai_temperature',
 };
 
-export const AIFrameworkDashboard: React.FC<AIFrameworkDashboardProps> = ({ onClose, appMode }) => {
+const AIFrameworkDashboard: React.FC<AIFrameworkDashboardProps> = ({ onClose, appMode }) => {
   const [activeTab, setActiveTab] = useState<TabType>('prompt');
   const [expandedLayers, setExpandedLayers] = useState<Set<PromptLayerType>>(new Set(['rules']));
   const [ruleSettings, setRuleSettings] = useState<RuleSettings>(loadRuleSettings());
@@ -196,7 +197,9 @@ export const AIFrameworkDashboard: React.FC<AIFrameworkDashboardProps> = ({ onCl
       const emptySettings: LearnedSettings = {
         rules: [],
         aliases: [],
+        examples: [],
         version: 1,
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       await saveSettingsLocally(emptySettings);

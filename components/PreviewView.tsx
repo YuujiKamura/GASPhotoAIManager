@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
@@ -7,10 +7,7 @@ import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
 import { ReorderModeView, PreviewToolsMenu } from './PreviewView/index';
 import { useReorderMode } from '../hooks/useReorderMode';
-import { generateZip } from '../utils/zipGenerator';
-
-declare const saveAs: any;
-const A4_WIDTH_PX = 794;
+import { usePreviewViewState } from '../hooks/usePreviewViewState';
 
 interface PreviewViewProps {
   lang: 'en' | 'ja';
@@ -43,81 +40,36 @@ interface PreviewViewProps {
   onOpenMasterEditor?: () => void;
   onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
   onOpenStationReplace?: () => void;
+  onOpenBulkEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
   lang, photos, stats, appMode, isProcessing, currentStep, errorMsg, successMsg, logs,
-  initialLayout = 3, onClearLogs, onGoHome, onRefine, onExportExcel, onUpdatePhoto,
+  initialLayout = 3 as const, onClearLogs, onGoHome, onRefine, onExportExcel, onUpdatePhoto,
   onDeletePhoto, onAutoPair, onManualPair, onSendInstruction, onReanalyzePhoto, onAbort,
-  onOpenMasterEditor, onReorderPhotos, onOpenStationReplace, onApplyAliases, onOpenGitHubSync
+  onOpenMasterEditor, onReorderPhotos, onOpenStationReplace, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync
 }) => {
   const txt = TRANS[lang];
-  const [scale, setScale] = useState(1);
-  const [isFitMode, setIsFitMode] = useState(true);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [isGeneratingZip, setIsGeneratingZip] = useState(false);
-  const [showConsole, setShowConsole] = useState(true);
-  const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
-  const previewContainerRef = useRef<HTMLDivElement>(null);
-
   const reorder = useReorderMode(photos, onReorderPhotos);
 
-  useEffect(() => { setPhotosPerPage(initialLayout); }, [initialLayout]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (!previewContainerRef.current) return;
-      const containerWidth = previewContainerRef.current.clientWidth;
-      const availableWidth = containerWidth - 32;
-      setScale(isFitMode && availableWidth < A4_WIDTH_PX ? availableWidth / A4_WIDTH_PX : 1);
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  }, [isFitMode]);
-
-  const handleDownloadPDF = async () => {
-    setIsGeneratingPdf(true);
-    try {
-      const { generatePdfWithImages } = await import('../utils/pdfGenerator');
-      const pdfBlob = await generatePdfWithImages(photos, photosPerPage, '工事写真帳');
-      const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
-      saveAs(pdfBlob, filename);
-      window.open(URL.createObjectURL(pdfBlob), '_blank');
-    } catch (err) {
-      console.error('PDF generation error:', err);
-      alert(txt.pdfError);
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
-
-  const handleDownloadZip = async () => {
-    if (photos.length === 0) return;
-    setIsGeneratingZip(true);
-    try {
-      const blob = await generateZip(photos);
-      saveAs(blob, `electronic_delivery_${new Date().toISOString().slice(0, 10)}.zip`);
-    } catch (e) {
-      console.error(e);
-      alert("Failed to generate ZIP.");
-    } finally {
-      setIsGeneratingZip(false);
-    }
-  };
-
-  const handleAutoPairClick = () => {
-    if (photosPerPage !== 2) setPhotosPerPage(2);
-    onAutoPair();
-  };
-
-  const handleManualPairClick = () => {
-    setPhotosPerPage(2);
-    onManualPair();
-  };
+  const {
+    scale,
+    photosPerPage,
+    isGeneratingPdf,
+    isGeneratingZip,
+    showConsole,
+    showHistoryPanel,
+    previewContainerRef,
+    setPhotosPerPage,
+    setShowConsole,
+    setShowHistoryPanel,
+    handleDownloadPDF,
+    handleDownloadZip,
+    handleAutoPairClick,
+    handleManualPairClick,
+  } = usePreviewViewState(initialLayout);
 
   const hasPhotosWithBoard = photos.some(p => p.analysis?.hasBoard);
 
@@ -171,11 +123,11 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               <Download className="w-4 h-4" /> <span className="hidden lg:inline">{txt.exportExcel}</span>
             </button>
             {appMode === 'construction' && (
-              <button onClick={handleDownloadZip} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title="XML/ZIP">
+              <button onClick={() => handleDownloadZip(photos)} disabled={isGeneratingZip || isProcessing} className="p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title="XML/ZIP">
                 {isGeneratingZip ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />} <span className="hidden lg:inline">ZIP</span>
               </button>
             )}
-            <button onClick={handleDownloadPDF} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-3 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title={txt.exportPDF}>
+            <button onClick={() => handleDownloadPDF(photos, txt)} disabled={isGeneratingPdf || isProcessing} className="p-2 md:px-3 md:py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold text-white shadow-sm flex items-center gap-1" title={txt.exportPDF}>
               {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} <span className="hidden lg:inline">PDF</span>
             </button>
           </div>
@@ -184,12 +136,13 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             <PreviewToolsMenu
               lang={lang}
               isProcessing={isProcessing}
-              onAutoPair={handleAutoPairClick}
-              onManualPair={handleManualPairClick}
+              onAutoPair={() => handleAutoPairClick(onAutoPair)}
+              onManualPair={() => handleManualPairClick(onManualPair)}
               onEnterReorderMode={reorder.enterReorderMode}
               onRefine={onRefine}
               onShowHistory={() => setShowHistoryPanel(true)}
               onOpenStationReplace={onOpenStationReplace}
+              onOpenBulkEditor={onOpenBulkEditor}
               onOpenMasterEditor={onOpenMasterEditor}
               onApplyAliases={onApplyAliases}
               onOpenGitHubSync={onOpenGitHubSync}

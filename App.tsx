@@ -23,18 +23,20 @@ import {
   usePhotosState,
 } from './hooks';
 
-// Core components
+// Core components (UploadViewとPreviewViewは主要ビューなので静的インポート)
 import UploadView from './components/UploadView';
 import PreviewView from './components/PreviewView';
-import LimitModal from './components/LimitModal';
-import RefineModal from './components/RefineModal';
-import ApiKeySetup from './components/ApiKeySetup';
-import ModelValidation from './components/ModelValidation';
-import UsagePanel from './components/UsagePanel';
+
 // Lazy-loaded components
+const LimitModal = lazy(() => import('./components/LimitModal'));
+const RefineModal = lazy(() => import('./components/RefineModal'));
+const ApiKeySetup = lazy(() => import('./components/ApiKeySetup'));
+const ModelValidation = lazy(() => import('./components/ModelValidation'));
+const UsagePanel = lazy(() => import('./components/UsagePanel'));
 const ManualPairingModal = lazy(() => import('./components/ManualPairingModal'));
 const MasterEditorModal = lazy(() => import('./components/MasterEditorModal'));
 const StationReplaceModal = lazy(() => import('./components/StationReplaceModal'));
+const BulkEntryEditor = lazy(() => import('./components/BulkEntryEditor'));
 const NormalizationPreviewModal = lazy(() => import('./components/NormalizationPreviewModal'));
 const SessionHistoryPanel = lazy(() => import('./components/SessionHistoryPanel'));
 const GitHubSyncPanel = lazy(() => import('./components/GitHubSyncPanel'));
@@ -70,7 +72,7 @@ export default function App() {
 
   // Photos State (unified state management with auto-save)
   const photosState = usePhotosState(processing.addLog);
-  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, replaceStations } = photosState;
+  const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, replaceStations, bulkUpdateFields } = photosState;
 
   // Analysis Handlers
   const analysisHandlers = useAnalysisHandlers({
@@ -165,9 +167,9 @@ export default function App() {
     analysisHandlers.startAnalysisPipeline(files, '', useCache);
   }, [setCurrentSortPolicy, analysisHandlers]);
 
-  // 簡素化した手動ペアリングハンドラ
+  // 簡素化した手動入力ハンドラ（ペアリングUIをスキップして直接プレビューへ）
   const handleManualPairing = useCallback((files: File[]) => {
-    analysisHandlers.handleStartManualPairing(files, '');
+    analysisHandlers.handleStartManualPairing(files, '', true); // skipPairingUI = true
   }, [analysisHandlers]);
 
   // Render
@@ -185,12 +187,16 @@ export default function App() {
       )}
 
       {modals.showApiKeySetup && (
-        <ApiKeySetup onComplete={handleApiKeyInput} onCancel={() => modals.setShowApiKeySetup(false)}
-          onImportPdf={() => { modals.setShowApiKeySetup(false); modals.setShowPdfLoadDialog(true); }} />
+        <Suspense fallback={<LoadingFallback />}>
+          <ApiKeySetup onComplete={handleApiKeyInput} onCancel={() => modals.setShowApiKeySetup(false)}
+            onImportPdf={() => { modals.setShowApiKeySetup(false); modals.setShowPdfLoadDialog(true); }} />
+        </Suspense>
       )}
 
       {modals.showModelValidation && apiKeyState.pendingApiKey && (
-        <ModelValidation apiKey={apiKeyState.pendingApiKey} onComplete={handleModelValidationComplete} onBack={handleModelValidationBack} />
+        <Suspense fallback={<LoadingFallback />}>
+          <ModelValidation apiKey={apiKeyState.pendingApiKey} onComplete={handleModelValidationComplete} onBack={handleModelValidationBack} />
+        </Suspense>
       )}
 
       {modals.showHealthDashboard ? (
@@ -229,22 +235,30 @@ export default function App() {
           onReanalyzePhoto={projectHandlers.handleInteractiveAnalysis}
           onAbort={() => { analysisHandlers.shouldAbortRef.current = true; processing.addLog("解析を中断しています...", 'info'); }}
           onOpenMasterEditor={() => modals.setShowMasterEditor(true)} onReorderPhotos={reorderPhotos}
-          onOpenStationReplace={() => modals.setShowStationReplace(true)} onApplyAliases={photoManagement.handleApplyAliases}
-          onOpenGitHubSync={() => modals.setShowGitHubSync(true)}
+          onOpenStationReplace={() => modals.setShowStationReplace(true)} onOpenBulkEditor={() => modals.setShowBulkEditor(true)}
+          onApplyAliases={photoManagement.handleApplyAliases} onOpenGitHubSync={() => modals.setShowGitHubSync(true)}
         />
       )}
 
-      {showPreview && <UsagePanel photoCount={photos.length} totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)} />}
+      {showPreview && (
+        <Suspense fallback={<LoadingFallback />}>
+          <UsagePanel photoCount={photos.length} totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)} />
+        </Suspense>
+      )}
 
       {pending.pendingFiles && (
-        <LimitModal totalFiles={pending.pendingFiles.length} maxPhotos={MAX_PHOTOS} selectionStart={pending.selectionStart}
-          selectionCount={pending.selectionCount} lang={lang} onStartChange={pending.setSelectionStart}
-          onCountChange={(v) => pending.setSelectionCount(Math.min(v, MAX_PHOTOS))}
-          onCancel={() => pending.setPendingFiles(null)} onConfirm={startProcessingFlow.confirmLimitSelection} />
+        <Suspense fallback={<LoadingFallback />}>
+          <LimitModal totalFiles={pending.pendingFiles.length} maxPhotos={MAX_PHOTOS} selectionStart={pending.selectionStart}
+            selectionCount={pending.selectionCount} lang={lang} onStartChange={pending.setSelectionStart}
+            onCountChange={(v) => pending.setSelectionCount(Math.min(v, MAX_PHOTOS))}
+            onCancel={() => pending.setPendingFiles(null)} onConfirm={startProcessingFlow.confirmLimitSelection} />
+        </Suspense>
       )}
 
       {modals.showRefineModal && (
-        <RefineModal lang={lang} photos={photos} onClose={() => modals.setShowRefineModal(false)} onRunAnalysis={analysisHandlers.handleRefineAnalysis} />
+        <Suspense fallback={<LoadingFallback />}>
+          <RefineModal lang={lang} photos={photos} onClose={() => modals.setShowRefineModal(false)} onRunAnalysis={analysisHandlers.handleRefineAnalysis} />
+        </Suspense>
       )}
 
       {modals.showManualPairing && (
@@ -256,6 +270,12 @@ export default function App() {
       {modals.showStationReplace && (
         <Suspense fallback={<LoadingFallback />}>
           <StationReplaceModal photos={photos} lang={lang} onClose={() => modals.setShowStationReplace(false)} onReplace={replaceStations} />
+        </Suspense>
+      )}
+
+      {modals.showBulkEditor && (
+        <Suspense fallback={<LoadingFallback />}>
+          <BulkEntryEditor photos={photos} lang={lang} onClose={() => modals.setShowBulkEditor(false)} onApply={bulkUpdateFields} />
         </Suspense>
       )}
 

@@ -70,7 +70,7 @@ export const ANALYSIS_RULES: AnalysisRule[] = [
     id: 'pc_safety_management',
     category: 'photoCategory',
     label: '安全管理写真判定',
-    description: '朝礼・KYミーティング・新規入場者教育・安全巡視・保安施設設置等を安全管理写真に分類',
+    description: '黒板に朝礼・KY・危険予知等の記載がある写真を安全管理写真に分類',
     isFixed: true,
     defaultEnabled: true
   },
@@ -276,7 +276,7 @@ export interface RuleViolation {
  * @param settings 有効なルール設定
  * @returns 違反リスト
  */
-const checkRuleViolations = (
+export const checkRuleViolations = (
   result: { photoCategory?: string; remarksCategory?: string; remarksValue?: string; detail?: string },
   settings: RuleSettings
 ): RuleViolation[] => {

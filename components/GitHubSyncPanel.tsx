@@ -1,154 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Github, Upload, Download, Check, X, AlertCircle, ExternalLink, Key, RefreshCw } from 'lucide-react';
-import {
-  getGitHubToken,
-  setGitHubToken,
-  clearGitHubToken,
-  hasGitHubToken,
-  validateGitHubToken,
-  fetchLearnedSettings,
-  pushLearnedSettings,
-  buildLearnedSettingsFromLocal,
-  getSyncStatus,
-  SyncStatus
-} from '../services/githubSync';
-import { LearnedSettings } from '../types';
+import { useGitHubSyncState } from '../hooks/useGitHubSyncState';
 
 interface GitHubSyncPanelProps {
   onClose: () => void;
 }
 
-type Step = 'setup' | 'connected' | 'syncing';
-
 const GitHubSyncPanel: React.FC<GitHubSyncPanelProps> = ({ onClose }) => {
-  const [step, setStep] = useState<Step>('setup');
-  const [token, setToken] = useState('');
-  const [username, setUsername] = useState<string | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastCommitUrl, setLastCommitUrl] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // 初期化: トークンがあれば接続状態を復元
-  useEffect(() => {
-    const init = async () => {
-      if (hasGitHubToken()) {
-        const savedToken = getGitHubToken()!;
-        const result = await validateGitHubToken(savedToken);
-        if (result.valid) {
-          setUsername(result.username || null);
-          setStep('connected');
-          // ステータスを取得
-          const status = await getSyncStatus(savedToken);
-          setSyncStatus(status);
-        } else {
-          clearGitHubToken();
-        }
-      }
-    };
-    init();
-  }, []);
-
-  // トークン検証
-  const handleValidateToken = async () => {
-    if (!token.trim()) return;
-
-    setIsValidating(true);
-    setError(null);
-
-    const result = await validateGitHubToken(token.trim());
-
-    if (result.valid) {
-      setGitHubToken(token.trim());
-      setUsername(result.username || null);
-      setStep('connected');
-      // ステータスを取得
-      const status = await getSyncStatus(token.trim());
-      setSyncStatus(status);
-    } else {
-      setError(result.error || 'トークンの検証に失敗しました');
-    }
-
-    setIsValidating(false);
-  };
-
-  // ログアウト
-  const handleDisconnect = () => {
-    clearGitHubToken();
-    setUsername(null);
-    setToken('');
-    setSyncStatus(null);
-    setStep('setup');
-  };
-
-  // プッシュ
-  const handlePush = async () => {
-    const savedToken = getGitHubToken();
-    if (!savedToken) return;
-
-    setIsSyncing(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const settings = await buildLearnedSettingsFromLocal();
-      const result = await pushLearnedSettings(savedToken, settings);
-
-      if (result.success) {
-        setLastCommitUrl(result.commitUrl || null);
-        setSuccessMessage('学習データをGitHubにプッシュしました');
-        // ステータス更新
-        const status = await getSyncStatus(savedToken);
-        setSyncStatus(status);
-      } else {
-        setError(result.error || 'プッシュに失敗しました');
-      }
-    } catch (e: any) {
-      setError(e.message || 'プッシュ中にエラーが発生しました');
-    }
-
-    setIsSyncing(false);
-  };
-
-  // プル
-  const handlePull = async () => {
-    const savedToken = getGitHubToken();
-    if (!savedToken) return;
-
-    setIsSyncing(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const settings = await fetchLearnedSettings(savedToken);
-      if (settings) {
-        // TODO: ローカルにマージする処理
-        setSuccessMessage(`GitHubから設定を取得しました (v${settings.version})`);
-        // ステータス更新
-        const status = await getSyncStatus(savedToken);
-        setSyncStatus(status);
-      } else {
-        setError('設定の取得に失敗しました');
-      }
-    } catch (e: any) {
-      setError(e.message || 'プル中にエラーが発生しました');
-    }
-
-    setIsSyncing(false);
-  };
-
-  // ステータス更新
-  const handleRefreshStatus = async () => {
-    const savedToken = getGitHubToken();
-    if (!savedToken) return;
-
-    setIsSyncing(true);
-    const status = await getSyncStatus(savedToken);
-    setSyncStatus(status);
-    setIsSyncing(false);
-  };
+  const {
+    step,
+    token,
+    username,
+    isValidating,
+    error,
+    syncStatus,
+    isSyncing,
+    lastCommitUrl,
+    successMessage,
+    setToken,
+    handleValidateToken,
+    handleDisconnect,
+    handlePush,
+    handlePull,
+    handleRefreshStatus,
+  } = useGitHubSyncState();
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4">

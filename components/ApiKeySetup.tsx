@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { ExternalLink, Key, Camera, ArrowLeft, Lock, Shield, Loader2 } from 'lucide-react';
-import { hasEncryptedApiKey, loadApiKeyEncrypted, setApiKeyEncrypted, hasMasterPassword } from '../services/geminiService';
-import { hashPassword } from '../utils/crypto';
+import { useApiKeySetupState } from '../hooks/useApiKeySetupState';
 
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
@@ -9,103 +8,24 @@ interface ApiKeySetupProps {
   onImportPdf?: () => void;
 }
 
-type SetupMode = 'check' | 'unlock' | 'new';
-
 const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImportPdf }) => {
-  const [mode, setMode] = useState<SetupMode>('check');
-  const [apiKey, setApiKey] = useState('');
-  const [masterPassword, setMasterPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const isValidKey = apiKey.trim().startsWith('AIza') && apiKey.trim().length >= 39;
-  const isValidPassword = masterPassword.length >= 4;
-  const passwordsMatch = masterPassword === confirmPassword;
-
-  // 初期化: 暗号化されたキーがあるかチェック
-  useEffect(() => {
-    if (hasEncryptedApiKey()) {
-      setMode('unlock');
-    } else {
-      setMode('new');
-    }
-  }, []);
-
-  // アンロック処理
-  const handleUnlock = async () => {
-    if (!masterPassword) {
-      setError('パスワードを入力してください');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const success = await loadApiKeyEncrypted(masterPassword);
-      if (success) {
-        // 復号成功 - getApiKey()で取得できるようになる
-        const { getApiKey } = await import('../services/geminiService');
-        const key = getApiKey();
-        if (key) {
-          onComplete(key);
-        } else {
-          setError('キーの読み込みに失敗しました');
-        }
-      } else {
-        setError('パスワードが違います');
-      }
-    } catch (e: any) {
-      setError('復号に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 新規設定処理
-  const handleSubmit = async () => {
-    if (!isValidKey) {
-      setError('有効なAPIキーを入力してください');
-      return;
-    }
-    if (!isValidPassword) {
-      setError('パスワードは4文字以上で入力してください');
-      return;
-    }
-    if (!passwordsMatch) {
-      setError('パスワードが一致しません');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      // マスターパスワードのハッシュを保存
-      const hash = await hashPassword(masterPassword);
-      localStorage.setItem('gaspm_master_hash', hash);
-
-      // APIキーを暗号化して保存
-      await setApiKeyEncrypted(apiKey.trim(), masterPassword);
-      onComplete(apiKey.trim());
-    } catch (e: any) {
-      setError('保存に失敗しました: ' + e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 新規設定に切り替え（暗号化キーを破棄）
-  const handleResetKey = () => {
-    if (window.confirm('保存されたAPIキーを削除しますか？新しいキーを設定できます。')) {
-      localStorage.removeItem('gaspm_encrypted_api_key');
-      localStorage.removeItem('gaspm_master_hash');
-      setMode('new');
-      setMasterPassword('');
-      setError('');
-    }
-  };
+  const {
+    mode,
+    apiKey,
+    masterPassword,
+    confirmPassword,
+    error,
+    loading,
+    isValidKey,
+    isValidPassword,
+    passwordsMatch,
+    setApiKey,
+    setMasterPassword,
+    setConfirmPassword,
+    handleUnlock,
+    handleSubmit,
+    handleResetKey,
+  } = useApiKeySetupState();
 
   if (mode === 'check') {
     return (
@@ -163,7 +83,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                       type="password"
                       value={masterPassword}
                       onChange={(e) => setMasterPassword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
+                      onKeyDown={(e) => e.key === 'Enter' && handleUnlock(onComplete)}
                       placeholder="マスターパスワード"
                       className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
                       autoFocus
@@ -173,7 +93,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                     <p className="text-red-400 text-xs text-center">{error}</p>
                   )}
                   <button
-                    onClick={handleUnlock}
+                    onClick={() => handleUnlock(onComplete)}
                     disabled={loading || !masterPassword}
                     className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                   >
@@ -313,7 +233,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
         <div className="p-4 border-t border-slate-800 bg-slate-900">
           <div className="max-w-md mx-auto">
             <button
-              onClick={handleSubmit}
+              onClick={() => handleSubmit(onComplete)}
               disabled={!isValidKey || !isValidPassword || !passwordsMatch || loading}
               className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
             >

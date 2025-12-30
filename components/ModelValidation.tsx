@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { ArrowLeft, Cpu, Loader2, CheckCircle, XCircle, AlertTriangle, Ban, Search, Shield, Fingerprint } from 'lucide-react';
-import { validateAllModels, AVAILABLE_MODELS, ModelType, ModelStatus, ModelAvailability, getSelectedModel, setSelectedModel, getBestAvailableModel, setTrustedSession } from '../services/geminiService';
-import { isBiometricAvailable, hasRegisteredPasskey, registerPasskey, authenticateWithPasskey, removePasskey } from '../services/webAuthnService';
+import { ModelStatus } from '../services/geminiService';
+import { useModelValidationState } from '../hooks/useModelValidationState';
+import { useBiometricAuth } from '../hooks/useBiometricAuth';
 
 interface ModelValidationProps {
   apiKey: string;
@@ -10,115 +11,31 @@ interface ModelValidationProps {
 }
 
 const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, onBack }) => {
-  const [selectedModel, setSelectedModelState] = useState<ModelType>(getSelectedModel());
-  const [isValidating, setIsValidating] = useState(false);
-  const [modelAvailabilities, setModelAvailabilities] = useState<ModelAvailability[]>([]);
-  const [keyError, setKeyError] = useState<string | null>(null);
-  const [trustSession, setTrustSession] = useState(true);
+  const {
+    selectedModel,
+    isValidating,
+    modelAvailabilities,
+    keyError,
+    trustSession,
+    hasAnyAvailable,
+    setTrustSession,
+    validateModels,
+    handleModelChange,
+    handleSubmit,
+    getStatusText,
+  } = useModelValidationState();
 
-  // 生体認証関連
-  const [biometricSupported, setBiometricSupported] = useState(false);
-  const [hasPasskey, setHasPasskey] = useState(false);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [registerBiometric, setRegisterBiometric] = useState(true);
-  const [biometricError, setBiometricError] = useState<string | null>(null);
-
-  // 生体認証の可否をチェック
-  useEffect(() => {
-    const checkBiometric = async () => {
-      const available = await isBiometricAvailable();
-      setBiometricSupported(available);
-      if (available) {
-        setHasPasskey(hasRegisteredPasskey());
-      }
-    };
-    checkBiometric();
-  }, []);
-
-  const validateModels = async () => {
-    setIsValidating(true);
-    setKeyError(null);
-    setModelAvailabilities(AVAILABLE_MODELS.map(m => ({ ...m, status: 'checking' as ModelStatus })));
-
-    const results = await validateAllModels(apiKey, (modelId, status, error) => {
-      setModelAvailabilities(prev =>
-        prev.map(m => m.id === modelId ? { ...m, status, error } : m)
-      );
-    });
-
-    setModelAvailabilities(results);
-    setIsValidating(false);
-
-    const allInvalid = results.every(r => r.error?.includes('無効'));
-    if (allInvalid) {
-      setKeyError('APIキーが無効です');
-    }
-
-    const bestModel = getBestAvailableModel(results);
-    if (bestModel) {
-      setSelectedModelState(bestModel);
-    }
-  };
-
-  // 生体認証でログイン
-  const handleBiometricLogin = async () => {
-    setIsAuthenticating(true);
-    setBiometricError(null);
-
-    const result = await authenticateWithPasskey();
-
-    if (result.success && result.apiKey) {
-      setTrustedSession(true);
-      onComplete(result.apiKey);
-    } else {
-      setBiometricError(result.error || '認証に失敗しました');
-    }
-
-    setIsAuthenticating(false);
-  };
-
-  // パスキーを削除
-  const handleRemovePasskey = () => {
-    if (confirm('登録済みの生体認証を削除しますか？')) {
-      removePasskey();
-      setHasPasskey(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    const selectedAvailability = modelAvailabilities.find(m => m.id === selectedModel);
-
-    if (!selectedAvailability || selectedAvailability.status !== 'available') {
-      const bestModel = getBestAvailableModel(modelAvailabilities);
-      if (bestModel) {
-        setSelectedModel(bestModel);
-      } else {
-        return;
-      }
-    } else {
-      setSelectedModel(selectedModel);
-    }
-
-    // 生体認証を登録する場合
-    if (biometricSupported && registerBiometric && !hasPasskey) {
-      const result = await registerPasskey(apiKey);
-      if (result.success) {
-        setHasPasskey(true);
-      } else {
-        console.warn('Passkey registration failed:', result.error);
-      }
-    }
-
-    setTrustedSession(trustSession);
-    onComplete(apiKey);
-  };
-
-  const handleModelChange = (model: ModelType) => {
-    const availability = modelAvailabilities.find(m => m.id === model);
-    if (availability?.status === 'available') {
-      setSelectedModelState(model);
-    }
-  };
+  const {
+    biometricSupported,
+    hasPasskey,
+    isAuthenticating,
+    registerBiometric,
+    biometricError,
+    setRegisterBiometric,
+    handleBiometricLogin,
+    handleRemovePasskey,
+    handleRegisterPasskey,
+  } = useBiometricAuth();
 
   const getStatusIcon = (status: ModelStatus) => {
     switch (status) {
@@ -135,22 +52,13 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
     }
   };
 
-  const getStatusText = (status: ModelStatus, error?: string) => {
-    switch (status) {
-      case 'available':
-        return '利用可能';
-      case 'quota_exceeded':
-        return '制限超過';
-      case 'unavailable':
-        return error || '利用不可';
-      case 'checking':
-        return '確認中...';
-      default:
-        return error || 'エラー';
-    }
+  const onSubmit = async () => {
+    await handleSubmit(
+      apiKey,
+      onComplete,
+      async () => handleRegisterPasskey(apiKey)
+    );
   };
-
-  const hasAnyAvailable = modelAvailabilities.some(m => m.status === 'available');
 
   return (
     <div className="fixed inset-0 bg-slate-900 z-[130] flex flex-col">
@@ -179,7 +87,7 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
 
             {/* 検証ボタン */}
             <button
-              onClick={validateModels}
+              onClick={() => validateModels(apiKey)}
               disabled={isValidating}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-medium py-3 rounded-xl transition-all text-sm mb-4"
             >
@@ -289,7 +197,7 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
                   <div className="h-px bg-slate-700"></div>
                   <div className="space-y-2">
                     <button
-                      onClick={handleBiometricLogin}
+                      onClick={() => handleBiometricLogin(onComplete)}
                       disabled={isAuthenticating}
                       className="w-full bg-purple-500 hover:bg-purple-400 disabled:bg-purple-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                     >
@@ -354,7 +262,7 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
       <div className="p-4 border-t border-slate-800 bg-slate-900">
         <div className="max-w-md mx-auto">
           <button
-            onClick={handleSubmit}
+            onClick={onSubmit}
             disabled={isValidating || !hasAnyAvailable}
             className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
           >

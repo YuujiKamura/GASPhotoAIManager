@@ -20,26 +20,39 @@ import { trackUsage } from "../usageTracker";
 import { getRelevantExamples, getActiveSession } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
-import { hasApiKey } from './apiKey';
-import { getSelectedModel, PRIMARY_MODEL, FALLBACK_MODEL, ModelType } from './models';
+// Core module - サブモジュールを統合
+import {
+  hasApiKey,
+  getSelectedModel,
+  PRIMARY_MODEL,
+  FALLBACK_MODEL,
+  type ModelType,
+  type AbortChecker,
+  type LogFunction,
+  checkAbort,
+  formatDuration,
+  formatExamplesForPrompt,
+  sleep,
+  MAX_RETRIES,
+  RETRY_DELAY_MS,
+  BATCH_ANALYSIS_SCHEMA,
+  parseAIResponse,
+  mapToAnalysisResults,
+  matchResultsToRecords,
+  applyContextRelay,
+  validateResults,
+  getSystemInstruction,
+  selectWorkTypes,
+  getFilteredHierarchy,
+} from './core';
 
 // Re-export from submodules for backward compatibility
-export { checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, sleep, MAX_RETRIES, RETRY_DELAY_MS } from './helpers';
-export type { AbortChecker, LogFunction } from './helpers';
-export { getSystemInstruction, REMARKS_CATEGORIES } from './systemPrompts';
-export { selectWorkTypes, getFilteredHierarchy } from './workTypeSelector';
+export { checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, sleep, MAX_RETRIES, RETRY_DELAY_MS, REMARKS_CATEGORIES } from './core';
+export type { AbortChecker, LogFunction } from './core';
+export { getSystemInstruction } from './core';
+export { selectWorkTypes, getFilteredHierarchy } from './core';
 export { analyzePhotoInteractive } from './interactiveAnalysis';
 export type { InteractiveMessage, InteractiveAnalysisResult } from './interactiveAnalysis';
-
-// Import from submodules
-import {
-  AbortChecker, checkAbort, formatDuration, formatExamplesForPrompt,
-  sleep, MAX_RETRIES, RETRY_DELAY_MS, LogFunction,
-  BATCH_ANALYSIS_SCHEMA, parseAIResponse, mapToAnalysisResults,
-  matchResultsToRecords, applyContextRelay, validateResults
-} from './helpers';
-import { getSystemInstruction } from './systemPrompts';
-import { selectWorkTypes, getFilteredHierarchy } from './workTypeSelector';
 
 // ============================================
 // ターゲット写真の特定
@@ -240,18 +253,34 @@ async function prepareAnalysisInputs(
 }
 
 function buildBatchPrompt(records: PhotoRecord[]): string {
+  // 撮影時間情報を含める（安全管理写真の判定に使用）
+  const photoInfoList = records.map(r => {
+    const timeInfo = r.date ? formatShootingTime(r.date) : 'unknown';
+    return `${r.fileName} (撮影時間: ${timeInfo})`;
+  });
+
   return `
     Analyze these ${records.length} photos.
     For each photo, output the JSON object matching the schema.
     Order must match the input order.
 
+    **SHOOTING TIME INFO**: Use the shooting time to help determine photo category.
+    - Photos taken 8:00-9:00 AM with workers gathered = 朝礼状況 (DEFINITE)
+
     **CONTEXT RELAY**: If you cannot clearly determine the station (測点) or variety (種別) from a photo,
     but the previous photo had these values and the current photo appears to be from the same location/work type,
     you may inherit those values. However, always prioritize explicit information visible in the current photo.
 
-    Photo FileNames for reference:
-    ${records.map(r => r.fileName).join(", ")}
+    Photo Info (fileName + shooting time):
+    ${photoInfoList.join("\n    ")}
   `;
+}
+
+function formatShootingTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 async function streamAPIResponse(
