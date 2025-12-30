@@ -27,23 +27,27 @@ let cachedApiKey: string | null = null;
 export const getApiKey = (): string | null => {
   // メモリキャッシュがあればそれを返す
   if (cachedApiKey) return cachedApiKey;
-  // sessionStorageから取得（セキュリティ: ブラウザ閉じるとリセット）
+  // sessionStorageから取得
   const sessionKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
-  if (sessionKey) return sessionKey;
-  // フォールバック: 旧localStorage（移行用、見つかったらsessionStorageに移行）
-  const legacyKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if (legacyKey) {
-    sessionStorage.setItem(API_KEY_STORAGE_KEY, legacyKey);
-    localStorage.removeItem(API_KEY_STORAGE_KEY);
-    return legacyKey;
+  if (sessionKey) {
+    cachedApiKey = sessionKey;
+    return sessionKey;
+  }
+  // localStorageから取得（ブラウザ再起動後も維持）
+  const localKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (localKey) {
+    cachedApiKey = localKey;
+    sessionStorage.setItem(API_KEY_STORAGE_KEY, localKey);
+    return localKey;
   }
   return null;
 };
 
 export const setApiKey = (key: string): void => {
   cachedApiKey = key;
-  // sessionStorageに保存（セキュリティ: ブラウザ閉じるとリセット）
   sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
+  // localStorageにも保存（ブラウザ再起動後も維持）
+  localStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
 // 暗号化してAPIキーを保存
@@ -65,6 +69,9 @@ export const loadApiKeyEncrypted = async (masterPassword: string): Promise<boole
     const decrypted = await decrypt(encrypted, masterPassword, iv, salt);
     if (decrypted && decrypted.startsWith('AIza')) {
       cachedApiKey = decrypted;
+      // session/localStorageにも保存（タブ更新・ブラウザ再起動後も再アンロック不要に）
+      sessionStorage.setItem(API_KEY_STORAGE_KEY, decrypted);
+      localStorage.setItem(API_KEY_STORAGE_KEY, decrypted);
       return true;
     }
     return false;
