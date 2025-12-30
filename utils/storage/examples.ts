@@ -115,7 +115,7 @@ const updateExample = async (example: AnalysisExample): Promise<void> => {
 /**
  * Delete example
  */
-const deleteExample = async (id: string): Promise<void> => {
+export const deleteExample = async (id: string): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
@@ -129,7 +129,7 @@ const deleteExample = async (id: string): Promise<void> => {
 /**
  * Clear all examples
  */
-const clearExamples = async (): Promise<void> => {
+export const clearExamples = async (): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_EXAMPLES, 'readwrite');
