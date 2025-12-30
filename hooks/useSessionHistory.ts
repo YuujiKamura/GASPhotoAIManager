@@ -3,7 +3,6 @@ import { AnalysisHistoryEntry } from '../types';
 import {
   getAnalysisHistory,
   deleteAnalysisHistory,
-  clearAnalysisHistory,
   toggleHistoryAsExample,
   updateHistoryName,
   getActiveExampleHistoryId,
@@ -13,7 +12,6 @@ import {
 export function useSessionHistory() {
   const [entries, setEntries] = useState<AnalysisHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -49,26 +47,6 @@ export function useSessionHistory() {
       console.error('Failed to delete:', err);
     }
   }, [activeExampleId]);
-
-  const handleClearAll = useCallback(async () => {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      return;
-    }
-    try {
-      await clearAnalysisHistory();
-      setEntries([]);
-      setConfirmClear(false);
-      setActiveExampleHistory(null);
-      setActiveExampleId(null);
-    } catch (err) {
-      console.error('Failed to clear:', err);
-    }
-  }, [confirmClear]);
-
-  const cancelClear = useCallback(() => {
-    setConfirmClear(false);
-  }, []);
 
   const handleToggleExample = useCallback(async (entry: AnalysisHistoryEntry, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -138,9 +116,8 @@ export function useSessionHistory() {
   }, []);
 
   return {
-    entries, loading, confirmClear, activeExampleId, editingId, editName, setEditName, exampleCount,
-    handleDelete, handleClearAll, cancelClear,
-    handleToggleExample, handleSetActive, clearActiveExample,
+    entries, loading, activeExampleId, editingId, editName, setEditName, exampleCount,
+    handleDelete, handleToggleExample, handleSetActive, clearActiveExample,
     handleStartEdit, handleSaveName, cancelEdit, refresh,
   };
 }

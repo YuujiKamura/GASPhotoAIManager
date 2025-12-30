@@ -163,28 +163,7 @@ const SessionHistoryPanel: React.FC<Props> = ({ onLoad, onClose, currentPhotos }
 
         {/* Footer */}
         <div className="border-t border-gray-200 p-4 bg-gray-50 rounded-b-2xl">
-          <div className="flex justify-between items-center">
-            <div className="text-xs text-gray-500"><Star className="w-3 h-3 inline mr-1 text-amber-500" />お手本に設定すると次回解析時にAIの参考例として使用されます</div>
-            {state.entries.length > 0 && !state.confirmClear && (
-              <button onClick={state.handleClearAll} className="text-xs text-gray-400 hover:text-red-400 transition-colors">
-                全削除...
-              </button>
-            )}
-          </div>
-          {state.confirmClear && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="text-sm text-red-800 font-medium mb-2">⚠️ {state.entries.length}件の履歴を完全に削除します</div>
-              <div className="text-xs text-red-600 mb-3">この操作は取り消せません。お手本設定も全て失われます。</div>
-              <div className="flex gap-2">
-                <button onClick={state.handleClearAll} className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors">
-                  全て削除する
-                </button>
-                <button onClick={state.cancelClear} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 transition-colors">
-                  やめる
-                </button>
-              </div>
-            </div>
-          )}
+          <div className="text-xs text-gray-500"><Star className="w-3 h-3 inline mr-1 text-amber-500" />お手本に設定すると次回解析時にAIの参考例として使用されます</div>
         </div>
       </div>
     </div>
