@@ -126,7 +126,7 @@ const UploadView: React.FC<UploadViewProps> = ({
               <MoreVertical className="w-5 h-5" />
             </button>
             {viewState.showMenu && (
-              <div className="fixed right-4 top-14 w-56 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="fixed right-4 top-14 w-56 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[200] animate-in fade-in slide-in-from-top-2 duration-200">
                 {menuItems.map((item, i) => 'divider' in item ? (
                   <div key={i} className="border-t border-gray-100 my-1" />
                 ) : (
