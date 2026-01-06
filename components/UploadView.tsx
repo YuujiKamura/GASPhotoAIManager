@@ -142,14 +142,12 @@ const UploadView: React.FC<UploadViewProps> = ({
 
       {/* Main Interaction Area */}
       <div className="flex-1 flex flex-col items-center justify-center relative w-full max-w-2xl mx-auto px-4">
-        <div onClick={handlers.handleClick} className="group cursor-pointer flex flex-col items-center justify-center p-10 md:p-16 z-20 rounded-3xl transition-all duration-300 hover:bg-gray-50 w-full">
-          <div className={`mb-6 transition-transform duration-300 ease-out p-6 rounded-full bg-gray-100 group-hover:bg-blue-100 group-hover:scale-110 ${viewState.isDragging ? 'scale-125 bg-blue-200' : ''}`}>
-            <Upload className={`w-16 h-16 text-gray-400 group-hover:text-blue-600 transition-colors ${viewState.isDragging ? 'text-blue-600' : ''}`} strokeWidth={1.5} />
-          </div>
-          <span className="text-2xl md:text-3xl font-bold text-gray-700 group-hover:text-gray-900 transition-colors tracking-tight text-center">
+        <div onClick={handlers.handleClick} className="group cursor-pointer flex flex-col items-center justify-center p-6 transition-all duration-300">
+          <Upload className={`w-12 h-12 text-gray-400 group-hover:text-blue-600 group-hover:scale-110 transition-all ${viewState.isDragging ? 'text-blue-600 scale-110' : ''}`} strokeWidth={1.5} />
+          <span className="mt-4 text-lg md:text-xl font-bold text-gray-700 group-hover:text-gray-900 transition-colors text-center">
             {viewState.isDragging ? txt.dropHere : txt.putPhotos}
           </span>
-          <span className="mt-3 text-sm text-gray-400 group-hover:text-gray-500 text-center">
+          <span className="mt-2 text-xs text-gray-400 group-hover:text-gray-500 text-center">
             {appMode === 'construction' ? '工事黒板を自動認識します' : 'Click or Drop photos here'}
           </span>
           <input type="file" ref={refs.fileInputRef} onChange={handlers.handleFileInputChange} className="hidden" multiple accept="image/*" />
