@@ -1,5 +1,5 @@
-import React from 'react';
-import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle, CheckCircle } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -69,6 +69,27 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 }) => {
   const txt = TRANS[lang];
   const reorder = useReorderMode(photos, onReorderPhotos);
+
+  // ローカル状態で通知の表示/自動消去を管理
+  const [localErrorMsg, setLocalErrorMsg] = useState<string | null>(null);
+  const [localSuccessMsg, setLocalSuccessMsg] = useState<string | null>(null);
+
+  // 親からのメッセージが変わったらローカル状態を更新
+  useEffect(() => {
+    if (errorMsg) {
+      setLocalErrorMsg(errorMsg);
+      const timer = setTimeout(() => setLocalErrorMsg(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMsg]);
+
+  useEffect(() => {
+    if (successMsg) {
+      setLocalSuccessMsg(successMsg);
+      const timer = setTimeout(() => setLocalSuccessMsg(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMsg]);
 
   const {
     scale,
@@ -166,15 +187,23 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         </div>
       </div>
 
-      {errorMsg && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[102] bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded shadow-lg flex items-center gap-2 max-w-[90vw]">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" /> <span className="text-sm font-medium break-words">{errorMsg}</span>
+      {localErrorMsg && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[102] bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded shadow-lg flex items-center gap-2 max-w-[90vw] animate-in fade-in slide-in-from-top-4">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="text-sm font-medium break-words">{localErrorMsg}</span>
+          <button onClick={() => setLocalErrorMsg(null)} className="ml-2 p-1 hover:bg-red-200 rounded transition-colors" title="閉じる">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {successMsg && (
-        <div className="absolute top-32 left-1/2 transform -translate-x-1/2 z-[102] bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-lg flex items-center gap-2 max-w-[90vw] animate-in fade-in slide-in-from-top-4">
-          <Database className="w-5 h-5 flex-shrink-0" /> <span className="text-sm font-medium break-words">{successMsg}</span>
+      {localSuccessMsg && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[102] bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-lg flex items-center gap-2 max-w-[90vw] animate-in fade-in slide-in-from-top-4">
+          <CheckCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="text-sm font-medium break-words">{localSuccessMsg}</span>
+          <button onClick={() => setLocalSuccessMsg(null)} className="ml-2 p-1 hover:bg-green-200 rounded transition-colors" title="閉じる">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
