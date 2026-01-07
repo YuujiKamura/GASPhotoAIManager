@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { getApiKey, setApiKey as saveApiKey, hasEncryptedApiKey } from '../services/geminiService';
+import { getApiKey, setApiKey as saveApiKey } from '../services/geminiService';
 
 /**
  * APIキー管理のカスタムフック
@@ -8,13 +8,8 @@ export function useApiKey() {
   // 初期化を同期的に行う（useEffectだと一瞬「キー未設定」が表示される）
   const [apiKey, setApiKeyState] = useState<string | null>(() => getApiKey());
   const [pendingApiKey, setPendingApiKey] = useState<string | null>(null);
-  // 暗号化されたキーが存在するかどうか（ロック状態）
-  // 初回レンダリング時点で同期的に判定
-  const [isLocked, setIsLocked] = useState<boolean>(() => {
-    const storedKey = getApiKey();
-    // キーがメモリ/セッションにないが、暗号化されたキーがある = ロック状態
-    return !storedKey && hasEncryptedApiKey();
-  });
+  // 起動時ロックは廃止（パスワードはAPIキー変更時のみ使用）
+  const [isLocked, setIsLocked] = useState<boolean>(false);
 
   // ApiKeySetup → ModelValidation への遷移用
   const handleApiKeyInput = useCallback((key: string) => {

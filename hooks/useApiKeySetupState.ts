@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
-import { hasEncryptedApiKey, loadApiKeyEncrypted, setApiKeyEncrypted } from '../services/geminiService';
-import { hashPassword } from '../utils/crypto';
+import { useState, useCallback } from 'react';
+import { setApiKey as saveApiKey } from '../services/geminiService';
 
-type SetupMode = 'check' | 'unlock' | 'new';
+type SetupMode = 'new';  // 常に新規設定モード（パスワードロックは廃止）
 
 interface ApiKeySetupState {
   mode: SetupMode;
   apiKey: string;
-  masterPassword: string;
-  confirmPassword: string;
+  masterPassword: string;      // 後方互換性のため残す（使用しない）
+  confirmPassword: string;     // 後方互換性のため残す（使用しない）
   error: string;
   loading: boolean;
 }
@@ -18,104 +17,54 @@ interface ApiKeySetupActions {
   setMasterPassword: (value: string) => void;
   setConfirmPassword: (value: string) => void;
   handleUnlock: (onComplete: (key: string) => void) => Promise<void>;
-  handleSubmit: (onComplete: (key: string) => void) => Promise<void>;
+  handleSubmit: (onComplete: (key: string) => void) => void;
   handleResetKey: () => void;
 }
 
 interface ApiKeySetupValidation {
   isValidKey: boolean;
-  isValidPassword: boolean;
-  passwordsMatch: boolean;
+  isValidPassword: boolean;    // 常にtrue（パスワード不要）
+  passwordsMatch: boolean;     // 常にtrue（パスワード不要）
 }
 
 export function useApiKeySetupState(): ApiKeySetupState & ApiKeySetupActions & ApiKeySetupValidation {
-  const [mode, setMode] = useState<SetupMode>('check');
+  const [mode] = useState<SetupMode>('new');  // 常に新規設定モード
   const [apiKey, setApiKey] = useState('');
   const [masterPassword, setMasterPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
 
   const isValidKey = apiKey.trim().startsWith('AIza') && apiKey.trim().length >= 39;
-  const isValidPassword = masterPassword.length >= 4;
-  const passwordsMatch = masterPassword === confirmPassword;
+  const isValidPassword = true;   // パスワード不要
+  const passwordsMatch = true;    // パスワード不要
 
-  // 初期化: 暗号化されたキーがあるかチェック
-  useEffect(() => {
-    if (hasEncryptedApiKey()) {
-      setMode('unlock');
-    } else {
-      setMode('new');
-    }
+  // アンロック処理（後方互換性のため残す - 実際には使用されない）
+  const handleUnlock = useCallback(async (_onComplete: (key: string) => void) => {
+    // パスワードロックは廃止されたため何もしない
   }, []);
 
-  // アンロック処理
-  const handleUnlock = useCallback(async (onComplete: (key: string) => void) => {
-    if (!masterPassword) {
-      setError('パスワードを入力してください');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const success = await loadApiKeyEncrypted(masterPassword);
-      if (success) {
-        const { getApiKey } = await import('../services/geminiService');
-        const key = getApiKey();
-        if (key) {
-          onComplete(key);
-        } else {
-          setError('キーの読み込みに失敗しました');
-        }
-      } else {
-        setError('パスワードが違います');
-      }
-    } catch {
-      setError('復号に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [masterPassword]);
-
-  // 新規設定処理
-  const handleSubmit = useCallback(async (onComplete: (key: string) => void) => {
+  // 新規設定処理（パスワードなしでlocalStorageに保存）
+  const handleSubmit = useCallback((onComplete: (key: string) => void) => {
     if (!isValidKey) {
       setError('有効なAPIキーを入力してください');
       return;
     }
-    if (!isValidPassword) {
-      setError('パスワードは4文字以上で入力してください');
-      return;
-    }
-    if (!passwordsMatch) {
-      setError('パスワードが一致しません');
-      return;
-    }
 
-    setLoading(true);
-    setError('');
+    const trimmedKey = apiKey.trim();
+    saveApiKey(trimmedKey);
+    // 旧暗号化データがあれば削除
+    localStorage.removeItem('gaspm_encrypted_api_key');
+    localStorage.removeItem('gaspm_master_hash');
+    onComplete(trimmedKey);
+  }, [apiKey, isValidKey]);
 
-    try {
-      const hash = await hashPassword(masterPassword);
-      localStorage.setItem('gaspm_master_hash', hash);
-      await setApiKeyEncrypted(apiKey.trim(), masterPassword);
-      onComplete(apiKey.trim());
-    } catch (e: any) {
-      setError('保存に失敗しました: ' + e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey, masterPassword, isValidKey, isValidPassword, passwordsMatch]);
-
-  // 新規設定に切り替え（暗号化キーを破棄）
+  // キーリセット（後方互換性のため残す）
   const handleResetKey = useCallback(() => {
-    if (window.confirm('保存されたAPIキーを削除しますか？新しいキーを設定できます。')) {
+    if (window.confirm('保存されたAPIキーを削除しますか？')) {
+      localStorage.removeItem('construction_album_api_key');
       localStorage.removeItem('gaspm_encrypted_api_key');
       localStorage.removeItem('gaspm_master_hash');
-      setMode('new');
-      setMasterPassword('');
       setError('');
     }
   }, []);
