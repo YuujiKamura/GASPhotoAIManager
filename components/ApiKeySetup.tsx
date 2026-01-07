@@ -1,43 +1,22 @@
 import React from 'react';
-import { ExternalLink, Key, Camera, ArrowLeft, Lock, Shield, Loader2 } from 'lucide-react';
+import { ExternalLink, Key, Camera, ArrowLeft } from 'lucide-react';
 import { useApiKeySetupState } from '../hooks/useApiKeySetupState';
 
 interface ApiKeySetupProps {
   onComplete: (apiKey: string) => void;
-  onUnlock?: (apiKey: string) => void;  // ロック解除時のコールバック（モデル検証スキップ用）
+  onUnlock?: (apiKey: string) => void;  // 後方互換性のため残す
   onCancel?: () => void;
   onImportPdf?: () => void;
 }
 
-const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onUnlock, onCancel, onImportPdf }) => {
+const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImportPdf }) => {
   const {
-    mode,
     apiKey,
-    masterPassword,
-    confirmPassword,
     error,
-    loading,
     isValidKey,
-    isValidPassword,
-    passwordsMatch,
     setApiKey,
-    setMasterPassword,
-    setConfirmPassword,
-    handleUnlock,
     handleSubmit,
-    handleResetKey,
   } = useApiKeySetupState();
-
-  // ロック解除時のコールバック（onUnlockがあればそちらを使う）
-  const handleUnlockComplete = onUnlock || onComplete;
-
-  if (mode === 'check') {
-    return (
-      <div className="fixed inset-0 bg-slate-900 z-[130] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 bg-slate-900 z-[130] flex flex-col">
@@ -64,60 +43,12 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onUnlock, onCance
             </div>
             <h2 className="text-xl font-black text-white mb-2">工事写真帳メーカー</h2>
             <p className="text-sm text-slate-400">
-              {mode === 'unlock' ? 'パスワードでアンロック' : 'AIで工事写真を自動分類・整理します'}
+              AIで工事写真を自動分類・整理します
             </p>
           </div>
 
-          {/* アンロックモード */}
-          {mode === 'unlock' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
-                <div className="flex items-center justify-center mb-4">
-                  <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center">
-                    <Shield size={32} className="text-green-500" />
-                  </div>
-                </div>
-                <p className="text-center text-sm text-slate-300 mb-4">
-                  暗号化されたAPIキーが保存されています
-                </p>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Lock size={18} className="text-slate-500 shrink-0" />
-                    <input
-                      type="password"
-                      value={masterPassword}
-                      onChange={(e) => setMasterPassword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleUnlock(handleUnlockComplete)}
-                      placeholder="マスターパスワード"
-                      className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
-                      autoFocus
-                    />
-                  </div>
-                  {error && (
-                    <p className="text-red-400 text-xs text-center">{error}</p>
-                  )}
-                  <button
-                    onClick={() => handleUnlock(handleUnlockComplete)}
-                    disabled={loading || !masterPassword}
-                    className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-                  >
-                    {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-                    アンロック
-                  </button>
-                </div>
-              </div>
-              <button
-                onClick={handleResetKey}
-                className="w-full text-slate-500 hover:text-slate-300 text-xs py-2 transition-colors"
-              >
-                キーを再設定する
-              </button>
-            </div>
-          )}
-
-          {/* 新規設定モード */}
-          {mode === 'new' && (
-            <>
+          {/* APIキー設定 */}
+          <>
               {/* PDF読み込みオプション */}
               {onImportPdf && (
                 <>
@@ -186,67 +117,31 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onUnlock, onCance
                 </div>
               </div>
 
-              {/* ステップ3: マスターパスワード */}
-              <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-6 h-6 bg-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center">3</span>
-                  <span className="text-sm font-bold text-white">マスターパスワードを設定</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mb-2">
-                  APIキーを暗号化して安全に保存します
-                </p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Lock size={18} className="text-slate-500 shrink-0" />
-                    <input
-                      type="password"
-                      value={masterPassword}
-                      onChange={(e) => setMasterPassword(e.target.value)}
-                      placeholder="パスワード（4文字以上）"
-                      className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Lock size={18} className="text-slate-500 shrink-0" />
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="パスワード（確認）"
-                      className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
               {error && (
                 <p className="text-red-400 text-xs text-center">{error}</p>
               )}
 
               {/* 注意事項 */}
               <p className="text-[10px] text-slate-500 text-center">
-                キーは暗号化されてこのブラウザに保存されます
+                キーはこのブラウザに保存されます
               </p>
             </>
-          )}
+
         </div>
       </div>
 
       {/* フッター */}
-      {mode === 'new' && (
-        <div className="p-4 border-t border-slate-800 bg-slate-900">
-          <div className="max-w-md mx-auto">
-            <button
-              onClick={() => handleSubmit(onComplete)}
-              disabled={!isValidKey || !isValidPassword || !passwordsMatch || loading}
-              className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-              暗号化して保存
-            </button>
-          </div>
+      <div className="p-4 border-t border-slate-800 bg-slate-900">
+        <div className="max-w-md mx-auto">
+          <button
+            onClick={() => handleSubmit(onComplete)}
+            disabled={!isValidKey}
+            className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            保存
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 };

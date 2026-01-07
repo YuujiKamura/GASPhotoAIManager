@@ -46,7 +46,8 @@ export const getApiKey = (): string | null => {
 export const setApiKey = (key: string): void => {
   cachedApiKey = key;
   sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
-  // NOTE: 平文のAPIキーは永続ストレージには保存しない
+  // localStorageにも保存（起動時に自動復元するため）
+  localStorage.setItem(API_KEY_STORAGE_KEY, key);
 };
 
 // 暗号化してAPIキーを保存
