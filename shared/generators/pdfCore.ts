@@ -3,11 +3,15 @@
  *
  * CLI/Web両環境で使用可能なPDF生成ロジック
  * Buffer返却（Canvas/fetch依存を排除）
+ *
+ * ## 変更履歴
+ * - 2026-01-17: layoutConfigから定数を取得するように修正（Web版と共通化）
  */
 
 import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as fs from 'fs/promises';
+import { getPdfLayout, type PdfLayout } from '../../utils/layoutConfig';
 
 // ============================================
 // 型定義
@@ -36,17 +40,21 @@ export interface PdfOptions {
 }
 
 // ============================================
-// レイアウト定数
+// レイアウト定数（layoutConfigから取得）
 // ============================================
 
-const A4_WIDTH = 595.28;  // pt
-const A4_HEIGHT = 841.89; // pt
-const MARGIN = 28.35;     // 10mm
-const HEADER_HEIGHT = 40;
-const GAP = 5;
-
-const IMAGE_RATIO = 0.65;
-const INFO_RATIO = 0.35;
+const getLayoutConstants = () => {
+  const layout: PdfLayout = getPdfLayout();
+  return {
+    A4_WIDTH: layout.pageWidth,
+    A4_HEIGHT: layout.pageHeight,
+    MARGIN: layout.margin,
+    HEADER_HEIGHT: layout.headerHeight,
+    GAP: layout.gap,
+    IMAGE_RATIO: layout.imageRatio,
+    INFO_RATIO: layout.infoRatio,
+  };
+};
 
 // ============================================
 // PDF生成
@@ -60,6 +68,9 @@ export async function generatePdfBuffer(
   options: PdfOptions = {}
 ): Promise<Buffer> {
   const { photosPerPage = 3, title = 'Construction Photo Album', fontPath } = options;
+
+  // layoutConfigからレイアウト定数を取得
+  const { A4_WIDTH, A4_HEIGHT, MARGIN, HEADER_HEIGHT, GAP, IMAGE_RATIO, INFO_RATIO } = getLayoutConstants();
 
   const pdfDoc = await PDFDocument.create();
 
@@ -104,7 +115,7 @@ export async function generatePdfBuffer(
   // ラベル定義
   const labels = { type: '工種', variety: '種別', detail: '細別', station: '測点', remarks: '備考', date: '撮影' };
 
-  // レイアウト計算
+  // レイアウト計算（layoutConfigの値を使用）
   const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
   const photoRowHeight = usableHeight / photosPerPage;
   const photoHeight = photoRowHeight - GAP * 2;

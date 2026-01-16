@@ -3,6 +3,9 @@
  *
  * CLI/Web両環境で使用可能な解析コアロジック
  * ブラウザ依存（IndexedDB等）を排除
+ *
+ * ## 変更履歴
+ * - 2026-01-17: 工種マスタ対応追加（hierarchyオプション）
  */
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
@@ -60,6 +63,8 @@ export interface AnalyzeOptions {
   onLog?: LogFunction;
   onProgress?: ProgressCallback;
   shouldAbort?: AbortChecker;
+  /** 工種マスタ階層データ（工事写真モードで使用） */
+  hierarchy?: Record<string, unknown>;
 }
 
 // ============================================
@@ -155,7 +160,11 @@ const formatShootingTime = (timestamp: number): string => {
 // システムプロンプト生成
 // ============================================
 
-const getSystemInstruction = (mode: AppMode, instruction?: string): string => {
+const getSystemInstruction = (
+  mode: AppMode,
+  instruction?: string,
+  hierarchy?: Record<string, unknown>
+): string => {
   if (mode === 'general') {
     return `
 You are a professional photo archivist. Analyze the image and provide structured metadata.
@@ -167,7 +176,18 @@ ${instruction ? `\nUSER OVERRIDE INSTRUCTION: ${instruction}` : ""}
     `.trim();
   }
 
-  // Construction Mode (simplified for CLI)
+  // 工種マスタから工種一覧を抽出（提供されている場合）
+  let workTypesList = '';
+  if (hierarchy && hierarchy['直接工事費']) {
+    const root = hierarchy['直接工事費'] as Record<string, unknown>;
+    const types = new Set<string>();
+    for (const catKey in root) {
+      Object.keys(root[catKey] as Record<string, unknown>).forEach(k => types.add(k));
+    }
+    workTypesList = Array.from(types).join(', ');
+  }
+
+  // Construction Mode
   return `
 You are a Japanese construction site supervisor creating a formal photo ledger (工事写真帳).
 
@@ -182,6 +202,7 @@ You are a Japanese construction site supervisor creating a formal photo ledger (
 8. 事故写真 - Accident
 9. その他 - Others
 
+${workTypesList ? `**AVAILABLE WORK TYPES (工種一覧)**:\n${workTypesList}\n\nYou MUST select workType from this list. Do not create new work types.\n` : ''}
 **OUTPUT FORMAT**:
 - workType: 工種 (e.g., 舗装工, 道路土工)
 - variety: 種別 (e.g., 舗装打換え工)
@@ -260,6 +281,7 @@ export async function analyzePhotos(
     onLog,
     onProgress,
     shouldAbort,
+    hierarchy,
   } = options;
 
   if (!apiKey) {
@@ -291,7 +313,8 @@ export async function analyzePhotos(
       instruction,
       model,
       onLog,
-      shouldAbort
+      shouldAbort,
+      hierarchy
     );
 
     // 結果を通知
@@ -327,9 +350,10 @@ async function analyzeBatch(
   instruction: string | undefined,
   model: string,
   onLog?: LogFunction,
-  shouldAbort?: AbortChecker
+  shouldAbort?: AbortChecker,
+  hierarchy?: Record<string, unknown>
 ): Promise<AnalysisResult[]> {
-  const systemPrompt = getSystemInstruction(mode, instruction);
+  const systemPrompt = getSystemInstruction(mode, instruction, hierarchy);
 
   // 画像入力を構築
   const inputs = photos.map(p => ({

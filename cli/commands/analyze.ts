@@ -2,6 +2,9 @@
  * analyze コマンド
  *
  * 写真フォルダを解析してJSON出力
+ *
+ * ## 変更履歴
+ * - 2026-01-17: 工種マスタ対応追加
  */
 
 import * as fs from 'fs/promises';
@@ -10,6 +13,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { scanFolder, processImages } from '../adapters/imageAdapter';
 import { getApiKey } from '../adapters/apiKeyAdapter';
+import { getMergedHierarchy } from '../adapters/masterAdapter';
 import {
   analyzePhotos,
   type PhotoInput,
@@ -95,6 +99,17 @@ export async function analyzeCommand(
     process.exit(1);
   }
 
+  // 工種マスタ読み込み（constructionモードの場合）
+  let hierarchy: Record<string, unknown> | undefined;
+  if (options.mode === 'construction') {
+    try {
+      hierarchy = await getMergedHierarchy();
+      console.log(chalk.gray('工種マスタを読み込みました'));
+    } catch {
+      console.log(chalk.yellow('工種マスタの読み込みに失敗（デフォルト動作で続行）'));
+    }
+  }
+
   // AI解析
   console.log(chalk.gray(`\nモデル: ${options.model}`));
   console.log(chalk.gray(`モード: ${options.mode}`));
@@ -113,6 +128,7 @@ export async function analyzeCommand(
       instruction: options.instruction,
       batchSize: parseInt(options.batchSize, 10),
       model: options.model,
+      hierarchy,  // 工種マスタを渡す
       onLog: (msg, type) => {
         if (type === 'error') {
           analyzeSpinner.warn(msg);

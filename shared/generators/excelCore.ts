@@ -3,9 +3,13 @@
  *
  * CLI/Web両環境で使用可能なExcel生成ロジック
  * Buffer返却に変更（saveAs依存を排除）
+ *
+ * ## 変更履歴
+ * - 2026-01-17: layoutConfigから定数を取得するように修正（Web版と共通化）
  */
 
 import ExcelJS from 'exceljs';
+import { getLayoutConfig, LAYOUT_FIELDS, PDF_LAYOUT } from '../../utils/layoutConfig';
 
 // ============================================
 // 型定義
@@ -33,35 +37,18 @@ export interface ExcelOptions {
 }
 
 // ============================================
-// レイアウト設定
+// フィールドラベル（日本語）
 // ============================================
 
-const LAYOUT = {
-  // 列幅
-  COL_A_WIDTH: 56.1,   // 画像列
-  COL_B_WIDTH: 11,     // ラベル列
-  COL_C_WIDTH: 28.6,   // 値列
-
-  // 行設定
-  ROWS_PER_BLOCK: 11,
-  PHOTO_ROWS: 10,
-  ROW_HEIGHT_PT: 26,
-
-  // 変換係数
-  PT_TO_PX: 96 / 72,
-  PX_PER_EXCEL_COL: 7.1,
+const FIELD_LABELS: Record<string, string> = {
+  labelDate: '撮影日時',
+  labelWorkType: '工種',
+  labelVariety: '種別',
+  labelDetail: '細別',
+  labelStation: '測点',
+  labelRemarks: '備考',
+  labelMeasurements: '寸法',
 };
-
-// フィールド定義
-const FIELDS = [
-  { key: 'date', label: '撮影日時', rowSpan: 1 },
-  { key: 'workType', label: '工種', rowSpan: 1 },
-  { key: 'variety', label: '種別', rowSpan: 1 },
-  { key: 'detail', label: '細別', rowSpan: 1 },
-  { key: 'station', label: '測点', rowSpan: 1 },
-  { key: 'remarks', label: '備考', rowSpan: 2 },
-  { key: 'measurements', label: '寸法', rowSpan: 3 },
-];
 
 // ============================================
 // Excel生成
@@ -75,6 +62,17 @@ export async function generateExcelBuffer(
   options: ExcelOptions = {}
 ): Promise<Buffer> {
   const { photosPerPage = 3 } = options;
+
+  // layoutConfigからレイアウト設定を取得
+  const layout = getLayoutConfig(photosPerPage);
+  const {
+    rowsPerBlock,
+    photoRows,
+    rowHeightPt,
+    colAWidth,
+    colBWidth,
+    colCWidth,
+  } = layout;
 
   const workbook = new ExcelJS.Workbook();
   const totalPages = Math.ceil(photos.length / photosPerPage);
@@ -97,10 +95,10 @@ export async function generateExcelBuffer(
         horizontalCentered: true,
         verticalCentered: true,
         margins: {
-          left: 0.4,
-          right: 0.4,
-          top: 0.4,
-          bottom: 0.4,
+          left: PDF_LAYOUT.MARGIN / 72,
+          right: PDF_LAYOUT.MARGIN / 72,
+          top: PDF_LAYOUT.MARGIN / 72,
+          bottom: PDF_LAYOUT.MARGIN / 72,
           header: 0.2,
           footer: 0.2
         }
@@ -108,11 +106,11 @@ export async function generateExcelBuffer(
       views: [{ showGridLines: false }]
     });
 
-    // 列幅設定
+    // 列幅設定（layoutConfigから取得）
     sheet.columns = [
-      { width: LAYOUT.COL_A_WIDTH },
-      { width: LAYOUT.COL_B_WIDTH },
-      { width: LAYOUT.COL_C_WIDTH }
+      { width: colAWidth },
+      { width: colBWidth },
+      { width: colCWidth }
     ];
 
     let currentRow = 1;
@@ -121,11 +119,11 @@ export async function generateExcelBuffer(
     for (let i = 0; i < pagePhotos.length; i++) {
       const photo = pagePhotos[i];
       const startRow = currentRow;
-      const endRow = startRow + LAYOUT.ROWS_PER_BLOCK - 1;
+      const endRow = startRow + rowsPerBlock - 1;
 
-      // 行高さ設定
+      // 行高さ設定（layoutConfigから取得）
       for (let r = startRow; r <= endRow; r++) {
-        sheet.getRow(r).height = LAYOUT.ROW_HEIGHT_PT;
+        sheet.getRow(r).height = rowHeightPt;
       }
 
       // 画像セル（列A）
@@ -150,15 +148,15 @@ export async function generateExcelBuffer(
         // ExcelJSの型定義の問題を回避（tl/br形式は実際にはサポートされている）
         sheet.addImage(imageId, {
           tl: { col: 0, row: startRow - 1 },
-          br: { col: 1, row: startRow - 1 + LAYOUT.PHOTO_ROWS },
+          br: { col: 1, row: startRow - 1 + photoRows },
           editAs: 'absolute'
         } as unknown as ExcelJS.ImageRange);
       }
 
-      // 情報フィールド（列B & C）
+      // 情報フィールド（列B & C）- LAYOUT_FIELDSを使用
       const visibleFields = photosPerPage === 2
-        ? FIELDS.filter(f => f.key === 'station' || f.key === 'remarks')
-        : FIELDS;
+        ? LAYOUT_FIELDS.filter(f => f.key === 'station' || f.key === 'remarks')
+        : LAYOUT_FIELDS;
 
       let fieldRow = startRow;
       for (const field of visibleFields) {
@@ -177,8 +175,9 @@ export async function generateExcelBuffer(
           value = (photo.analysis as Record<string, string>)[field.key] || '';
         }
 
+        const label = FIELD_LABELS[field.labelKey] || field.labelKey;
         const rowSpan = field.rowSpan;
-        createFieldCell(sheet, fieldRow, field.label, value, rowSpan);
+        createFieldCell(sheet, fieldRow, label, value, rowSpan);
         fieldRow += rowSpan;
       }
 
