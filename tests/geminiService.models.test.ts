@@ -39,7 +39,7 @@ describe('geminiService - Models', () => {
   describe('getSelectedModel', () => {
     it('should return default model when nothing is saved', () => {
       const model = getSelectedModel();
-      expect(model).toBe('gemini-3.0-flash');
+      expect(model).toBe('gemini-2.5-flash');
     });
 
     it('should return saved model from localStorage', () => {
@@ -51,7 +51,7 @@ describe('geminiService - Models', () => {
     it('should return default if saved model is invalid', () => {
       localStorage.setItem('construction_album_model', 'invalid-model');
       const model = getSelectedModel();
-      expect(model).toBe('gemini-3.0-flash');
+      expect(model).toBe('gemini-2.5-flash');
     });
   });
 
@@ -78,35 +78,29 @@ describe('geminiService - Models', () => {
 
     it('should return first available model in priority order', () => {
       const availabilities: ModelAvailability[] = [
-        { id: 'gemini-3.0-flash', name: '', description: '', status: 'unavailable' },
-        { id: 'gemini-3.0-pro', name: '', description: '', status: 'available' },
-        { id: 'gemini-2.5-flash', name: '', description: '', status: 'available' },
+        { id: 'gemini-2.5-flash', name: '', description: '', status: 'unavailable' },
         { id: 'gemini-2.5-pro', name: '', description: '', status: 'available' },
         { id: 'gemini-2.0-flash', name: '', description: '', status: 'available' },
       ];
-      expect(getBestAvailableModel(availabilities)).toBe('gemini-3.0-pro');
+      expect(getBestAvailableModel(availabilities)).toBe('gemini-2.5-pro');
     });
 
-    it('should prioritize 3.0-flash over other models', () => {
+    it('should prioritize 2.5-flash over other models', () => {
       const availabilities: ModelAvailability[] = [
-        { id: 'gemini-3.0-flash', name: '', description: '', status: 'available' },
-        { id: 'gemini-3.0-pro', name: '', description: '', status: 'available' },
         { id: 'gemini-2.5-flash', name: '', description: '', status: 'available' },
         { id: 'gemini-2.5-pro', name: '', description: '', status: 'available' },
         { id: 'gemini-2.0-flash', name: '', description: '', status: 'available' },
       ];
-      expect(getBestAvailableModel(availabilities)).toBe('gemini-3.0-flash');
+      expect(getBestAvailableModel(availabilities)).toBe('gemini-2.5-flash');
     });
 
     it('should skip quota_exceeded models', () => {
       const availabilities: ModelAvailability[] = [
-        { id: 'gemini-3.0-flash', name: '', description: '', status: 'quota_exceeded' },
-        { id: 'gemini-3.0-pro', name: '', description: '', status: 'quota_exceeded' },
-        { id: 'gemini-2.5-flash', name: '', description: '', status: 'available' },
+        { id: 'gemini-2.5-flash', name: '', description: '', status: 'quota_exceeded' },
         { id: 'gemini-2.5-pro', name: '', description: '', status: 'unavailable' },
         { id: 'gemini-2.0-flash', name: '', description: '', status: 'available' },
       ];
-      expect(getBestAvailableModel(availabilities)).toBe('gemini-2.5-flash');
+      expect(getBestAvailableModel(availabilities)).toBe('gemini-2.0-flash');
     });
 
     it('should handle empty array', () => {

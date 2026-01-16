@@ -27,7 +27,7 @@ export const checkAbort = (shouldAbort?: AbortChecker, context?: string): void =
 // ============================================
 // 定数
 // ============================================
-const COMPLEX_MODEL = 'gemini-3.0-flash';
+const COMPLEX_MODEL = 'gemini-2.5-flash';
 export const MAX_RETRIES = 3;
 export const RETRY_DELAY_MS = 2000;
 

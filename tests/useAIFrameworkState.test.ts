@@ -25,7 +25,7 @@ vi.mock('../utils/analysisRules', () => ({
 }));
 
 vi.mock('../services/gemini/models', () => ({
-  getSelectedModel: vi.fn(() => 'gemini-3.0-flash'),
+  getSelectedModel: vi.fn(() => 'gemini-2.5-flash'),
   setSelectedModel: vi.fn(),
 }));
 
