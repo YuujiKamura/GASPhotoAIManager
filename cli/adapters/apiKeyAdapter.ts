@@ -4,8 +4,8 @@
  *
  * 優先順位:
  * 1. コマンドオプション（--api-key）
- * 2. 環境変数（GEMINI_API_KEY）
- * 3. 設定ファイル（~/.gaspm/config.json）
+ * 2. 環境変数（ANTHROPIC_API_KEY）
+ * 3. 設定ファイル（~/.gaspm/config.json の anthropicApiKey）
  */
 
 import * as fs from 'fs/promises';
@@ -20,7 +20,8 @@ const CONFIG_DIR = path.join(os.homedir(), '.gaspm');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 interface Config {
-  apiKey?: string;
+  apiKey?: string;  // 後方互換性のため残す（Gemini用）
+  anthropicApiKey?: string;  // Claude API用
   defaultModel?: string;
   defaultPhotosPerPage?: 2 | 3;
 }
@@ -54,15 +55,15 @@ export async function getApiKey(optionKey?: string): Promise<string | null> {
     return optionKey;
   }
 
-  // 2. 環境変数
-  const envKey = process.env.GEMINI_API_KEY;
+  // 2. 環境変数（ANTHROPIC_API_KEY）
+  const envKey = process.env.ANTHROPIC_API_KEY;
   if (envKey) {
     return envKey;
   }
 
   // 3. 設定ファイル
   const config = await loadConfig();
-  return config.apiKey || null;
+  return config.anthropicApiKey || null;
 }
 
 /**
@@ -70,7 +71,7 @@ export async function getApiKey(optionKey?: string): Promise<string | null> {
  */
 export async function setApiKey(apiKey: string): Promise<void> {
   const config = await loadConfig();
-  config.apiKey = apiKey;
+  config.anthropicApiKey = apiKey;
   await saveConfig(config);
 }
 

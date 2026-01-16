@@ -5,6 +5,7 @@
  *
  * ## 変更履歴
  * - 2026-01-17: 工種マスタ対応追加
+ * - 2026-01-17: Gemini API → Claude API に移行
  */
 
 import * as fs from 'fs/promises';
@@ -19,7 +20,7 @@ import {
   type PhotoInput,
   type AnalysisResult,
   type AppMode
-} from '../../shared/core/geminiAnalysis';
+} from '../../shared/core/claudeAnalysis';
 
 interface AnalyzeOptions {
   output: string;
@@ -56,7 +57,7 @@ export async function analyzeCommand(
     console.error(chalk.red('エラー: APIキーが設定されていません'));
     console.log(chalk.yellow('以下のいずれかの方法でAPIキーを設定してください:'));
     console.log('  1. gaspm config set-key <your-api-key>');
-    console.log('  2. 環境変数 GEMINI_API_KEY を設定');
+    console.log('  2. 環境変数 ANTHROPIC_API_KEY を設定');
     console.log('  3. --api-key オプションで指定');
     process.exit(1);
   }
