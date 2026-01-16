@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
+import { getPdfLayout } from './layoutConfig';
 
 // PDF.js worker setup
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -11,11 +12,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 // ========== 定数 ==========
 const SESSION_MARKER = 'GASPM_SESSION_V1:';
-const A4_WIDTH = 595.28;
-const A4_HEIGHT = 841.89;
-const MARGIN = 20;
-const HEADER_HEIGHT = 40;
-const PHOTO_INFO_GAP = 5;
+
+// layoutConfigから取得
+const pdfLayout = getPdfLayout();
+const A4_WIDTH = pdfLayout.pageWidth;
+const A4_HEIGHT = pdfLayout.pageHeight;
+const MARGIN = pdfLayout.margin;
+const HEADER_HEIGHT = pdfLayout.headerHeight;
+const PHOTO_INFO_GAP = pdfLayout.gap;
 
 // フィールドパターン（共通定義）
 const FIELD_PATTERNS: Record<string, RegExp> = {
@@ -113,8 +117,9 @@ export const generatePdfWithImages = async (
   const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
   const photoRowHeight = usableHeight / photosPerPage;
   const photoHeight = photoRowHeight - PHOTO_INFO_GAP * 2;
-  const photoWidth = (A4_WIDTH - MARGIN * 2) * 0.45;
-  const infoWidth = (A4_WIDTH - MARGIN * 2) * 0.50;
+  const usableWidth = A4_WIDTH - MARGIN * 2;
+  const photoWidth = usableWidth * pdfLayout.imageRatio;  // 65%
+  const infoWidth = usableWidth * pdfLayout.infoRatio;    // 35%
   const totalPages = Math.ceil(photos.length / photosPerPage);
 
   for (let pageNum = 0; pageNum < totalPages; pageNum++) {

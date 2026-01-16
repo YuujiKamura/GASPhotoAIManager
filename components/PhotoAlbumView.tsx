@@ -1,12 +1,15 @@
 import React from 'react';
 import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
 import { TRANS } from '../utils/translations';
-import { LAYOUT_FIELDS } from '../utils/layoutConfig';
+import { LAYOUT_FIELDS, getPreviewLayout } from '../utils/layoutConfig';
 import { InfoRow } from './shared/EditableField';
 import { ContextMenu } from './PhotoAlbumView/ContextMenu';
 import { ReasoningModal } from './PhotoAlbumView/ReasoningModal';
 import { IssueReportModal } from './PhotoAlbumView/IssueReportModal';
 import { usePhotoContextMenu } from '../hooks/usePhotoContextMenu';
+
+// layoutConfigから取得
+const previewLayout = getPreviewLayout();
 
 interface Props {
   records: PhotoRecord[];
@@ -65,13 +68,17 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
     ? "flex-1 border-b border-gray-300 last:border-b-0 flex flex-col box-border min-h-0 hover:bg-gray-50 transition-colors h-[50%]"
     : "flex-1 border-b border-gray-300 last:border-b-0 flex flex-row box-border min-h-0 hover:bg-gray-50 transition-colors h-[33.33%]";
 
+  // layoutConfigから取得した比率を使用
+  const imageWidthStyle = { width: `${previewLayout.imageWidthPercent}%` };
+  const infoWidthStyle = { width: `${previewLayout.infoWidthPercent}%` };
+
   const imageContainerClass = isTwoUp
     ? "w-full flex-1 border-r-0 border-b border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu p-0.5"
-    : "w-[65%] border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu";
+    : "border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu";
 
   const infoContainerClass = isTwoUp
     ? "w-full h-[20%] bg-white flex flex-col justify-start py-1 px-4"
-    : "w-[35%] flex flex-col h-full bg-white";
+    : "flex flex-col h-full bg-white";
 
   return (
     <div id="album-content" className="w-full">
@@ -99,10 +106,10 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
 
               return (
                 <div key={record.fileName} className={slotClass} onContextMenu={(e) => handleContextMenu(e, record.fileName)}>
-                  <div className={imageContainerClass}>
+                  <div className={imageContainerClass} style={isTwoUp ? undefined : imageWidthStyle}>
                     <img src={record.base64} alt={record.fileName} className="max-w-full max-h-full object-contain" />
                   </div>
-                  <div className={infoContainerClass}>
+                  <div className={infoContainerClass} style={isTwoUp ? undefined : infoWidthStyle}>
                     {getVisibleFields().map((field) => {
                       let val = "";
                       if (field.key === 'date') {

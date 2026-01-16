@@ -3,7 +3,7 @@ import { AIAnalysisResult } from "../types";
 // ============================================
 // mm基準レイアウト（Source of Truth）
 // ============================================
-// A4にCALS写真(4:3)を3枚配置する設計から逆算
+// プレビュー(65%/35%)を基準にmm換算
 
 // A4サイズ
 const A4_WIDTH_MM = 210;
@@ -13,15 +13,17 @@ const A4_HEIGHT_MM = 297;
 const MARGIN_MM = 10;        // 上下左右
 const PHOTO_GAP_MM = 10;     // 画像間
 
-// 計算: 写真サイズ
-// 高さ: 297 - 10(上) - 10(下) - 10(間) - 10(間) = 257mm / 3枚 = 85.67mm
-// 幅: 85.67 × 4/3 = 114.2mm (CALS 4:3アスペクト比)
-const PHOTO_HEIGHT_MM = (A4_HEIGHT_MM - MARGIN_MM * 2 - PHOTO_GAP_MM * 2) / 3;  // 85.67mm
-const PHOTO_WIDTH_MM = PHOTO_HEIGHT_MM * 4 / 3;  // 114.2mm
+// プレビュー比率（これが正）
+const IMAGE_RATIO = 0.65;
+const INFO_RATIO = 0.35;
 
-// 情報欄幅
+// 利用可能幅から写真/情報幅を計算
 const USABLE_WIDTH_MM = A4_WIDTH_MM - MARGIN_MM * 2;  // 190mm
-const INFO_WIDTH_MM = USABLE_WIDTH_MM - PHOTO_WIDTH_MM;  // 75.8mm
+const PHOTO_WIDTH_MM = USABLE_WIDTH_MM * IMAGE_RATIO;  // 123.5mm
+const INFO_WIDTH_MM = USABLE_WIDTH_MM * INFO_RATIO;    // 66.5mm
+
+// 写真高さ: 3枚配置から計算
+const PHOTO_HEIGHT_MM = (A4_HEIGHT_MM - MARGIN_MM * 2 - PHOTO_GAP_MM * 2) / 3;  // 85.67mm
 
 // mm → pt変換 (1mm = 2.835pt)
 const MM_TO_PT = 2.835;
@@ -139,8 +141,8 @@ export const DIMENSION = {
 
   // --- 後方互換性 ---
   LABEL_WIDTH_EXCEL: LABEL_COL_WIDTH,
-  IMAGE_RATIO: PHOTO_WIDTH_MM / (PHOTO_WIDTH_MM + INFO_WIDTH_MM),  // 0.60
-  INFO_RATIO: INFO_WIDTH_MM / (PHOTO_WIDTH_MM + INFO_WIDTH_MM),    // 0.40
+  IMAGE_RATIO,  // 0.65
+  INFO_RATIO,   // 0.35
 } as const;
 
 // 後方互換性のためのエイリアス
@@ -160,7 +162,47 @@ export const excelWidthToPx = (units: number): number =>
   Math.round(units * CONVERSION.PX_PER_EXCEL_COL + CONVERSION.EXCEL_COL_OFFSET_PX);
 
 // ============================================
-// レイアウト取得関数
+// プレビュー用レイアウト取得関数
+// ============================================
+
+export interface PreviewLayout {
+  imageWidthPercent: number;  // 65
+  infoWidthPercent: number;   // 35
+  pageHeightMm: number;       // 297
+}
+
+export const getPreviewLayout = (): PreviewLayout => ({
+  imageWidthPercent: IMAGE_RATIO * 100,  // 65
+  infoWidthPercent: INFO_RATIO * 100,    // 35
+  pageHeightMm: A4_HEIGHT_MM,            // 297
+});
+
+// ============================================
+// PDF用レイアウト取得関数
+// ============================================
+
+export interface PdfLayout {
+  pageWidth: number;      // pt
+  pageHeight: number;     // pt
+  margin: number;         // pt
+  headerHeight: number;   // pt
+  gap: number;            // pt
+  imageRatio: number;     // 0.65
+  infoRatio: number;      // 0.35
+}
+
+export const getPdfLayout = (): PdfLayout => ({
+  pageWidth: PDF_LAYOUT.PAGE_WIDTH,
+  pageHeight: PDF_LAYOUT.PAGE_HEIGHT,
+  margin: MARGIN_MM * MM_TO_PT,  // 28.35pt
+  headerHeight: 40,               // ヘッダー高さ (pt)
+  gap: 5,                         // 写真間ギャップ (pt)
+  imageRatio: IMAGE_RATIO,        // 0.65
+  infoRatio: INFO_RATIO,          // 0.35
+});
+
+// ============================================
+// Excel用レイアウト取得関数
 // ============================================
 
 export interface LayoutConfig {
