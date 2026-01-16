@@ -63,9 +63,8 @@ export async function generatePdfBuffer(
 
   const pdfDoc = await PDFDocument.create();
 
-  // 日本語フォントの読み込みを試行
+  // 日本語フォントの読み込み
   let japaneseFont: PDFFont;
-  let canRenderJapanese = false;
 
   try {
     // fontkitを登録（ESM対応）
@@ -87,7 +86,6 @@ export async function generatePdfBuffer(
       try {
         const fontBuffer = await fs.readFile(fp);
         japaneseFont = await pdfDoc.embedFont(fontBuffer);
-        canRenderJapanese = true;
         break;
       } catch {
         // 次のフォントを試す
@@ -97,19 +95,14 @@ export async function generatePdfBuffer(
     // fontkit登録失敗
   }
 
-  // フォールバック
+  // 日本語フォントが読み込めなければエラー
   if (!japaneseFont!) {
-    japaneseFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    throw new Error('日本語フォントが見つかりません。--font オプションでTTFファイルを指定してください。');
   }
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // ラベル定義（日本語/英語切り替え）
-  const labels = canRenderJapanese
-    ? { type: '工種', variety: '種別', detail: '細別', station: '測点', remarks: '備考', date: '撮影' }
-    : { type: 'Type', variety: 'Variety', detail: 'Detail', station: 'Station', remarks: 'Remarks', date: 'Date' };
-
-  // タイトルもASCII化が必要な場合
-  const displayTitle = canRenderJapanese ? title : toAscii(title);
+  // ラベル定義
+  const labels = { type: '工種', variety: '種別', detail: '細別', station: '測点', remarks: '備考', date: '撮影' };
 
   // レイアウト計算
   const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
@@ -129,7 +122,7 @@ export async function generatePdfBuffer(
     );
 
     // ヘッダー
-    page.drawText(displayTitle, {
+    page.drawText(title, {
       x: MARGIN,
       y: A4_HEIGHT - MARGIN - 20,
       size: 14,
@@ -239,10 +232,7 @@ export async function generatePdfBuffer(
             font: japaneseFont,
             color: rgb(0.4, 0.4, 0.4)
           });
-          // 日本語フォントがない場合はASCIIに変換
-          const displayValue = canRenderJapanese
-            ? truncate(line.value, 20)
-            : truncate(toAscii(line.value), 20);
+          const displayValue = truncate(line.value, 20);
           page.drawText(displayValue, {
             x: infoX + 45,
             y,
@@ -292,13 +282,6 @@ function atob(data: string): string {
     return globalThis.atob(data);
   }
   return Buffer.from(data, 'base64').toString('binary');
-}
-
-/**
- * 文字列をASCIIに変換（非ASCII文字は?に置換）
- */
-function toAscii(str: string): string {
-  return str.replace(/[^\x20-\x7E]/g, '?');
 }
 
 /**
