@@ -5,10 +5,9 @@
  * Buffer返却（Canvas/fetch依存を排除）
  */
 
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as fs from 'fs/promises';
-import * as path from 'path';
 
 // ============================================
 // 型定義
@@ -60,50 +59,57 @@ export async function generatePdfBuffer(
   photos: PhotoData[],
   options: PdfOptions = {}
 ): Promise<Buffer> {
-  const { photosPerPage = 3, title = '工事写真帳', fontPath } = options;
+  const { photosPerPage = 3, title = 'Construction Photo Album', fontPath } = options;
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.registerFontkit(fontkit);
 
-  // フォントの読み込み
-  let japaneseFont;
+  // 日本語フォントの読み込みを試行
+  let japaneseFont: PDFFont;
+  let canRenderJapanese = false;
+
   try {
-    if (fontPath) {
-      const fontBuffer = await fs.readFile(fontPath);
-      japaneseFont = await pdfDoc.embedFont(fontBuffer);
-    } else {
-      // デフォルトフォントを探す
-      const defaultFontPaths = [
-        // Windows
-        'C:/Windows/Fonts/msgothic.ttc',
-        'C:/Windows/Fonts/meiryo.ttc',
-        // macOS
-        '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc',
-        '/Library/Fonts/Arial Unicode.ttf',
-        // Linux
-        '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf',
-        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-      ];
+    // fontkitを登録（ESM対応）
+    const fk = (fontkit as unknown as { default?: typeof fontkit }).default || fontkit;
+    pdfDoc.registerFontkit(fk as Parameters<typeof pdfDoc.registerFontkit>[0]);
 
-      for (const fp of defaultFontPaths) {
-        try {
-          const fontBuffer = await fs.readFile(fp);
-          japaneseFont = await pdfDoc.embedFont(fontBuffer);
-          break;
-        } catch {
-          // 次のフォントを試す
-        }
+    // フォントパスのリスト
+    const fontPaths = fontPath ? [fontPath] : [
+      // Windows (TTF)
+      'C:/Windows/Fonts/yumin.ttf',      // 游明朝
+      'C:/Windows/Fonts/YuGothR.ttf',    // 游ゴシック
+      // macOS
+      '/Library/Fonts/Arial Unicode.ttf',
+      // Linux
+      '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf',
+    ];
+
+    for (const fp of fontPaths) {
+      try {
+        const fontBuffer = await fs.readFile(fp);
+        japaneseFont = await pdfDoc.embedFont(fontBuffer);
+        canRenderJapanese = true;
+        break;
+      } catch {
+        // 次のフォントを試す
       }
     }
   } catch {
-    // フォント読み込み失敗
+    // fontkit登録失敗
   }
 
   // フォールバック
-  if (!japaneseFont) {
+  if (!japaneseFont!) {
     japaneseFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   }
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // ラベル定義（日本語/英語切り替え）
+  const labels = canRenderJapanese
+    ? { type: '工種', variety: '種別', detail: '細別', station: '測点', remarks: '備考', date: '撮影' }
+    : { type: 'Type', variety: 'Variety', detail: 'Detail', station: 'Station', remarks: 'Remarks', date: 'Date' };
+
+  // タイトルもASCII化が必要な場合
+  const displayTitle = canRenderJapanese ? title : toAscii(title);
 
   // レイアウト計算
   const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
@@ -123,7 +129,7 @@ export async function generatePdfBuffer(
     );
 
     // ヘッダー
-    page.drawText(title, {
+    page.drawText(displayTitle, {
       x: MARGIN,
       y: A4_HEIGHT - MARGIN - 20,
       size: 14,
@@ -204,12 +210,12 @@ export async function generatePdfBuffer(
       const analysis = photo.analysis || {};
 
       const infoLines = [
-        { label: '工種', value: analysis.workType || '-' },
-        { label: '種別', value: analysis.variety || '-' },
-        { label: '細別', value: analysis.detail || '-' },
-        { label: '測点', value: analysis.station || '-' },
-        { label: '備考', value: analysis.remarks || '-' },
-        { label: '撮影', value: photo.date ? new Date(photo.date).toLocaleString('ja-JP') : '-' }
+        { label: labels.type, value: analysis.workType || '-' },
+        { label: labels.variety, value: analysis.variety || '-' },
+        { label: labels.detail, value: analysis.detail || '-' },
+        { label: labels.station, value: analysis.station || '-' },
+        { label: labels.remarks, value: analysis.remarks || '-' },
+        { label: labels.date, value: photo.date ? new Date(photo.date).toISOString().slice(0, 10) : '-' }
       ];
 
       // 情報欄の枠
@@ -233,9 +239,10 @@ export async function generatePdfBuffer(
             font: japaneseFont,
             color: rgb(0.4, 0.4, 0.4)
           });
-          const displayValue = line.value.length > 20
-            ? line.value.substring(0, 20) + '...'
-            : line.value;
+          // 日本語フォントがない場合はASCIIに変換
+          const displayValue = canRenderJapanese
+            ? truncate(line.value, 20)
+            : truncate(toAscii(line.value), 20);
           page.drawText(displayValue, {
             x: infoX + 45,
             y,
@@ -285,4 +292,18 @@ function atob(data: string): string {
     return globalThis.atob(data);
   }
   return Buffer.from(data, 'base64').toString('binary');
+}
+
+/**
+ * 文字列をASCIIに変換（非ASCII文字は?に置換）
+ */
+function toAscii(str: string): string {
+  return str.replace(/[^\x20-\x7E]/g, '?');
+}
+
+/**
+ * 文字列を切り詰め
+ */
+function truncate(str: string, maxLen: number): string {
+  return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
 }
