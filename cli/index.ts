@@ -26,9 +26,7 @@ program
   .option('-i, --instruction <text>', 'AI解析への追加指示')
   .option('-m, --mode <mode>', 'アプリモード (construction/general)', 'construction')
   .option('-b, --batch-size <number>', 'バッチサイズ', '5')
-  .option('-k, --api-key <key>', 'Claude APIキー')
   .option('-r, --recursive', 'サブフォルダも含める', false)
-  .option('--model <model>', 'AIモデル', 'claude-sonnet-4-20250514')
   .action(analyzeCommand);
 
 // export コマンド

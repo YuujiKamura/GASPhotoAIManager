@@ -13,7 +13,6 @@ import * as path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { scanFolder, processImages } from '../adapters/imageAdapter';
-import { getApiKey } from '../adapters/apiKeyAdapter';
 import { getMergedHierarchy } from '../adapters/masterAdapter';
 import {
   analyzePhotos,
@@ -27,9 +26,7 @@ interface AnalyzeOptions {
   instruction?: string;
   mode: string;
   batchSize: string;
-  apiKey?: string;
   recursive: boolean;
-  model: string;
 }
 
 export async function analyzeCommand(
@@ -48,17 +45,6 @@ export async function analyzeCommand(
     }
   } catch {
     console.error(chalk.red(`エラー: フォルダが見つかりません: ${folderPath}`));
-    process.exit(1);
-  }
-
-  // APIキー確認
-  const apiKey = await getApiKey(options.apiKey);
-  if (!apiKey) {
-    console.error(chalk.red('エラー: APIキーが設定されていません'));
-    console.log(chalk.yellow('以下のいずれかの方法でAPIキーを設定してください:'));
-    console.log('  1. gaspm config set-key <your-api-key>');
-    console.log('  2. 環境変数 ANTHROPIC_API_KEY を設定');
-    console.log('  3. --api-key オプションで指定');
     process.exit(1);
   }
 
@@ -87,11 +73,12 @@ export async function analyzeCommand(
       processSpinner.text = `画像を処理中... ${current}/${total} - ${fileName}`;
     });
 
-    photoInputs = imageInfos.map(info => ({
+    photoInputs = imageInfos.map((info, index) => ({
       fileName: info.fileName,
       base64: info.base64,
       mimeType: info.mimeType,
       date: info.date,
+      filePath: imagePaths[index],  // Claude Code CLI用に元ファイルパスを保持
     }));
     processSpinner.succeed(`${photoInputs.length}枚の画像を処理完了`);
   } catch (error) {
@@ -112,8 +99,7 @@ export async function analyzeCommand(
   }
 
   // AI解析
-  console.log(chalk.gray(`\nモデル: ${options.model}`));
-  console.log(chalk.gray(`モード: ${options.mode}`));
+  console.log(chalk.gray(`\nモード: ${options.mode} (Claude Code CLI使用)`));
   if (options.instruction) {
     console.log(chalk.gray(`指示: ${options.instruction}`));
   }
@@ -124,12 +110,10 @@ export async function analyzeCommand(
 
   try {
     results = await analyzePhotos(photoInputs, {
-      apiKey,
       mode: options.mode as AppMode,
       instruction: options.instruction,
       batchSize: parseInt(options.batchSize, 10),
-      model: options.model,
-      hierarchy,  // 工種マスタを渡す
+      hierarchy,
       onLog: (msg, type) => {
         if (type === 'error') {
           analyzeSpinner.warn(msg);
