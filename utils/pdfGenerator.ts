@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
-import { PDF_LAYOUT } from './layoutConfig';
+import { PDF_LAYOUT, DIMENSION } from './layoutConfig';
 
 // PDF.js worker setup
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -116,8 +116,9 @@ export const generatePdfWithImages = async (
   const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
   const photoRowHeight = usableHeight / photosPerPage;
   const photoHeight = photoRowHeight - PHOTO_INFO_GAP * 2;
-  const photoWidth = (A4_WIDTH - MARGIN * 2) * 0.45;
-  const infoWidth = (A4_WIDTH - MARGIN * 2) * 0.50;
+  const usableWidth = A4_WIDTH - MARGIN * 2;
+  const photoWidth = usableWidth * DIMENSION.IMAGE_RATIO;  // 60%
+  const infoWidth = usableWidth * DIMENSION.INFO_RATIO;    // 40%
   const totalPages = Math.ceil(photos.length / photosPerPage);
 
   for (let pageNum = 0; pageNum < totalPages; pageNum++) {
