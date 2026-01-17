@@ -9,7 +9,8 @@ import * as path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { generateExcelBuffer, type PhotoData as ExcelPhotoData } from '../../shared/generators/excelCore';
-import { generatePdfBuffer, type PhotoData as PdfPhotoData } from '../../shared/generators/pdfCore';
+import { generatePdfBuffer, type PhotoData as PdfPhotoData, type PdfQuality } from '../../shared/generators/pdfCore';
+import { optimizeImageForPdf } from '../adapters/imageAdapter';
 
 interface ExportOptions {
   format: string;
@@ -17,6 +18,7 @@ interface ExportOptions {
   photosPerPage: string;
   title: string;
   font?: string;
+  pdfQuality?: string;
 }
 
 interface InputData {
@@ -61,10 +63,20 @@ export async function exportCommand(
     process.exit(1);
   }
 
+  const pdfQuality = (options.pdfQuality || 'high') as PdfQuality;
+  const qualityLabels: Record<PdfQuality, string> = {
+    high: '印刷用 (1400px, 85%)',
+    medium: 'デジタル提出用 (800px, 75%)',
+    low: 'ドラフト用 (500px, 60%)',
+  };
+
   console.log(chalk.gray(`入力: ${inputPath}`));
   console.log(chalk.gray(`写真数: ${inputData.length}枚`));
   console.log(chalk.gray(`形式: ${options.format}`));
   console.log(chalk.gray(`ページあたり: ${options.photosPerPage}枚`));
+  if (options.format === 'pdf' || options.format === 'both') {
+    console.log(chalk.gray(`PDF画質: ${pdfQuality} - ${qualityLabels[pdfQuality]}`));
+  }
   console.log('');
 
   // 出力ディレクトリ確認
@@ -88,7 +100,7 @@ export async function exportCommand(
     if (format === 'excel') {
       await exportExcel(inputData, outputDir, baseFileName, dateStr, photosPerPage, options.title);
     } else if (format === 'pdf') {
-      await exportPdf(inputData, outputDir, baseFileName, dateStr, photosPerPage, options.title, options.font);
+      await exportPdf(inputData, outputDir, baseFileName, dateStr, photosPerPage, options.title, options.font, pdfQuality);
     } else {
       console.error(chalk.yellow(`警告: 不明な形式: ${format}`));
     }
@@ -138,7 +150,8 @@ async function exportPdf(
   dateStr: string,
   photosPerPage: 2 | 3,
   title: string,
-  fontPath?: string
+  fontPath?: string,
+  pdfQuality: PdfQuality = 'high'
 ): Promise<void> {
   const spinner = ora('PDFファイルを生成中...').start();
 
@@ -155,6 +168,8 @@ async function exportPdf(
       photosPerPage,
       title,
       fontPath,
+      pdfQuality,
+      imageOptimizer: optimizeImageForPdf,
     });
 
     const outputPath = path.join(outputDir, `${baseName}_${dateStr}.pdf`);

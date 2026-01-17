@@ -90,3 +90,76 @@ export const extractBase64Data = (dataUrl: string | undefined): string => {
   const parts = dataUrl.split(',');
   return parts.length > 1 ? parts[1] : '';
 };
+
+/**
+ * PDF埋め込み用に画像を最適化（Canvas API使用、ブラウザ環境用）
+ * pdfGenerator.tsのimageOptimizer互換
+ */
+export const optimizeImageForPdf = async (
+  bytes: Uint8Array,
+  options: { maxWidth: number; quality: number }
+): Promise<Uint8Array> => {
+  const { maxWidth, quality } = options;
+
+  // Uint8ArrayからBlobを作成
+  const blob = new Blob([bytes], { type: 'image/jpeg' });
+  const objectUrl = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      let width = img.width;
+      let height = img.height;
+
+      // リサイズが必要かチェック
+      if (width > maxWidth || height > maxWidth) {
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round(height * (maxWidth / width));
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxWidth) {
+            width = Math.round(width * (maxWidth / height));
+            height = maxWidth;
+          }
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // JPEG形式でBlobに変換
+      canvas.toBlob(
+        async (resultBlob) => {
+          if (!resultBlob) {
+            reject(new Error('Failed to create blob'));
+            return;
+          }
+          const arrayBuffer = await resultBlob.arrayBuffer();
+          resolve(new Uint8Array(arrayBuffer));
+        },
+        'image/jpeg',
+        quality / 100  // Canvas APIは0-1の範囲
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to load image for optimization'));
+    };
+
+    img.src = objectUrl;
+  });
+};

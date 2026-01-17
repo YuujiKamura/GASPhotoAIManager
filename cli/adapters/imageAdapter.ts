@@ -6,6 +6,7 @@
 import sharp from 'sharp';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import type { ImageOptimizeOptions } from '../../shared/generators/pdfCore';
 
 export interface ImageInfo {
   fileName: string;
@@ -210,4 +211,37 @@ export function createPhotoInputs(filePaths: string[]): {
     mimeType: 'image/jpeg',
     filePath: p,
   }));
+}
+
+/**
+ * PDF埋め込み用に画像を最適化（リサイズ＆再圧縮）
+ * pdfCore.tsのimageOptimizerとして注入して使用
+ */
+export async function optimizeImageForPdf(
+  bytes: Uint8Array,
+  options: ImageOptimizeOptions
+): Promise<Uint8Array> {
+  const { maxWidth, quality } = options;
+
+  const image = sharp(Buffer.from(bytes));
+  const metadata = await image.metadata();
+
+  // 既に十分小さい場合はそのまま返す（ただしJPEGに変換）
+  const needsResize = (metadata.width && metadata.width > maxWidth) ||
+                      (metadata.height && metadata.height > maxWidth);
+
+  let pipeline = image;
+
+  if (needsResize) {
+    pipeline = pipeline.resize(maxWidth, maxWidth, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+  }
+
+  const outputBuffer = await pipeline
+    .jpeg({ quality })
+    .toBuffer();
+
+  return new Uint8Array(outputBuffer);
 }

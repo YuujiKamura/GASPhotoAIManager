@@ -44,6 +44,7 @@ program
   .option('-p, --photos-per-page <number>', 'ページあたりの写真数 (2/3)', '3')
   .option('-t, --title <title>', 'ドキュメントタイトル', '工事写真帳')
   .option('--font <path>', '日本語フォントファイルパス')
+  .option('-q, --pdf-quality <quality>', 'PDF画質 (high=印刷用/medium=デジタル提出用/low=ドラフト用)', 'high')
   .action(exportCommand);
 
 // config コマンド

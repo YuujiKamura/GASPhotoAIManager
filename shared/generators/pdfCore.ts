@@ -33,10 +33,30 @@ export interface PhotoData {
   };
 }
 
+/** PDF画質プリセット */
+export type PdfQuality = 'high' | 'medium' | 'low';
+
+/** 画像最適化オプション */
+export interface ImageOptimizeOptions {
+  maxWidth: number;
+  quality: number;
+}
+
+/** 画質プリセット定義 */
+export const QUALITY_PRESETS: Record<PdfQuality, ImageOptimizeOptions> = {
+  high: { maxWidth: 1400, quality: 85 },   // 印刷用（デフォルト）
+  medium: { maxWidth: 800, quality: 75 },  // デジタル提出用
+  low: { maxWidth: 500, quality: 60 },     // 画面確認・ドラフト用
+};
+
 export interface PdfOptions {
   photosPerPage?: 2 | 3;
   title?: string;
   fontPath?: string;
+  /** PDF画質設定 (high=印刷用, medium=デジタル提出用, low=ドラフト用) */
+  pdfQuality?: PdfQuality;
+  /** 画像最適化関数（環境別にsharp/Canvasを注入） */
+  imageOptimizer?: (bytes: Uint8Array, opts: ImageOptimizeOptions) => Promise<Uint8Array>;
 }
 
 // ============================================
@@ -67,7 +87,16 @@ export async function generatePdfBuffer(
   photos: PhotoData[],
   options: PdfOptions = {}
 ): Promise<Buffer> {
-  const { photosPerPage = 3, title = 'Construction Photo Album', fontPath } = options;
+  const {
+    photosPerPage = 3,
+    title = 'Construction Photo Album',
+    fontPath,
+    pdfQuality = 'high',
+    imageOptimizer,
+  } = options;
+
+  // 画質設定からオプションを取得
+  const optimizeOpts = QUALITY_PRESETS[pdfQuality];
 
   // layoutConfigからレイアウト定数を取得
   const { A4_WIDTH, A4_HEIGHT, MARGIN, HEADER_HEIGHT, GAP, IMAGE_RATIO, INFO_RATIO } = getLayoutConstants();
@@ -158,9 +187,15 @@ export async function generatePdfBuffer(
       if (photo.base64) {
         try {
           const base64Data = extractBase64Data(photo.base64);
-          const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+          let imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
-          const isPng = (photo.mimeType || 'image/jpeg').includes('png');
+          // 画像最適化（オプティマイザーが提供されている場合）
+          if (imageOptimizer) {
+            imageBytes = await imageOptimizer(imageBytes, optimizeOpts);
+          }
+
+          // 最適化後は常にJPEG（オプティマイザーがある場合）
+          const isPng = !imageOptimizer && (photo.mimeType || 'image/jpeg').includes('png');
           const embeddedImage = isPng
             ? await pdfDoc.embedPng(imageBytes)
             : await pdfDoc.embedJpg(imageBytes);
