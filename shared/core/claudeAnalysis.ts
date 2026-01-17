@@ -8,7 +8,7 @@
  * - 2026-01-17: Claude Code CLI経由の実行に変更
  */
 
-import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -197,40 +197,26 @@ async function runClaudeCode(
   prompt: string,
   onLog?: LogFunction
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // claude -p "prompt" image1.jpg image2.jpg ...
-    const args = ['-p', prompt, '--output-format', 'text', ...imagePaths];
+  // プロンプトをエスケープ（シェル用）
+  const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
 
-    onLog?.(`claude ${args.slice(0, 3).join(' ')} [${imagePaths.length} images]`, 'info');
+  // コマンド構築
+  const imageArgs = imagePaths.map(p => `"${p}"`).join(' ');
+  const cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
 
-    const proc = spawn('claude', args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true,
+  onLog?.(`実行: claude -p "..." [${imagePaths.length} images]`, 'info');
+
+  try {
+    const result = execSync(cmd, {
+      encoding: 'utf-8',
+      timeout: 120000,  // 2分タイムアウト
+      maxBuffer: 10 * 1024 * 1024,  // 10MB
     });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(`claude exited with code ${code}: ${stderr}`));
-      }
-    });
-
-    proc.on('error', (err) => {
-      reject(new Error(`Failed to spawn claude: ${err.message}`));
-    });
-  });
+    return result;
+  } catch (error: unknown) {
+    const err = error as Error & { stderr?: string; status?: number };
+    throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
+  }
 }
 
 // ============================================
