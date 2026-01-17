@@ -14,7 +14,7 @@
     "cli": "node dist-cli/index.js",
     "a": "node dist-cli/index.js analyze",
     "server": "node dist-cli/server.js",
-    "build:server": "node -e \"require('child_process').execSync('npx esbuild cli/server.ts --bundle --platform=node --target=node18 --outfile=dist-cli/server.js --format=esm --external:sharp', {stdio: 'inherit'})\"",
+    "build:server": "node -e \"require('child_process').execSync('npx esbuild cli/server.ts --bundle --platform=node --target=node18 --outfile=dist-cli/server.js --format=esm --packages=external', {stdio: 'inherit'})\"",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

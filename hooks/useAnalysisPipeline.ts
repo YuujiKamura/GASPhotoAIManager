@@ -9,6 +9,7 @@ import { loadAliasSettings, hasAliases, applyAliasesToRecords } from '../utils/w
 import { extractLocationName } from '../utils/locationUtils';
 import { sortPhotosLogical } from '../utils/sortingUtils';
 import { OriginalData } from '../components/NormalizationPreviewModal';
+import { checkServerHealth, analyzePhotos as localAnalyzePhotos } from '../services/localApiService';
 
 const BATCH_SIZE = 6, PARALLEL = 2;
 
@@ -71,21 +72,66 @@ export function useAnalysisPipeline(p: Props) {
       setPhotos(sorted); setStats({ total: sorted.length, processed: cached, success: cached, failed: 0, cached }); setShowPreview(true);
 
       const pending = sorted.filter(x => x.status === 'pending');
-      if (pending.length > 0 && apiKey) {
-        const res = await processPhotosWithSmartFlow(pending, apiKey, inst, addLog, () => abortRef.current);
-        if (res.type === 'paired') {
-          const loc = extractLocationName(inst);
-          const up = res.pairs?.flatMap(pr => [
-            { ...pr.before, analysis: { ...(pr.before.analysis || emptyAnalysis(pr.before.fileName)), sceneId: pr.sceneId, phase: 'before' as const, station: loc, remarks: '着手前' }, status: 'done' as const },
-            { ...pr.after, analysis: { ...(pr.after.analysis || emptyAnalysis(pr.after.fileName)), sceneId: pr.sceneId, phase: 'after' as const, station: loc, remarks: '竣工' }, status: 'done' as const }
-          ]) || [];
-          setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
+      if (pending.length > 0) {
+        // ローカルAPIサーバーが起動しているかチェック
+        const localServerAvailable = await checkServerHealth();
+
+        if (localServerAvailable) {
+          // ローカルAPI経由で解析（Claude Code CLI使用）
+          addLog('🖥️ ローカルAPIサーバー経由で解析開始', 'info');
+          setCurrentStep(lang === 'ja' ? "Claude Code解析中..." : "Analyzing with Claude Code...");
+          try {
+            const photos = pending.map(p => ({
+              fileName: p.fileName,
+              base64: p.base64,
+              mimeType: p.mimeType,
+              date: p.date,
+            }));
+            const response = await localAnalyzePhotos(photos, { mode: appMode, instruction: inst });
+            if (response.success && response.results) {
+              const loc = extractLocationName(inst);
+              const analyzed = pending.map(p => {
+                const result = response.results?.find(r => r.fileName === p.fileName);
+                if (result?.analysis) {
+                  const analysis: AIAnalysisResult = {
+                    ...result.analysis,
+                    station: result.analysis.station || loc,
+                  };
+                  logResult(p.fileName, analysis);
+                  cacheAnalysis(p, analysis).catch(() => {});
+                  return { ...p, analysis, status: 'done' as const };
+                }
+                return { ...p, status: 'error' as const };
+              });
+              setPhotos(prev => prev.map(x => analyzed.find(y => y.fileName === x.fileName) || x));
+              addLog(`✅ ${analyzed.filter(a => a.status === 'done').length}枚の解析完了`, 'success');
+            } else {
+              throw new Error(response.error || 'Local API error');
+            }
+          } catch (e: any) {
+            addLog(`❌ ローカルAPI解析エラー: ${e.message}`, 'error');
+            setPhotos(prev => prev.map(x => pending.find(y => y.fileName === x.fileName) ? { ...x, status: 'error' as const } : x));
+          }
+        } else if (apiKey) {
+          // 従来のGemini API経由で解析
+          const res = await processPhotosWithSmartFlow(pending, apiKey, inst, addLog, () => abortRef.current);
+          if (res.type === 'paired') {
+            const loc = extractLocationName(inst);
+            const up = res.pairs?.flatMap(pr => [
+              { ...pr.before, analysis: { ...(pr.before.analysis || emptyAnalysis(pr.before.fileName)), sceneId: pr.sceneId, phase: 'before' as const, station: loc, remarks: '着手前' }, status: 'done' as const },
+              { ...pr.after, analysis: { ...(pr.after.analysis || emptyAnalysis(pr.after.fileName)), sceneId: pr.sceneId, phase: 'after' as const, station: loc, remarks: '竣工' }, status: 'done' as const }
+            ]) || [];
+            setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
+          } else {
+            const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
+              try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings()); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
+              catch { return b.map(r => ({ ...r, status: 'error' as const })); }
+            }, (n, t) => setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`), () => abortRef.current);
+            setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
+          }
         } else {
-          const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
-            try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings()); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
-            catch { return b.map(r => ({ ...r, status: 'error' as const })); }
-          }, (n, t) => setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`), () => abortRef.current);
-          setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
+          // APIキーもローカルサーバーもない
+          addLog('⚠️ 解析するにはローカルAPIサーバーを起動するか、Gemini APIキーを設定してください', 'warning');
         }
       }
 
