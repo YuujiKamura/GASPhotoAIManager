@@ -41,3 +41,4 @@ test-yolo/
 # YOLO models (large binary files)
 models/*.pt
 result.json
+.gaspm-server.pid
