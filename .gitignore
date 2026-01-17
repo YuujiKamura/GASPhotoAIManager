@@ -32,3 +32,4 @@ test-output/
 *.njsproj
 *.sln
 *.sw?
+.temp/

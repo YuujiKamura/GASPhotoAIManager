@@ -25,11 +25,14 @@ const app = express();
 const PORT = 3001;
 
 // Middleware
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
-  credentials: true
-}));
+app.use(cors());  // 全オリジン許可
 app.use(express.json({ limit: '100mb' }));
+
+// 静的ファイル配信（local-client.html用）
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '..');
+app.use(express.static(projectRoot));
 
 // Health check
 app.get('/api/health', (_req, res) => {

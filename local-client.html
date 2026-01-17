@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>写真解析 - Claude Code</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    header { background: #1a1a2e; color: white; padding: 20px; margin-bottom: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
+    .status { padding: 8px 16px; border-radius: 20px; font-size: 0.875rem; font-weight: 600; }
+    .status.connected { background: #10b981; }
+    .status.disconnected { background: #ef4444; }
+    .drop-zone { border: 3px dashed #ccc; border-radius: 16px; padding: 60px 20px; text-align: center; background: white; transition: all 0.3s; cursor: pointer; }
+    .drop-zone:hover, .drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; }
+    .drop-zone h2 { color: #374151; margin-bottom: 10px; }
+    .drop-zone p { color: #9ca3af; }
+    .results { margin-top: 20px; }
+    .photo-card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; gap: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .photo-card img { width: 150px; height: 150px; object-fit: cover; border-radius: 8px; }
+    .photo-info { flex: 1; }
+    .photo-info h3 { font-size: 1rem; color: #1f2937; margin-bottom: 8px; }
+    .photo-info .field { margin-bottom: 6px; font-size: 0.875rem; }
+    .photo-info .label { color: #6b7280; display: inline-block; width: 80px; }
+    .photo-info .value { color: #111827; font-weight: 500; }
+    .loading { text-align: center; padding: 40px; }
+    .spinner { width: 50px; height: 50px; border: 4px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 16px; border-radius: 8px; margin-top: 20px; }
+    .log { background: #1f2937; color: #e5e7eb; padding: 16px; border-radius: 8px; margin-top: 20px; font-family: monospace; font-size: 0.8rem; max-height: 200px; overflow-y: auto; }
+    .log-entry { margin-bottom: 4px; }
+    .log-entry.info { color: #60a5fa; }
+    .log-entry.success { color: #34d399; }
+    .log-entry.error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📷 写真解析 (Claude Code)</h1>
+      <div id="status" class="status disconnected">接続確認中...</div>
+    </header>
+
+    <div id="dropZone" class="drop-zone">
+      <h2>写真をドロップ</h2>
+      <p>またはクリックして選択</p>
+      <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
+    </div>
+
+    <div id="log" class="log" style="display:none"></div>
+    <div id="loading" class="loading" style="display:none">
+      <div class="spinner"></div>
+      <p>Claude Codeで解析中...</p>
+    </div>
+    <div id="error" class="error" style="display:none"></div>
+    <div id="results" class="results"></div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:3001';
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const statusEl = document.getElementById('status');
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const resultsEl = document.getElementById('results');
+    const logEl = document.getElementById('log');
+
+    // サーバー接続確認
+    async function checkServer() {
+      try {
+        const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          statusEl.textContent = '接続中';
+          statusEl.className = 'status connected';
+          return true;
+        }
+      } catch {}
+      statusEl.textContent = '未接続';
+      statusEl.className = 'status disconnected';
+      return false;
+    }
+
+    function addLog(msg, type = 'info') {
+      logEl.style.display = 'block';
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // ファイル読み込み
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          resolve({ fileName: file.name, base64, mimeType: file.type });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 解析実行
+    async function analyzePhotos(files) {
+      if (!await checkServer()) {
+        errorEl.textContent = 'サーバーに接続できません。npm run server を実行してください。';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      errorEl.style.display = 'none';
+      resultsEl.innerHTML = '';
+      loadingEl.style.display = 'block';
+      addLog(`${files.length}枚の写真を解析開始...`);
+
+      try {
+        const photos = await Promise.all(Array.from(files).map(readFileAsBase64));
+        addLog('写真データ準備完了、APIリクエスト送信中...');
+
+        const res = await fetch(`${API_BASE}/api/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photos, mode: 'construction' })
+        });
+
+        const data = await res.json();
+        loadingEl.style.display = 'none';
+
+        if (data.success && data.results) {
+          addLog(`解析完了: ${data.results.length}枚 (${data.timing?.total}ms)`, 'success');
+          displayResults(data.results);
+        } else {
+          throw new Error(data.error || '解析に失敗しました');
+        }
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+        addLog(`エラー: ${err.message}`, 'error');
+      }
+    }
+
+    // 結果表示
+    function displayResults(results) {
+      resultsEl.innerHTML = results.map(r => `
+        <div class="photo-card">
+          <img src="data:${r.mimeType || 'image/jpeg'};base64,${r.base64}" alt="${r.fileName}">
+          <div class="photo-info">
+            <h3>${r.fileName}</h3>
+            <div class="field"><span class="label">工種:</span> <span class="value">${r.analysis?.workType || '-'}</span></div>
+            <div class="field"><span class="label">種別:</span> <span class="value">${r.analysis?.variety || '-'}</span></div>
+            <div class="field"><span class="label">細別:</span> <span class="value">${r.analysis?.detail || '-'}</span></div>
+            <div class="field"><span class="label">測点:</span> <span class="value">${r.analysis?.station || '-'}</span></div>
+            <div class="field"><span class="label">備考:</span> <span class="value">${r.analysis?.remarks || '-'}</span></div>
+            <div class="field"><span class="label">説明:</span> <span class="value">${r.analysis?.description || '-'}</span></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // イベント設定
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) analyzePhotos(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', e => {
+      if (e.target.files.length) analyzePhotos(e.target.files);
+    });
+
+    // 初期化
+    checkServer();
+    setInterval(checkServer, 5000);
+  </script>
+</body>
+</html>

@@ -10,6 +10,7 @@
 
 import { execSync } from 'child_process';
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -126,9 +127,19 @@ function runClaudeCode(
 
   let cmd: string;
   if (imagePaths && imagePaths.length > 0) {
-    const imageArgs = imagePaths.map(p => `"${p}"`).join(' ');
+    // ファイル存在確認
+    for (const p of imagePaths) {
+      if (!existsSync(p)) {
+        onLog?.(`Warning: File not found: ${p}`, 'error');
+      } else {
+        onLog?.(`File exists: ${p}`, 'info');
+      }
+    }
+    // Windowsパスをスラッシュに変換
+    const normalizedPaths = imagePaths.map(p => p.replace(/\\/g, '/'));
+    const imageArgs = normalizedPaths.map(p => `"${p}"`).join(' ');
     cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
-    onLog?.(`Step1: claude [${imagePaths.length} images]`, 'info');
+    onLog?.(`Command: ${cmd.substring(0, 200)}...`, 'info');
   } else {
     cmd = `claude -p "${escapedPrompt}" --output-format text`;
     onLog?.(`Step2: claude [text only]`, 'info');
@@ -197,7 +208,7 @@ async function executeStep1(
   const prompt = buildStep1Prompt(photos);
 
   const response = runClaudeCode(prompt, imagePaths, onLog);
-  return parseJsonResponse<RawImageData>(response, photos.length);
+  return parseJsonResponse<RawImageData>(response, photos.length, onLog);
 }
 
 // ============================================
@@ -259,17 +270,20 @@ async function executeStep2(
 ): Promise<Partial<AnalysisResult>[]> {
   const prompt = buildStep2Prompt(rawData, hierarchy);
   const response = runClaudeCode(prompt, undefined, onLog);
-  return parseJsonResponse<Partial<AnalysisResult>>(response, rawData.length);
+  return parseJsonResponse<Partial<AnalysisResult>>(response, rawData.length, onLog);
 }
 
 // ============================================
 // JSON パース
 // ============================================
 
-function parseJsonResponse<T>(text: string, expectedCount: number): T[] {
+function parseJsonResponse<T>(text: string, expectedCount: number, onLog?: LogFunction): T[] {
+  onLog?.(`Raw response (${text.length} chars): ${text.substring(0, 500)}...`, 'info');
+
   // JSONブロックを抽出
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonMatch) {
+    onLog?.('Found JSON code block', 'info');
     const parsed = JSON.parse(jsonMatch[1]);
     return Array.isArray(parsed) ? parsed : [parsed];
   }
@@ -277,14 +291,25 @@ function parseJsonResponse<T>(text: string, expectedCount: number): T[] {
   // 配列を直接抽出
   const arrayMatch = text.match(/\[[\s\S]*\]/);
   if (arrayMatch) {
+    onLog?.('Found JSON array', 'info');
     return JSON.parse(arrayMatch[0]);
+  }
+
+  // オブジェクトを抽出
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    onLog?.('Found JSON object', 'info');
+    const parsed = JSON.parse(objectMatch[0]);
+    return Array.isArray(parsed) ? parsed : [parsed];
   }
 
   // そのままパース
   try {
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
+  } catch (e) {
+    onLog?.(`JSON parse failed: ${e}`, 'error');
+    onLog?.(`Full response: ${text}`, 'error');
     throw new Error("Invalid JSON response from Claude");
   }
 }
@@ -323,7 +348,10 @@ function mergeResults(
 // ============================================
 
 async function saveToTempFile(photo: PhotoInput): Promise<string> {
-  const tempDir = os.tmpdir();
+  // プロジェクト内の.tempフォルダを使用（Claude CLIがアクセスできる）
+  const projectRoot = process.cwd();
+  const tempDir = path.join(projectRoot, '.temp');
+  await fs.mkdir(tempDir, { recursive: true });
   const tempPath = path.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
 
   let base64Data = photo.base64;
