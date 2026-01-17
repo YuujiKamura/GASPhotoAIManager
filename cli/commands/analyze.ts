@@ -12,7 +12,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
-import { scanFolder, processImages } from '../adapters/imageAdapter';
+import { scanFolder, processImage } from '../adapters/imageAdapter';
 import { getMergedHierarchy } from '../adapters/masterAdapter';
 import {
   analyzePhotos,
@@ -74,27 +74,13 @@ export async function analyzeCommand(
     process.exit(0);
   }
 
-  // 画像処理
-  const processSpinner = ora('画像を処理中...').start();
-  let photoInputs: PhotoInput[];
-  try {
-    const imageInfos = await processImages(imagePaths, {}, (current, total, fileName) => {
-      processSpinner.text = `画像を処理中... ${current}/${total} - ${fileName}`;
-    });
-
-    photoInputs = imageInfos.map((info, index) => ({
-      fileName: info.fileName,
-      base64: info.base64,
-      mimeType: info.mimeType,
-      date: info.date,
-      filePath: imagePaths[index],  // Claude Code CLI用に元ファイルパスを保持
-    }));
-    processSpinner.succeed(`${photoInputs.length}枚の画像を処理完了`);
-  } catch (error) {
-    processSpinner.fail('画像の処理に失敗');
-    console.error(chalk.red(error));
-    process.exit(1);
-  }
+  // PhotoInput作成（ファイルパスのみ、base64は後で）
+  const photoInputs: PhotoInput[] = imagePaths.map(p => ({
+    fileName: path.basename(p),
+    base64: '',  // 解析時は不要
+    mimeType: 'image/jpeg',
+    filePath: p,
+  }));
 
   // 工種マスタ読み込み（constructionモードの場合）
   let hierarchy: Record<string, unknown> | undefined;
@@ -134,6 +120,9 @@ export async function analyzeCommand(
       onLog: (msg, type) => {
         if (type === 'error') {
           analyzeSpinner.warn(msg);
+        } else if (msg.startsWith('DEBUG')) {
+          // デバッグログは詳細表示
+          analyzeSpinner.info(msg);
         }
       },
       onProgress: (current, total, fileName) => {
@@ -147,14 +136,39 @@ export async function analyzeCommand(
     process.exit(1);
   }
 
-  // 結果をマージ
-  const outputData = photoInputs.map((photo, index) => {
-    const analysis = results.find(r => r.fileName === photo.fileName) || results[index];
-    return {
+  // 結果をマージ（base64は出力時に生成）
+  const outputSpinner = ora('出力データを準備中...').start();
+  const outputData: {
+    fileName: string;
+    mimeType: string;
+    date?: number;
+    base64: string;
+    analysis?: object;
+  }[] = [];
+
+  for (let i = 0; i < photoInputs.length; i++) {
+    const photo = photoInputs[i];
+    const analysis = results.find(r => r.fileName === photo.fileName) || results[i];
+    outputSpinner.text = `出力データを準備中... ${i + 1}/${photoInputs.length}`;
+
+    // base64を生成（出力用）
+    let base64 = '';
+    let date: number | undefined;
+    if (photo.filePath) {
+      try {
+        const imageInfo = await processImage(photo.filePath);
+        base64 = imageInfo.base64;
+        date = imageInfo.date;
+      } catch {
+        // 失敗時は空のまま
+      }
+    }
+
+    outputData.push({
       fileName: photo.fileName,
       mimeType: photo.mimeType,
-      date: photo.date,
-      base64: photo.base64,
+      date,
+      base64,
       analysis: analysis ? {
         workType: analysis.workType,
         variety: analysis.variety,
@@ -167,8 +181,9 @@ export async function analyzeCommand(
         detectedText: analysis.detectedText,
         reasoning: analysis.reasoning,
       } : undefined,
-    };
-  });
+    });
+  }
+  outputSpinner.succeed('出力データ準備完了');
 
   // JSON出力
   const outputPath = path.resolve(options.output);

@@ -42,3 +42,4 @@ test-yolo/
 models/*.pt
 result.json
 .gaspm-server.pid
+temp-images

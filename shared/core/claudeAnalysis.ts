@@ -11,7 +11,7 @@
 
 import { execSync } from 'child_process';
 import * as fs from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
@@ -198,33 +198,63 @@ const formatShootingTime = (timestamp: number): string => {
 // Claude Code CLI実行
 // ============================================
 
+// 一時フォルダを管理
+let tempImageDir: string | null = null;
+
+function getTempImageDir(): string {
+  if (!tempImageDir) {
+    tempImageDir = path.join(process.cwd(), 'temp-images');
+    if (!existsSync(tempImageDir)) {
+      mkdirSync(tempImageDir, { recursive: true });
+    }
+  }
+  return tempImageDir;
+}
+
+function cleanupTempImages(): void {
+  if (tempImageDir && existsSync(tempImageDir)) {
+    try {
+      const files = readdirSync(tempImageDir);
+      for (const file of files) {
+        unlinkSync(path.join(tempImageDir, file));
+      }
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
 function runClaudeCode(
   prompt: string,
   imagePaths?: string[],
   onLog?: LogFunction
 ): string {
-  const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
-
   let cmd: string;
   if (imagePaths && imagePaths.length > 0) {
-    // ファイル存在確認
+    // 全画像をtemp-imagesにコピーして絶対パスで返す
+    const tempDir = getTempImageDir();
+    const localPaths: string[] = [];
+
     for (const p of imagePaths) {
       if (!existsSync(p)) {
         onLog?.(`Warning: File not found: ${p}`, 'error');
-      } else {
-        onLog?.(`File exists: ${p}`, 'info');
+        continue;
       }
+      const tempPath = path.join(tempDir, path.basename(p));
+      copyFileSync(p, tempPath);
+      // 絶対パス、スラッシュ統一
+      localPaths.push(path.resolve(tempPath).replace(/\\/g, '/'));
     }
-    // 相対パスに変換（Claude CLIがアクセスしやすい）
-    const cwd = process.cwd();
-    const relativePaths = imagePaths.map(p => {
-      const rel = path.relative(cwd, p).replace(/\\/g, '/');
-      return rel.startsWith('.') ? rel : `./${rel}`;
-    });
-    const imageArgs = relativePaths.map(p => `"${p}"`).join(' ');
-    cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
-    onLog?.(`Command: ${cmd.substring(0, 200)}...`, 'info');
+
+    // プロンプトに画像パスを含める（Readツールを使うよう明示）
+    const imageList = localPaths.join(', ');
+    const fullPrompt = `Read the following image files and analyze them: ${imageList}\n\n${prompt}`;
+    const escapedPrompt = fullPrompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
+    cmd = `claude -p "${escapedPrompt}" --output-format text`;
+    console.log('DEBUG paths:', localPaths);
+    onLog?.(`Claude CLI: ${localPaths.length}枚の画像を解析`, 'info');
   } else {
+    const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
     cmd = `claude -p "${escapedPrompt}" --output-format text`;
     onLog?.(`Step2: claude [text only]`, 'info');
   }
@@ -560,27 +590,19 @@ export async function analyzePhotos(
     }
   }
 
-  onLog?.(`解析開始: ${photos.length}枚 (${parallelBatches}並列Step1 + 統合Step2)`, 'info');
+  onLog?.(`解析開始: ${photos.length}枚 (バッチサイズ${batchSize})`, 'info');
   onMetrics?.({ type: 'analysis_start', totalImages: photos.length, mode });
 
-  // 並列数に応じてバッチに分割（parallelBatches個のバッチを作成）
+  // batchSizeに応じてバッチに分割
   const batches: PhotoInput[][] = [];
-  const numBatches = Math.min(parallelBatches, photos.length);
-  const baseSize = Math.floor(photos.length / numBatches);
-  const remainder = photos.length % numBatches;
-
-  let offset = 0;
-  for (let i = 0; i < numBatches; i++) {
-    // 余りを前のバッチに1つずつ分配
-    const size = baseSize + (i < remainder ? 1 : 0);
-    batches.push(photos.slice(offset, offset + size));
-    offset += size;
+  for (let i = 0; i < photos.length; i += batchSize) {
+    batches.push(photos.slice(i, i + batchSize));
   }
 
   // ============================================
-  // Step1: 並列で画像認識
+  // Step1: 画像認識
   // ============================================
-  onLog?.(`Step1開始: ${batches.length}バッチを${parallelBatches}並列で実行`, 'info');
+  onLog?.(`Step1開始: ${batches.length}バッチ`, 'info');
   const step1Start = Date.now();
 
   // バッチごとの一時ファイルパスを保持

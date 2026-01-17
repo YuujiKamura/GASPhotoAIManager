@@ -396,7 +396,7 @@ var getMergedHierarchy = async () => {
 // shared/core/claudeAnalysis.ts
 import { execSync as execSync2 } from "child_process";
 import * as fs3 from "fs/promises";
-import { existsSync as existsSync2 } from "fs";
+import { existsSync as existsSync2, mkdirSync, readdirSync, unlinkSync, copyFileSync } from "fs";
 import * as path4 from "path";
 
 // shared/core/yoloPreprocess.ts
@@ -511,23 +511,39 @@ var formatShootingTime = (timestamp) => {
   const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${hours}:${minutes}`;
 };
+var tempImageDir = null;
+function getTempImageDir() {
+  if (!tempImageDir) {
+    tempImageDir = path4.join(process.cwd(), "temp-images");
+    if (!existsSync2(tempImageDir)) {
+      mkdirSync(tempImageDir, { recursive: true });
+    }
+  }
+  return tempImageDir;
+}
 function runClaudeCode(prompt, imagePaths, onLog) {
   const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, " ");
   let cmd;
   if (imagePaths && imagePaths.length > 0) {
-    for (const p of imagePaths) {
+    const cwd = process.cwd();
+    const cwdDrive = cwd.match(/^([A-Za-z]:)/)?.[1]?.toUpperCase();
+    const normalizedPaths = imagePaths.map((p) => {
+      const fileDrive = p.match(/^([A-Za-z]:)/)?.[1]?.toUpperCase();
       if (!existsSync2(p)) {
         onLog?.(`Warning: File not found: ${p}`, "error");
-      } else {
-        onLog?.(`File exists: ${p}`, "info");
+        return null;
       }
-    }
-    const cwd = process.cwd();
-    const relativePaths = imagePaths.map((p) => {
+      if (fileDrive && cwdDrive && fileDrive !== cwdDrive) {
+        const tempDir = getTempImageDir();
+        const tempPath = path4.join(tempDir, path4.basename(p));
+        copyFileSync(p, tempPath);
+        const rel2 = path4.relative(cwd, tempPath).replace(/\\/g, "/");
+        return rel2.startsWith(".") ? rel2 : `./${rel2}`;
+      }
       const rel = path4.relative(cwd, p).replace(/\\/g, "/");
       return rel.startsWith(".") ? rel : `./${rel}`;
-    });
-    const imageArgs = relativePaths.map((p) => `"${p}"`).join(" ");
+    }).filter(Boolean);
+    const imageArgs = normalizedPaths.map((p) => `"${p}"`).join(" ");
     cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
     onLog?.(`Command: ${cmd.substring(0, 200)}...`, "info");
   } else {
