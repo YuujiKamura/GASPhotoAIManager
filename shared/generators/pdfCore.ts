@@ -257,40 +257,52 @@ export async function generatePdfBuffer(
         borderWidth: 0.5
       });
 
-      // 情報テキスト（枠に収まるよう自動縮小）
+      // 情報テキスト（枠に収まるよう自動縮小・改行）
       const baseFontSize = 12;
+      const lineHeight = 14;  // 行の高さ
       const labelWidth = 50;  // ラベル用の幅
       const valueMaxWidth = infoWidth - labelWidth - 10;  // 値用の最大幅（余白含む）
 
-      infoLines.forEach((line, idx) => {
-        const y = rowY + photoHeight - 20 - idx * 20;
-        if (y > rowY + 5) {
-          // ラベル描画
-          page.drawText(`${line.label}:`, {
-            x: infoX + 5,
-            y,
-            size: baseFontSize,
-            font: japaneseFont,
-            color: rgb(0.4, 0.4, 0.4)
-          });
+      let currentY = rowY + photoHeight - 20;
 
-          // 値を枠に収まるよう調整
-          const { fontSize, displayText } = fitTextToWidth(
-            line.value,
-            japaneseFont,
-            valueMaxWidth,
-            baseFontSize,
-            8  // 最小8pt
-          );
+      infoLines.forEach((line) => {
+        if (currentY < rowY + 15) return;  // 枠外に出る場合はスキップ
 
-          page.drawText(displayText, {
-            x: infoX + 55,
-            y: y + (baseFontSize - fontSize) / 2,  // 縮小時に垂直中央揃え
-            size: fontSize,
-            font: japaneseFont,
-            color: rgb(0.1, 0.1, 0.1)
-          });
-        }
+        // ラベル描画
+        page.drawText(`${line.label}:`, {
+          x: infoX + 5,
+          y: currentY,
+          size: baseFontSize,
+          font: japaneseFont,
+          color: rgb(0.4, 0.4, 0.4)
+        });
+
+        // 値を枠に収まるよう調整（最大2行）
+        const { fontSize, lines } = fitTextToWidth(
+          line.value,
+          japaneseFont,
+          valueMaxWidth,
+          baseFontSize,
+          8,  // 最小8pt
+          2   // 最大2行
+        );
+
+        // 複数行の描画
+        lines.forEach((textLine, lineIdx) => {
+          const lineY = currentY - lineIdx * (fontSize + 2);
+          if (lineY > rowY + 5) {
+            page.drawText(textLine, {
+              x: infoX + 55,
+              y: lineY,
+              size: fontSize,
+              font: japaneseFont,
+              color: rgb(0.1, 0.1, 0.1)
+            });
+          }
+        });
+
+        // 次のフィールドへ（複数行の場合は追加スペース）
+        currentY -= lineHeight + (lines.length > 1 ? (fontSize + 2) * (lines.length - 1) : 0);
       });
 
       // ファイル名
@@ -342,42 +354,101 @@ function truncate(str: string, maxLen: number): string {
 }
 
 /**
- * テキストが枠に収まるフォントサイズを計算
+ * テキストを指定幅に収まるよう複数行に分割
+ * @param text テキスト
+ * @param font フォント
+ * @param maxWidth 最大幅（pt）
+ * @param fontSize フォントサイズ
+ * @param maxLines 最大行数
+ * @returns 分割された行の配列
+ */
+function wrapText(
+  text: string,
+  font: PDFFont,
+  maxWidth: number,
+  fontSize: number,
+  maxLines: number = 2
+): string[] {
+  const lines: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0 && lines.length < maxLines) {
+    // 1行に収まるか確認
+    const textWidth = font.widthOfTextAtSize(remaining, fontSize);
+    if (textWidth <= maxWidth) {
+      lines.push(remaining);
+      break;
+    }
+
+    // 収まらない場合、文字を減らして改行位置を探す
+    let breakPoint = remaining.length;
+    while (breakPoint > 1) {
+      const testText = remaining.substring(0, breakPoint);
+      const testWidth = font.widthOfTextAtSize(testText, fontSize);
+      if (testWidth <= maxWidth) {
+        break;
+      }
+      breakPoint--;
+    }
+
+    // 最後の行で収まらない場合は省略記号
+    if (lines.length === maxLines - 1 && breakPoint < remaining.length) {
+      // 省略記号分のスペースを確保
+      while (breakPoint > 1) {
+        const testText = remaining.substring(0, breakPoint) + '…';
+        const testWidth = font.widthOfTextAtSize(testText, fontSize);
+        if (testWidth <= maxWidth) {
+          lines.push(remaining.substring(0, breakPoint) + '…');
+          remaining = '';
+          break;
+        }
+        breakPoint--;
+      }
+      if (remaining.length > 0) {
+        lines.push('…');
+        remaining = '';
+      }
+    } else {
+      lines.push(remaining.substring(0, breakPoint));
+      remaining = remaining.substring(breakPoint);
+    }
+  }
+
+  return lines.length > 0 ? lines : [''];
+}
+
+/**
+ * テキストが枠に収まるフォントサイズと行を計算
  * @param text テキスト
  * @param font フォント
  * @param maxWidth 最大幅（pt）
  * @param baseFontSize 基本フォントサイズ
  * @param minFontSize 最小フォントサイズ
- * @returns { fontSize, displayText } 調整後のフォントサイズと表示テキスト
+ * @param maxLines 最大行数
+ * @returns { fontSize, lines } 調整後のフォントサイズと表示行
  */
 function fitTextToWidth(
   text: string,
   font: PDFFont,
   maxWidth: number,
   baseFontSize: number,
-  minFontSize: number = 8
-): { fontSize: number; displayText: string } {
+  minFontSize: number = 8,
+  maxLines: number = 2
+): { fontSize: number; lines: string[] } {
   let fontSize = baseFontSize;
-  let displayText = text;
 
-  // フォントサイズを縮小して収まるか試す
+  // まず1行で収まるかフォントサイズを縮小して試す
   while (fontSize >= minFontSize) {
-    const textWidth = font.widthOfTextAtSize(displayText, fontSize);
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
     if (textWidth <= maxWidth) {
-      return { fontSize, displayText };
+      return { fontSize, lines: [text] };
     }
     fontSize -= 0.5;
   }
 
-  // 最小サイズでも収まらない場合は切り詰め
+  // 最小サイズでも1行に収まらない場合は複数行に分割
   fontSize = minFontSize;
-  while (displayText.length > 3) {
-    displayText = displayText.substring(0, displayText.length - 1);
-    const textWidth = font.widthOfTextAtSize(displayText + '…', fontSize);
-    if (textWidth <= maxWidth) {
-      return { fontSize, displayText: displayText + '…' };
-    }
-  }
+  const lines = wrapText(text, font, maxWidth, fontSize, maxLines);
 
-  return { fontSize: minFontSize, displayText: '…' };
+  return { fontSize, lines };
 }
