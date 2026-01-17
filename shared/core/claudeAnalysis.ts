@@ -138,6 +138,7 @@ export interface AnalyzeOptions {
   mode?: AppMode;
   instruction?: string;
   batchSize?: number;
+  parallelBatches?: number;  // 同時実行バッチ数 (default: 1)
   model?: string;
   onLog?: LogFunction;
   onProgress?: ProgressCallback;
@@ -453,6 +454,7 @@ export async function analyzePhotos(
   const {
     mode = 'construction',
     batchSize = 5,
+    parallelBatches = 3,  // Step1を並列実行する数
     onLog,
     onProgress,
     onMetrics,
@@ -461,16 +463,13 @@ export async function analyzePhotos(
   } = options;
 
   const analysisStart = Date.now();
-  const allResults: AnalysisResult[] = [];
 
   // メトリクス収集用
   const batchMetrics: BatchMetrics[] = [];
   const imageMetrics: ImageMetrics[] = [];
   const rawResponses: AnalysisMetrics['rawResponses'] = [];
-  let step1TotalTime = 0;
-  let step2TotalTime = 0;
 
-  onLog?.(`解析開始: ${photos.length}枚 (2段階処理)`, 'info');
+  onLog?.(`解析開始: ${photos.length}枚 (並列Step1 + 統合Step2)`, 'info');
   onMetrics?.({ type: 'analysis_start', totalImages: photos.length, mode });
 
   // バッチに分割
@@ -479,14 +478,23 @@ export async function analyzePhotos(
     batches.push(photos.slice(i, i + batchSize));
   }
 
-  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-    checkAbort(shouldAbort, `バッチ ${batchIndex + 1}/${batches.length}`);
+  // ============================================
+  // Step1: 並列で画像認識
+  // ============================================
+  onLog?.(`Step1開始: ${batches.length}バッチを${parallelBatches}並列で実行`, 'info');
+  const step1Start = Date.now();
 
-    const batch = batches[batchIndex];
+  // バッチごとの一時ファイルパスを保持
+  const allTempPaths: string[][] = [];
+
+  // 並列実行用のタスク作成
+  const step1Tasks = batches.map(async (batch, batchIndex) => {
+    checkAbort(shouldAbort, `Step1 バッチ ${batchIndex + 1}`);
+
     const batchStart = Date.now();
     const imageNames = batch.map(p => p.fileName);
 
-    onLog?.(`バッチ ${batchIndex + 1}/${batches.length} (${batch.length}枚)`, 'info');
+    onLog?.(`Step1 バッチ${batchIndex + 1}/${batches.length} 開始 (${batch.length}枚)`, 'info');
     onMetrics?.({
       type: 'batch_start',
       batchIndex,
@@ -506,112 +514,129 @@ export async function analyzePhotos(
         photo.filePath = tempPath;
       }
     }
+    allTempPaths[batchIndex] = tempPaths;
 
-    let step1Duration = 0;
-    let step2Duration = 0;
+    // Step1実行
+    onMetrics?.({ type: 'step_start', step: 1, batchIndex });
+    const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics);
+    const duration = Date.now() - batchStart;
 
-    try {
-      // Step1: 画像認識
-      onMetrics?.({ type: 'step_start', step: 1, batchIndex });
-      const step1Start = Date.now();
-      const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics);
-      step1Duration = Date.now() - step1Start;
-      step1TotalTime += step1Duration;
-      onLog?.(`Step1完了: ${formatDuration(step1Duration)}`, 'info');
-      onMetrics?.({ type: 'step_complete', step: 1, batchIndex, duration: step1Duration });
+    onLog?.(`Step1 バッチ${batchIndex + 1} 完了: ${formatDuration(duration)}`, 'info');
+    onMetrics?.({ type: 'step_complete', step: 1, batchIndex, duration });
 
-      let batchResults: AnalysisResult[];
+    return { batchIndex, rawData, duration, imageNames, batch };
+  });
 
-      if (mode === 'construction' && hierarchy) {
-        // Step2: マスタ照合
-        onMetrics?.({ type: 'step_start', step: 2, batchIndex });
-        const step2Start = Date.now();
-        const classified = await executeStep2WithMetrics(rawData, hierarchy, batchIndex, rawResponses, onLog, onMetrics);
-        step2Duration = Date.now() - step2Start;
-        step2TotalTime += step2Duration;
-        onLog?.(`Step2完了: ${formatDuration(step2Duration)}`, 'info');
-        onMetrics?.({ type: 'step_complete', step: 2, batchIndex, duration: step2Duration });
-
-        batchResults = mergeResults(rawData, classified);
-      } else {
-        // generalモードまたはマスタなし: Step1結果のみ使用
-        batchResults = rawData.map(raw => ({
-          fileName: raw.fileName,
-          workType: '',
-          variety: '',
-          detail: '',
-          station: '',
-          remarks: raw.photoCategoryGuess,
-          remarksCategory: raw.photoCategoryGuess,
-          remarksValue: '',
-          description: raw.sceneDescription,
-          measurements: raw.measurements,
-          hasBoard: raw.hasBoard,
-          detectedText: raw.detectedText,
-          reasoning: '',
-        }));
-      }
-
-      // 画像別メトリクス & 進捗通知
-      const perImageTime = (step1Duration + step2Duration) / batch.length;
-      for (const result of batchResults) {
-        imageMetrics.push({
-          fileName: result.fileName,
-          step1Time: step1Duration / batch.length,
-          step2Time: step2Duration / batch.length,
-          totalTime: perImageTime,
-          status: 'success'
-        });
-        onMetrics?.({ type: 'image_complete', fileName: result.fileName, result });
-        onProgress?.(allResults.length + 1, photos.length, result.fileName, result);
-      }
-
-      allResults.push(...batchResults);
-
-      // バッチメトリクス
-      const batchEnd = Date.now();
-      batchMetrics.push({
-        index: batchIndex,
-        imageCount: batch.length,
-        startTime: batchStart,
-        endTime: batchEnd,
-        step1Duration,
-        step2Duration,
-        images: imageNames
-      });
-      onMetrics?.({
-        type: 'batch_complete',
-        batchIndex,
-        duration: batchEnd - batchStart,
-        step1Duration,
-        step2Duration
-      });
-
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      onMetrics?.({ type: 'error', message: errMsg, batchIndex });
-      for (const photo of batch) {
-        imageMetrics.push({
-          fileName: photo.fileName,
-          step1Time: 0,
-          step2Time: 0,
-          totalTime: 0,
-          status: 'error',
-          error: errMsg
-        });
-      }
-      throw error;
-    } finally {
-      const toCleanup = tempPaths.filter((p, i) => {
-        const original = batch[i];
-        return p !== original.filePath || p.includes('gaspm_');
-      });
-      await cleanupTempFiles(toCleanup);
-    }
+  // 並列数を制限して実行
+  const step1Results: { batchIndex: number; rawData: RawImageData[]; duration: number; imageNames: string[]; batch: PhotoInput[] }[] = [];
+  for (let i = 0; i < step1Tasks.length; i += parallelBatches) {
+    const chunk = step1Tasks.slice(i, i + parallelBatches);
+    const results = await Promise.all(chunk);
+    step1Results.push(...results);
   }
 
+  // batchIndex順にソート
+  step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
+
+  const step1TotalTime = Date.now() - step1Start;
+  onLog?.(`Step1全完了: ${formatDuration(step1TotalTime)} (${batches.length}バッチ)`, 'success');
+
+  // ============================================
+  // Step2: 全結果をまとめて1回で照合
+  // ============================================
+  let allResults: AnalysisResult[] = [];
+  let step2TotalTime = 0;
+
+  // 全rawDataをマージ
+  const allRawData: RawImageData[] = step1Results.flatMap(r => r.rawData);
+
+  if (mode === 'construction' && hierarchy) {
+    onLog?.(`Step2開始: ${allRawData.length}件を一括照合`, 'info');
+    onMetrics?.({ type: 'step_start', step: 2, batchIndex: 0 });
+
+    const step2Start = Date.now();
+    const classified = await executeStep2WithMetrics(allRawData, hierarchy, 0, rawResponses, onLog, onMetrics);
+    step2TotalTime = Date.now() - step2Start;
+
+    onLog?.(`Step2完了: ${formatDuration(step2TotalTime)}`, 'success');
+    onMetrics?.({ type: 'step_complete', step: 2, batchIndex: 0, duration: step2TotalTime });
+
+    allResults = mergeResults(allRawData, classified);
+  } else {
+    // generalモードまたはマスタなし
+    allResults = allRawData.map(raw => ({
+      fileName: raw.fileName,
+      workType: '',
+      variety: '',
+      detail: '',
+      station: '',
+      remarks: raw.photoCategoryGuess,
+      remarksCategory: raw.photoCategoryGuess,
+      remarksValue: '',
+      description: raw.sceneDescription,
+      measurements: raw.measurements,
+      hasBoard: raw.hasBoard,
+      detectedText: raw.detectedText,
+      reasoning: '',
+    }));
+  }
+
+  // ============================================
+  // メトリクス集計
+  // ============================================
   const analysisEnd = Date.now();
   const totalTime = analysisEnd - analysisStart;
+
+  // バッチメトリクス
+  for (const r of step1Results) {
+    const step2PerBatch = step2TotalTime / step1Results.length;
+    batchMetrics.push({
+      index: r.batchIndex,
+      imageCount: r.batch.length,
+      startTime: analysisStart,
+      endTime: analysisEnd,
+      step1Duration: r.duration,
+      step2Duration: step2PerBatch,
+      images: r.imageNames
+    });
+
+    // 画像別メトリクス
+    const perImageStep1 = r.duration / r.batch.length;
+    const perImageStep2 = step2PerBatch / r.batch.length;
+    for (const photo of r.batch) {
+      const result = allResults.find(res => res.fileName === photo.fileName);
+      imageMetrics.push({
+        fileName: photo.fileName,
+        step1Time: perImageStep1,
+        step2Time: perImageStep2,
+        totalTime: perImageStep1 + perImageStep2,
+        status: 'success'
+      });
+      if (result) {
+        onMetrics?.({ type: 'image_complete', fileName: photo.fileName, result });
+        onProgress?.(imageMetrics.length, photos.length, photo.fileName, result);
+      }
+    }
+
+    onMetrics?.({
+      type: 'batch_complete',
+      batchIndex: r.batchIndex,
+      duration: r.duration + step2PerBatch,
+      step1Duration: r.duration,
+      step2Duration: step2PerBatch
+    });
+  }
+
+  // 一時ファイル削除
+  for (let i = 0; i < allTempPaths.length; i++) {
+    const tempPaths = allTempPaths[i];
+    const batch = batches[i];
+    const toCleanup = tempPaths.filter((p, j) => {
+      const original = batch[j];
+      return p !== original.filePath || p.includes('gaspm_');
+    });
+    await cleanupTempFiles(toCleanup);
+  }
 
   // 最終メトリクス
   const metrics: AnalysisMetrics = {
@@ -632,7 +657,7 @@ export async function analyzePhotos(
     rawResponses
   };
 
-  onLog?.(`解析完了: ${allResults.length}枚, 合計時間=${formatDuration(totalTime)}`, 'success');
+  onLog?.(`解析完了: ${allResults.length}枚, 合計=${formatDuration(totalTime)} (Step1=${formatDuration(step1TotalTime)}, Step2=${formatDuration(step2TotalTime)})`, 'success');
   onMetrics?.({ type: 'analysis_complete', metrics });
 
   return allResults;
