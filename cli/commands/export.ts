@@ -74,6 +74,7 @@ export async function exportCommand(
     high: '印刷用 (1400px, 85%)',
     medium: 'デジタル提出用 (800px, 75%)',
     low: 'ドラフト用 (500px, 60%)',
+    preview: 'プレビュー用 (300px, 40%)',
   };
 
   // エイリアス設定の読み込み

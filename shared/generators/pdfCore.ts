@@ -35,7 +35,7 @@ export interface PhotoData {
 }
 
 /** PDF画質プリセット */
-export type PdfQuality = 'high' | 'medium' | 'low';
+export type PdfQuality = 'high' | 'medium' | 'low' | 'preview';
 
 /** 画像最適化オプション */
 export interface ImageOptimizeOptions {
@@ -48,6 +48,7 @@ export const QUALITY_PRESETS: Record<PdfQuality, ImageOptimizeOptions> = {
   high: { maxWidth: 1400, quality: 85 },   // 印刷用（デフォルト）
   medium: { maxWidth: 800, quality: 75 },  // デジタル提出用
   low: { maxWidth: 500, quality: 60 },     // 画面確認・ドラフト用
+  preview: { maxWidth: 300, quality: 40 }, // プレビュー用（最小）
 };
 
 export interface PdfOptions {
@@ -238,13 +239,13 @@ export async function generatePdfBuffer(
       const analysis = photo.analysis || {};
 
       // 正しい階層順序: 日時 → 写真区分 → 工種 → 種別 → 細別 → 測点 → 備考 → 測定値
-      // データマッピング: workType=写真区分, variety=工種, detail=種別, subDetail=細別
+      // データマッピング: photoCategory=写真区分, workType=工種, variety=種別, detail=細別
       const infoLines = [
         { label: labels.date, value: photo.date ? new Date(photo.date).toISOString().slice(0, 10) : '-' },
-        { label: labels.photoCategory, value: analysis.workType || '-' },
-        { label: labels.workType, value: analysis.variety || '-' },
-        { label: labels.variety, value: analysis.detail || '-' },
-        { label: labels.detail, value: analysis.subDetail || '-' },
+        { label: labels.photoCategory, value: analysis.photoCategory || '-' },
+        { label: labels.workType, value: analysis.workType || '-' },
+        { label: labels.variety, value: analysis.variety || '-' },
+        { label: labels.detail, value: analysis.detail || '-' },
         { label: labels.station, value: analysis.station || '-' },
         { label: labels.remarks, value: analysis.remarks || '-' },
         { label: labels.measurements, value: analysis.measurements || '-' }

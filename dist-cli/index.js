@@ -103,19 +103,28 @@ async function scanFolder(folderPath, options = {}) {
   results.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
   return results;
 }
-async function processImages(filePaths, options = {}, onProgress) {
-  const results = [];
-  for (let i = 0; i < filePaths.length; i++) {
-    const filePath = filePaths[i];
-    onProgress?.(i + 1, filePaths.length, path.basename(filePath));
-    try {
-      const info = await processImage(filePath, options);
-      results.push(info);
-    } catch (error) {
-      console.error(`Failed to process ${filePath}:`, error);
-    }
+function createPhotoInputs(filePaths) {
+  return filePaths.map((p) => ({
+    fileName: path.basename(p),
+    base64: "",
+    mimeType: "image/jpeg",
+    filePath: p
+  }));
+}
+async function optimizeImageForPdf(bytes, options) {
+  const { maxWidth, quality } = options;
+  const image = sharp(Buffer.from(bytes));
+  const metadata = await image.metadata();
+  const needsResize = metadata.width && metadata.width > maxWidth || metadata.height && metadata.height > maxWidth;
+  let pipeline = image;
+  if (needsResize) {
+    pipeline = pipeline.resize(maxWidth, maxWidth, {
+      fit: "inside",
+      withoutEnlargement: true
+    });
   }
-  return results;
+  const outputBuffer = await pipeline.jpeg({ quality }).toBuffer();
+  return new Uint8Array(outputBuffer);
 }
 
 // cli/adapters/masterAdapter.ts
@@ -394,7 +403,7 @@ var getMergedHierarchy = async () => {
 };
 
 // shared/core/claudeAnalysis.ts
-import { execSync as execSync2 } from "child_process";
+import { execSync as execSync2, spawnSync } from "child_process";
 import * as fs3 from "fs/promises";
 import { existsSync as existsSync2, mkdirSync, readdirSync, unlinkSync, copyFileSync } from "fs";
 import * as path4 from "path";
@@ -511,6 +520,26 @@ var formatShootingTime = (timestamp) => {
   const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${hours}:${minutes}`;
 };
+var CACHE_VERSION = "1.0";
+async function loadStep1Cache(cachePath) {
+  try {
+    if (!existsSync2(cachePath)) return null;
+    const content = await fs3.readFile(cachePath, "utf-8");
+    const cache = JSON.parse(content);
+    if (cache.version !== CACHE_VERSION) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+async function saveStep1Cache(cachePath, entries) {
+  const cache = {
+    version: CACHE_VERSION,
+    createdAt: Date.now(),
+    entries
+  };
+  await fs3.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf-8");
+}
 var tempImageDir = null;
 function getTempImageDir() {
   if (!tempImageDir) {
@@ -522,44 +551,77 @@ function getTempImageDir() {
   return tempImageDir;
 }
 function runClaudeCode(prompt, imagePaths, onLog) {
-  const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, " ");
   let cmd;
+  let fullPrompt = prompt;
   if (imagePaths && imagePaths.length > 0) {
-    const cwd = process.cwd();
-    const cwdDrive = cwd.match(/^([A-Za-z]:)/)?.[1]?.toUpperCase();
-    const normalizedPaths = imagePaths.map((p) => {
-      const fileDrive = p.match(/^([A-Za-z]:)/)?.[1]?.toUpperCase();
+    const tempDir = getTempImageDir();
+    const localPaths = [];
+    for (const p of imagePaths) {
       if (!existsSync2(p)) {
         onLog?.(`Warning: File not found: ${p}`, "error");
-        return null;
+        continue;
       }
-      if (fileDrive && cwdDrive && fileDrive !== cwdDrive) {
-        const tempDir = getTempImageDir();
-        const tempPath = path4.join(tempDir, path4.basename(p));
-        copyFileSync(p, tempPath);
-        const rel2 = path4.relative(cwd, tempPath).replace(/\\/g, "/");
-        return rel2.startsWith(".") ? rel2 : `./${rel2}`;
-      }
-      const rel = path4.relative(cwd, p).replace(/\\/g, "/");
-      return rel.startsWith(".") ? rel : `./${rel}`;
-    }).filter(Boolean);
-    const imageArgs = normalizedPaths.map((p) => `"${p}"`).join(" ");
-    cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
-    onLog?.(`Command: ${cmd.substring(0, 200)}...`, "info");
+      const tempPath = path4.join(tempDir, path4.basename(p));
+      copyFileSync(p, tempPath);
+      localPaths.push(path4.resolve(tempPath).replace(/\\/g, "/"));
+    }
+    const imageList = localPaths.join(", ");
+    fullPrompt = `Read the following image files and analyze them: ${imageList}
+
+${prompt}`;
+    console.log("DEBUG paths:", localPaths);
+    onLog?.(`Claude CLI: ${localPaths.length}\u679A\u306E\u753B\u50CF\u3092\u89E3\u6790`, "info");
   } else {
-    cmd = `claude -p "${escapedPrompt}" --output-format text`;
     onLog?.(`Step2: claude [text only]`, "info");
   }
-  try {
-    const result = execSync2(cmd, {
-      encoding: "utf-8",
-      timeout: 12e4,
-      maxBuffer: 10 * 1024 * 1024
-    });
-    return result;
-  } catch (error) {
-    const err = error;
-    throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
+  const MAX_CMD_LENGTH = 7e3;
+  const escapedPrompt = fullPrompt.replace(/"/g, '\\"').replace(/\n/g, " ");
+  const testCmd = `claude -p "${escapedPrompt}" --output-format text`;
+  console.log("DEBUG: About to exec claude, prompt length:", fullPrompt.length, "cmd length:", testCmd.length);
+  if (testCmd.length > MAX_CMD_LENGTH) {
+    console.log("DEBUG: Using stdin pipe due to length:", fullPrompt.length);
+    onLog?.(`stdin\u7D4C\u7531\u3067\u30D7\u30ED\u30F3\u30D7\u30C8\u9001\u4FE1 (${fullPrompt.length}\u6587\u5B57)`, "info");
+    try {
+      const result = spawnSync("claude", ["--output-format", "text"], {
+        input: fullPrompt,
+        encoding: "utf-8",
+        timeout: 12e4,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        shell: true
+      });
+      if (result.error) {
+        throw result.error;
+      }
+      if (result.status !== 0) {
+        console.log("DEBUG error status:", result.status);
+        console.log("DEBUG stderr:", result.stderr);
+        throw new Error(`claude failed (code ${result.status}): ${result.stderr}`);
+      }
+      return result.stdout;
+    } catch (error) {
+      const err = error;
+      console.log("DEBUG error:", err.message);
+      throw new Error(`claude failed: ${err.message}`);
+    }
+  } else {
+    cmd = testCmd;
+    try {
+      const result = execSync2(cmd, {
+        encoding: "utf-8",
+        timeout: 12e4,
+        maxBuffer: 10 * 1024 * 1024,
+        shell: true,
+        windowsHide: true
+      });
+      return result;
+    } catch (error) {
+      const err = error;
+      console.log("DEBUG error:", err.message);
+      console.log("DEBUG stderr:", err.stderr);
+      console.log("DEBUG stdout:", err.stdout);
+      throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
+    }
   }
 }
 var PHOTO_CATEGORIES = [
@@ -781,9 +843,19 @@ async function analyzePhotos(photos, options) {
     shouldAbort,
     hierarchy,
     useYolo = false,
-    yoloConfThreshold = 0.5
+    yoloConfThreshold = 0.5,
+    step1CachePath,
+    useStep1Cache = false
   } = options;
   const analysisStart = Date.now();
+  let step1Cache = null;
+  const cacheEntries = {};
+  if (step1CachePath && useStep1Cache) {
+    step1Cache = await loadStep1Cache(step1CachePath);
+    if (step1Cache) {
+      onLog?.(`Step1\u30AD\u30E3\u30C3\u30B7\u30E5\u30ED\u30FC\u30C9: ${Object.keys(step1Cache.entries).length}\u4EF6`, "info");
+    }
+  }
   const batchMetrics = [];
   const imageMetrics = [];
   const rawResponses = [];
@@ -817,58 +889,82 @@ async function analyzePhotos(photos, options) {
       }
     }
   }
-  onLog?.(`\u89E3\u6790\u958B\u59CB: ${photos.length}\u679A (${parallelBatches}\u4E26\u5217Step1 + \u7D71\u5408Step2)`, "info");
+  onLog?.(`\u89E3\u6790\u958B\u59CB: ${photos.length}\u679A (\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA${batchSize})`, "info");
   onMetrics?.({ type: "analysis_start", totalImages: photos.length, mode });
   const batches = [];
-  const numBatches = Math.min(parallelBatches, photos.length);
-  const baseSize = Math.floor(photos.length / numBatches);
-  const remainder = photos.length % numBatches;
-  let offset = 0;
-  for (let i = 0; i < numBatches; i++) {
-    const size = baseSize + (i < remainder ? 1 : 0);
-    batches.push(photos.slice(offset, offset + size));
-    offset += size;
+  for (let i = 0; i < photos.length; i += batchSize) {
+    batches.push(photos.slice(i, i + batchSize));
   }
-  onLog?.(`Step1\u958B\u59CB: ${batches.length}\u30D0\u30C3\u30C1\u3092${parallelBatches}\u4E26\u5217\u3067\u5B9F\u884C`, "info");
   const step1Start = Date.now();
-  const allTempPaths = [];
-  const step1Tasks = batches.map(async (batch, batchIndex) => {
-    checkAbort(shouldAbort, `Step1 \u30D0\u30C3\u30C1 ${batchIndex + 1}`);
-    const batchStart = Date.now();
-    const imageNames = batch.map((p) => p.fileName);
-    onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1}/${batches.length} \u958B\u59CB (${batch.length}\u679A)`, "info");
-    onMetrics?.({
-      type: "batch_start",
-      batchIndex,
-      totalBatches: batches.length,
-      imageCount: batch.length,
-      images: imageNames
-    });
-    const tempPaths = [];
-    for (const photo of batch) {
-      if (photo.filePath) {
-        tempPaths.push(photo.filePath);
-      } else {
-        const tempPath = await saveToTempFile(photo);
-        tempPaths.push(tempPath);
-        photo.filePath = tempPath;
-      }
+  const cachedRawData = [];
+  const uncachedPhotos = [];
+  for (const photo of photos) {
+    if (step1Cache?.entries[photo.fileName]) {
+      cachedRawData.push(step1Cache.entries[photo.fileName]);
+      cacheEntries[photo.fileName] = step1Cache.entries[photo.fileName];
+    } else {
+      uncachedPhotos.push(photo);
     }
-    allTempPaths[batchIndex] = tempPaths;
-    onMetrics?.({ type: "step_start", step: 1, batchIndex });
-    const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
-    const duration = Date.now() - batchStart;
-    onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1} \u5B8C\u4E86: ${formatDuration(duration)}`, "info");
-    onMetrics?.({ type: "step_complete", step: 1, batchIndex, duration });
-    return { batchIndex, rawData, duration, imageNames, batch };
-  });
-  const step1Results = await Promise.all(step1Tasks);
-  step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
+  }
+  if (cachedRawData.length > 0) {
+    onLog?.(`Step1\u30AD\u30E3\u30C3\u30B7\u30E5\u30D2\u30C3\u30C8: ${cachedRawData.length}\u679A`, "success");
+  }
+  let step1Results = [];
+  const allTempPaths = [];
+  if (uncachedPhotos.length > 0) {
+    const uncachedBatches = [];
+    for (let i = 0; i < uncachedPhotos.length; i += batchSize) {
+      uncachedBatches.push(uncachedPhotos.slice(i, i + batchSize));
+    }
+    onLog?.(`Step1\u958B\u59CB: ${uncachedBatches.length}\u30D0\u30C3\u30C1 (${uncachedPhotos.length}\u679A)`, "info");
+    const step1Tasks = uncachedBatches.map(async (batch, batchIndex) => {
+      checkAbort(shouldAbort, `Step1 \u30D0\u30C3\u30C1 ${batchIndex + 1}`);
+      const batchStart = Date.now();
+      const imageNames = batch.map((p) => p.fileName);
+      onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1}/${uncachedBatches.length} \u958B\u59CB (${batch.length}\u679A)`, "info");
+      onMetrics?.({
+        type: "batch_start",
+        batchIndex,
+        totalBatches: uncachedBatches.length,
+        imageCount: batch.length,
+        images: imageNames
+      });
+      const tempPaths = [];
+      for (const photo of batch) {
+        if (photo.filePath) {
+          tempPaths.push(photo.filePath);
+        } else {
+          const tempPath = await saveToTempFile(photo);
+          tempPaths.push(tempPath);
+          photo.filePath = tempPath;
+        }
+      }
+      allTempPaths[batchIndex] = tempPaths;
+      onMetrics?.({ type: "step_start", step: 1, batchIndex });
+      const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
+      const duration = Date.now() - batchStart;
+      for (const data of rawData) {
+        cacheEntries[data.fileName] = data;
+      }
+      onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1} \u5B8C\u4E86: ${formatDuration(duration)}`, "info");
+      onMetrics?.({ type: "step_complete", step: 1, batchIndex, duration });
+      return { batchIndex, rawData, duration, imageNames, batch };
+    });
+    step1Results = await Promise.all(step1Tasks);
+    step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
+    if (step1CachePath) {
+      await saveStep1Cache(step1CachePath, cacheEntries);
+      onLog?.(`Step1\u30AD\u30E3\u30C3\u30B7\u30E5\u4FDD\u5B58: ${Object.keys(cacheEntries).length}\u4EF6`, "info");
+    }
+  } else {
+    onLog?.(`Step1: \u5168\u4EF6\u30AD\u30E3\u30C3\u30B7\u30E5\u6E08\u307F`, "success");
+  }
   const step1TotalTime = Date.now() - step1Start;
-  onLog?.(`Step1\u5168\u5B8C\u4E86: ${formatDuration(step1TotalTime)} (${batches.length}\u30D0\u30C3\u30C1)`, "success");
+  onLog?.(`Step1\u5168\u5B8C\u4E86: ${formatDuration(step1TotalTime)}`, "success");
   let allResults = [];
   let step2TotalTime = 0;
-  const allRawData = step1Results.flatMap((r) => r.rawData);
+  const newRawData = step1Results.flatMap((r) => r.rawData);
+  const allRawData = photos.map((p) => cacheEntries[p.fileName]).filter(Boolean);
   if (mode === "construction" && hierarchy) {
     onLog?.(`Step2\u958B\u59CB: ${allRawData.length}\u4EF6\u3092\u4E00\u62EC\u7167\u5408`, "info");
     onMetrics?.({ type: "step_start", step: 2, batchIndex: 0 });
@@ -1030,26 +1126,7 @@ async function analyzeCommand(folder, options) {
     console.log(chalk.yellow("\u89E3\u6790\u3059\u308B\u5199\u771F\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F"));
     process.exit(0);
   }
-  const processSpinner = ora("\u753B\u50CF\u3092\u51E6\u7406\u4E2D...").start();
-  let photoInputs;
-  try {
-    const imageInfos = await processImages(imagePaths, {}, (current, total, fileName) => {
-      processSpinner.text = `\u753B\u50CF\u3092\u51E6\u7406\u4E2D... ${current}/${total} - ${fileName}`;
-    });
-    photoInputs = imageInfos.map((info, index) => ({
-      fileName: info.fileName,
-      base64: info.base64,
-      mimeType: info.mimeType,
-      date: info.date,
-      filePath: imagePaths[index]
-      // Claude Code CLI用に元ファイルパスを保持
-    }));
-    processSpinner.succeed(`${photoInputs.length}\u679A\u306E\u753B\u50CF\u3092\u51E6\u7406\u5B8C\u4E86`);
-  } catch (error) {
-    processSpinner.fail("\u753B\u50CF\u306E\u51E6\u7406\u306B\u5931\u6557");
-    console.error(chalk.red(error));
-    process.exit(1);
-  }
+  const photoInputs = createPhotoInputs(imagePaths);
   let hierarchy;
   if (options.mode === "construction") {
     try {
@@ -1061,16 +1138,21 @@ async function analyzeCommand(folder, options) {
   }
   const yoloEnabled = options.yolo === true;
   const yoloConfThreshold = parseFloat(options.yoloConf || "0.5");
+  const step1CachePath = options.cache || path5.join(path5.dirname(path5.resolve(options.output)), ".step1-cache.json");
+  const useStep1Cache = options.useCache === true;
   console.log(chalk.gray(`
 \u30E2\u30FC\u30C9: ${options.mode} (Claude Code CLI\u4F7F\u7528)`));
   if (yoloEnabled) {
     console.log(chalk.gray(`YOLO\u524D\u51E6\u7406: \u6709\u52B9 (\u95BE\u5024=${yoloConfThreshold})`));
   }
+  if (useStep1Cache) {
+    console.log(chalk.gray(`Step1\u30AD\u30E3\u30C3\u30B7\u30E5: ${step1CachePath}`));
+  }
   if (options.instruction) {
     console.log(chalk.gray(`\u6307\u793A: ${options.instruction}`));
   }
   console.log("");
-  const analyzeSpinner = ora("AI\u89E3\u6790\u4E2D...").start();
+  let analyzeSpinner = ora("AI\u89E3\u6790\u4E2D...").start();
   let results;
   try {
     results = await analyzePhotos(photoInputs, {
@@ -1080,9 +1162,18 @@ async function analyzeCommand(folder, options) {
       hierarchy,
       useYolo: yoloEnabled,
       yoloConfThreshold,
+      step1CachePath,
+      useStep1Cache,
       onLog: (msg, type) => {
         if (type === "error") {
           analyzeSpinner.warn(msg);
+        } else if (type === "success") {
+          analyzeSpinner.succeed(msg);
+          analyzeSpinner = ora("AI\u89E3\u6790\u4E2D...").start();
+        } else if (msg.startsWith("DEBUG")) {
+          analyzeSpinner.info(msg);
+        } else if (msg.includes("\u30AD\u30E3\u30C3\u30B7\u30E5")) {
+          analyzeSpinner.info(msg);
         }
       },
       onProgress: (current, total, fileName) => {
@@ -1095,13 +1186,27 @@ async function analyzeCommand(folder, options) {
     console.error(chalk.red(error));
     process.exit(1);
   }
-  const outputData = photoInputs.map((photo, index) => {
-    const analysis = results.find((r) => r.fileName === photo.fileName) || results[index];
-    return {
+  const outputSpinner = ora("\u51FA\u529B\u30C7\u30FC\u30BF\u3092\u6E96\u5099\u4E2D...").start();
+  const outputData = [];
+  for (let i = 0; i < photoInputs.length; i++) {
+    const photo = photoInputs[i];
+    const analysis = results.find((r) => r.fileName === photo.fileName) || results[i];
+    outputSpinner.text = `\u51FA\u529B\u30C7\u30FC\u30BF\u3092\u6E96\u5099\u4E2D... ${i + 1}/${photoInputs.length}`;
+    let base64 = "";
+    let date;
+    if (photo.filePath) {
+      try {
+        const imageInfo = await processImage(photo.filePath);
+        base64 = imageInfo.base64;
+        date = imageInfo.date;
+      } catch {
+      }
+    }
+    outputData.push({
       fileName: photo.fileName,
       mimeType: photo.mimeType,
-      date: photo.date,
-      base64: photo.base64,
+      date,
+      base64,
       analysis: analysis ? {
         workType: analysis.workType,
         variety: analysis.variety,
@@ -1114,8 +1219,9 @@ async function analyzeCommand(folder, options) {
         detectedText: analysis.detectedText,
         reasoning: analysis.reasoning
       } : void 0
-    };
-  });
+    });
+  }
+  outputSpinner.succeed("\u51FA\u529B\u30C7\u30FC\u30BF\u6E96\u5099\u5B8C\u4E86");
   const outputPath = path5.resolve(options.output);
   const saveSpinner = ora("\u7D50\u679C\u3092\u4FDD\u5B58\u4E2D...").start();
   try {
@@ -1189,8 +1295,8 @@ async function analyzeViaServer(folder, options) {
 }
 
 // cli/commands/export.ts
-import * as fs6 from "fs/promises";
-import * as path6 from "path";
+import * as fs7 from "fs/promises";
+import * as path7 from "path";
 import chalk2 from "chalk";
 import ora2 from "ora";
 
@@ -1357,6 +1463,14 @@ var LAYOUT_FIELDS = [
     readOnly: true
   },
   {
+    id: "f_photoCategory",
+    key: "photoCategory",
+    labelKey: "labelPhotoCategory",
+    rowSpan: 1,
+    heightClass: "h-[28px]",
+    multiline: false
+  },
+  {
     id: "f_workType",
     key: "workType",
     labelKey: "labelWorkType",
@@ -1409,6 +1523,7 @@ var LAYOUT_FIELDS = [
 // shared/generators/excelCore.ts
 var FIELD_LABELS = {
   labelDate: "\u64AE\u5F71\u65E5\u6642",
+  labelPhotoCategory: "\u5199\u771F\u533A\u5206",
   labelWorkType: "\u5DE5\u7A2E",
   labelVariety: "\u7A2E\u5225",
   labelDetail: "\u7D30\u5225",
@@ -1557,6 +1672,16 @@ function extractBase64Data(base64) {
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import * as fs5 from "fs/promises";
+var QUALITY_PRESETS = {
+  high: { maxWidth: 1400, quality: 85 },
+  // 印刷用（デフォルト）
+  medium: { maxWidth: 800, quality: 75 },
+  // デジタル提出用
+  low: { maxWidth: 500, quality: 60 },
+  // 画面確認・ドラフト用
+  preview: { maxWidth: 300, quality: 40 }
+  // プレビュー用（最小）
+};
 var getLayoutConstants = () => {
   const layout = getPdfLayout();
   return {
@@ -1570,7 +1695,14 @@ var getLayoutConstants = () => {
   };
 };
 async function generatePdfBuffer(photos, options = {}) {
-  const { photosPerPage = 3, title = "Construction Photo Album", fontPath } = options;
+  const {
+    photosPerPage = 3,
+    title = "Construction Photo Album",
+    fontPath,
+    pdfQuality = "high",
+    imageOptimizer
+  } = options;
+  const optimizeOpts = QUALITY_PRESETS[pdfQuality];
   const { A4_WIDTH, A4_HEIGHT, MARGIN, HEADER_HEIGHT, GAP, IMAGE_RATIO: IMAGE_RATIO2, INFO_RATIO: INFO_RATIO2 } = getLayoutConstants();
   const pdfDoc = await PDFDocument.create();
   let japaneseFont;
@@ -1602,8 +1734,8 @@ async function generatePdfBuffer(photos, options = {}) {
     throw new Error("\u65E5\u672C\u8A9E\u30D5\u30A9\u30F3\u30C8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3002--font \u30AA\u30D7\u30B7\u30E7\u30F3\u3067TTF\u30D5\u30A1\u30A4\u30EB\u3092\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
   }
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const labels = { type: "\u5DE5\u7A2E", variety: "\u7A2E\u5225", detail: "\u7D30\u5225", station: "\u6E2C\u70B9", remarks: "\u5099\u8003", date: "\u64AE\u5F71" };
-  const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
+  const labels = { date: "\u65E5\u6642", photoCategory: "\u5199\u771F\u533A\u5206", workType: "\u5DE5\u7A2E", variety: "\u7A2E\u5225", detail: "\u7D30\u5225", station: "\u6E2C\u70B9", remarks: "\u5099\u8003", measurements: "\u6E2C\u5B9A\u5024" };
+  const usableHeight = A4_HEIGHT - MARGIN * 2;
   const photoRowHeight = usableHeight / photosPerPage;
   const photoHeight = photoRowHeight - GAP * 2;
   const usableWidth = A4_WIDTH - MARGIN * 2;
@@ -1616,45 +1748,28 @@ async function generatePdfBuffer(photos, options = {}) {
       pageNum * photosPerPage,
       (pageNum + 1) * photosPerPage
     );
-    page.drawText(title, {
-      x: MARGIN,
-      y: A4_HEIGHT - MARGIN - 20,
-      size: 14,
-      font: japaneseFont,
-      color: rgb(0.2, 0.2, 0.2)
-    });
-    page.drawText(`Page ${pageNum + 1} / ${totalPages}`, {
-      x: A4_WIDTH - MARGIN - 80,
-      y: A4_HEIGHT - MARGIN - 20,
-      size: 10,
-      font: helvetica,
-      color: rgb(0.5, 0.5, 0.5)
-    });
     for (let i = 0; i < pagePhotos.length; i++) {
       const photo = pagePhotos[i];
-      const rowY = A4_HEIGHT - MARGIN - HEADER_HEIGHT - (i + 1) * photoRowHeight + GAP;
+      const rowY = A4_HEIGHT - MARGIN - (i + 1) * photoRowHeight + GAP;
       if (photo.base64) {
         try {
           const base64Data = extractBase64Data2(photo.base64);
-          const imageBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-          const isPng = (photo.mimeType || "image/jpeg").includes("png");
+          let imageBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+          if (imageOptimizer) {
+            imageBytes = await imageOptimizer(imageBytes, optimizeOpts);
+          }
+          const isPng = !imageOptimizer && (photo.mimeType || "image/jpeg").includes("png");
           const embeddedImage = isPng ? await pdfDoc.embedPng(imageBytes) : await pdfDoc.embedJpg(imageBytes);
           const imgAspect = embeddedImage.width / embeddedImage.height;
           const boxAspect = photoWidth / photoHeight;
           const [drawWidth, drawHeight] = imgAspect > boxAspect ? [photoWidth, photoWidth / imgAspect] : [photoHeight * imgAspect, photoHeight];
+          const imgX = MARGIN + (photoWidth - drawWidth) / 2;
+          const imgY = rowY + (photoHeight - drawHeight) / 2;
           page.drawImage(embeddedImage, {
-            x: MARGIN + (photoWidth - drawWidth) / 2,
-            y: rowY + (photoHeight - drawHeight) / 2,
+            x: imgX,
+            y: imgY,
             width: drawWidth,
             height: drawHeight
-          });
-          page.drawRectangle({
-            x: MARGIN,
-            y: rowY,
-            width: photoWidth,
-            height: photoHeight,
-            borderColor: rgb(0.7, 0.7, 0.7),
-            borderWidth: 0.5
           });
         } catch {
           page.drawRectangle({
@@ -1675,15 +1790,25 @@ async function generatePdfBuffer(photos, options = {}) {
           });
         }
       }
-      const infoX = MARGIN + photoWidth + GAP;
+      page.drawRectangle({
+        x: MARGIN,
+        y: rowY,
+        width: photoWidth,
+        height: photoHeight,
+        borderColor: rgb(0.7, 0.7, 0.7),
+        borderWidth: 0.5
+      });
+      const infoX = MARGIN + photoWidth;
       const analysis = photo.analysis || {};
       const infoLines = [
-        { label: labels.type, value: analysis.workType || "-" },
+        { label: labels.date, value: photo.date ? new Date(photo.date).toISOString().slice(0, 10) : "-" },
+        { label: labels.photoCategory, value: analysis.photoCategory || "-" },
+        { label: labels.workType, value: analysis.workType || "-" },
         { label: labels.variety, value: analysis.variety || "-" },
         { label: labels.detail, value: analysis.detail || "-" },
         { label: labels.station, value: analysis.station || "-" },
         { label: labels.remarks, value: analysis.remarks || "-" },
-        { label: labels.date, value: photo.date ? new Date(photo.date).toISOString().slice(0, 10) : "-" }
+        { label: labels.measurements, value: analysis.measurements || "-" }
       ];
       page.drawRectangle({
         x: infoX,
@@ -1693,30 +1818,48 @@ async function generatePdfBuffer(photos, options = {}) {
         borderColor: rgb(0.7, 0.7, 0.7),
         borderWidth: 0.5
       });
-      infoLines.forEach((line, idx) => {
-        const y = rowY + photoHeight - 15 - idx * 18;
-        if (y > rowY + 5) {
-          page.drawText(`${line.label}:`, {
-            x: infoX + 5,
-            y,
-            size: 8,
-            font: japaneseFont,
-            color: rgb(0.4, 0.4, 0.4)
-          });
-          const displayValue = truncate(line.value, 20);
-          page.drawText(displayValue, {
-            x: infoX + 45,
-            y,
-            size: 9,
-            font: japaneseFont,
-            color: rgb(0.1, 0.1, 0.1)
-          });
-        }
+      const baseFontSize = 12;
+      const lineHeight = 14;
+      const labelWidth = 50;
+      const valueMaxWidth = infoWidth - labelWidth - 10;
+      let currentY = rowY + photoHeight - 20;
+      infoLines.forEach((line) => {
+        if (currentY < rowY + 15) return;
+        page.drawText(`${line.label}:`, {
+          x: infoX + 5,
+          y: currentY,
+          size: baseFontSize,
+          font: japaneseFont,
+          color: rgb(0.4, 0.4, 0.4)
+        });
+        const { fontSize, lines } = fitTextToWidth(
+          line.value,
+          japaneseFont,
+          valueMaxWidth,
+          baseFontSize,
+          8,
+          // 最小8pt
+          2
+          // 最大2行
+        );
+        lines.forEach((textLine, lineIdx) => {
+          const lineY = currentY - lineIdx * (fontSize + 2);
+          if (lineY > rowY + 5) {
+            page.drawText(textLine, {
+              x: infoX + 55,
+              y: lineY,
+              size: fontSize,
+              font: japaneseFont,
+              color: rgb(0.1, 0.1, 0.1)
+            });
+          }
+        });
+        currentY -= lineHeight + (lines.length > 1 ? (fontSize + 2) * (lines.length - 1) : 0);
       });
       page.drawText(photo.fileName, {
         x: infoX + 5,
         y: rowY + 5,
-        size: 7,
+        size: baseFontSize,
         font: helvetica,
         color: rgb(0.6, 0.6, 0.6)
       });
@@ -1740,17 +1883,155 @@ function atob(data) {
   }
   return Buffer.from(data, "base64").toString("binary");
 }
-function truncate(str, maxLen) {
-  return str.length > maxLen ? str.substring(0, maxLen) + "..." : str;
+function wrapText(text, font, maxWidth, fontSize, maxLines = 2) {
+  const lines = [];
+  let remaining = text;
+  while (remaining.length > 0 && lines.length < maxLines) {
+    const textWidth = font.widthOfTextAtSize(remaining, fontSize);
+    if (textWidth <= maxWidth) {
+      lines.push(remaining);
+      break;
+    }
+    let breakPoint = remaining.length;
+    while (breakPoint > 1) {
+      const testText = remaining.substring(0, breakPoint);
+      const testWidth = font.widthOfTextAtSize(testText, fontSize);
+      if (testWidth <= maxWidth) {
+        break;
+      }
+      breakPoint--;
+    }
+    if (lines.length === maxLines - 1 && breakPoint < remaining.length) {
+      while (breakPoint > 1) {
+        const testText = remaining.substring(0, breakPoint) + "\u2026";
+        const testWidth = font.widthOfTextAtSize(testText, fontSize);
+        if (testWidth <= maxWidth) {
+          lines.push(remaining.substring(0, breakPoint) + "\u2026");
+          remaining = "";
+          break;
+        }
+        breakPoint--;
+      }
+      if (remaining.length > 0) {
+        lines.push("\u2026");
+        remaining = "";
+      }
+    } else {
+      lines.push(remaining.substring(0, breakPoint));
+      remaining = remaining.substring(breakPoint);
+    }
+  }
+  return lines.length > 0 ? lines : [""];
+}
+function fitTextToWidth(text, font, maxWidth, baseFontSize, minFontSize = 8, maxLines = 2) {
+  let fontSize = baseFontSize;
+  while (fontSize >= minFontSize) {
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    if (textWidth <= maxWidth) {
+      return { fontSize, lines: [text] };
+    }
+    fontSize -= 0.5;
+  }
+  fontSize = minFontSize;
+  const lines = wrapText(text, font, maxWidth, fontSize, maxLines);
+  return { fontSize, lines };
+}
+
+// cli/adapters/aliasAdapter.ts
+import * as fs6 from "fs/promises";
+import { existsSync as existsSync3 } from "fs";
+import * as path6 from "path";
+var DEFAULT_CONFIG = {
+  enabled: false,
+  mappings: {
+    workType: {},
+    variety: {},
+    detail: {}
+  }
+};
+var PRESET_ALIASES = {
+  "\u8217\u88C5\u88DC\u4FEE": {
+    name: "\u8217\u88C5\u88DC\u4FEE\u5DE5\u30D7\u30EA\u30BB\u30C3\u30C8",
+    description: "\u8217\u88C5\u5DE5\u2192\u8217\u88C5\u88DC\u4FEE\u5DE5\u3001\u8217\u88C5\u6253\u63DB\u3048\u5DE5\u2192\u30A2\u30B9\u30D5\u30A1\u30EB\u30C8\u8217\u88C5\u88DC\u4FEE\u5DE5",
+    mappings: {
+      workType: { "\u8217\u88C5\u5DE5": "\u8217\u88C5\u88DC\u4FEE\u5DE5" },
+      variety: { "\u8217\u88C5\u6253\u63DB\u3048\u5DE5": "\u30A2\u30B9\u30D5\u30A1\u30EB\u30C8\u8217\u88C5\u88DC\u4FEE\u5DE5" },
+      detail: {}
+    }
+  }
+};
+async function loadAliasConfig(configPath) {
+  const paths = configPath ? [configPath] : [
+    path6.join(process.cwd(), ".alias-config.json"),
+    path6.join(process.cwd(), "alias-config.json")
+  ];
+  for (const p of paths) {
+    if (existsSync3(p)) {
+      try {
+        const content = await fs6.readFile(p, "utf-8");
+        const config = JSON.parse(content);
+        return {
+          ...DEFAULT_CONFIG,
+          ...config,
+          mappings: {
+            ...DEFAULT_CONFIG.mappings,
+            ...config.mappings
+          }
+        };
+      } catch (e) {
+        console.warn(`\u30A8\u30A4\u30EA\u30A2\u30B9\u8A2D\u5B9A\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557: ${p}`, e);
+      }
+    }
+  }
+  return DEFAULT_CONFIG;
+}
+function getPresetConfig(presetKey) {
+  const preset = PRESET_ALIASES[presetKey];
+  return {
+    enabled: true,
+    mappings: preset.mappings,
+    activePreset: presetKey
+  };
+}
+function applyAliasToAnalysis(analysis, config) {
+  if (!config.enabled) return analysis;
+  return {
+    ...analysis,
+    workType: config.mappings.workType[analysis.workType || ""] || analysis.workType,
+    variety: config.mappings.variety[analysis.variety || ""] || analysis.variety,
+    detail: config.mappings.detail[analysis.detail || ""] || analysis.detail
+  };
+}
+function applyAliasesToData(data, config) {
+  if (!config.enabled) {
+    return { data, modifiedCount: 0 };
+  }
+  let modifiedCount = 0;
+  const result = data.map((item) => {
+    if (!item.analysis) return item;
+    const original = {
+      workType: item.analysis.workType,
+      variety: item.analysis.variety,
+      detail: item.analysis.detail
+    };
+    const aliased = applyAliasToAnalysis(item.analysis, config);
+    const wasModified = aliased.workType !== original.workType || aliased.variety !== original.variety || aliased.detail !== original.detail;
+    if (wasModified) {
+      modifiedCount++;
+      return { ...item, analysis: aliased };
+    }
+    return item;
+  });
+  return { data: result, modifiedCount };
 }
 
 // cli/commands/export.ts
 async function exportCommand(input, options) {
   console.log(chalk2.blue("\n\u{1F4C4} GASPhotoAIManager CLI - \u30A8\u30AF\u30B9\u30DD\u30FC\u30C8\n"));
-  const inputPath = path6.resolve(input);
+  const inputPath = path7.resolve(input);
   let inputData;
   try {
-    const content = await fs6.readFile(inputPath, "utf-8");
+    const content = await fs7.readFile(inputPath, "utf-8");
     inputData = JSON.parse(content);
     if (!Array.isArray(inputData)) {
       throw new Error("\u5165\u529B\u30D5\u30A1\u30A4\u30EB\u306F\u914D\u5217\u3067\u3042\u308B\u5FC5\u8981\u304C\u3042\u308A\u307E\u3059");
@@ -1763,25 +2044,50 @@ async function exportCommand(input, options) {
     }
     process.exit(1);
   }
+  const pdfQuality = options.pdfQuality || "high";
+  const qualityLabels = {
+    high: "\u5370\u5237\u7528 (1400px, 85%)",
+    medium: "\u30C7\u30B8\u30BF\u30EB\u63D0\u51FA\u7528 (800px, 75%)",
+    low: "\u30C9\u30E9\u30D5\u30C8\u7528 (500px, 60%)",
+    preview: "\u30D7\u30EC\u30D3\u30E5\u30FC\u7528 (300px, 40%)"
+  };
+  let aliasConfig = await loadAliasConfig(options.alias);
+  if (options.preset && options.preset in PRESET_ALIASES) {
+    aliasConfig = getPresetConfig(options.preset);
+  }
+  if (aliasConfig.enabled) {
+    const { data: aliasedData, modifiedCount } = applyAliasesToData(inputData, aliasConfig);
+    inputData = aliasedData;
+    if (modifiedCount > 0) {
+      console.log(chalk2.cyan(`\u30A8\u30A4\u30EA\u30A2\u30B9\u9069\u7528: ${modifiedCount}\u4EF6\u3092\u5909\u63DB`));
+    }
+  }
   console.log(chalk2.gray(`\u5165\u529B: ${inputPath}`));
   console.log(chalk2.gray(`\u5199\u771F\u6570: ${inputData.length}\u679A`));
   console.log(chalk2.gray(`\u5F62\u5F0F: ${options.format}`));
   console.log(chalk2.gray(`\u30DA\u30FC\u30B8\u3042\u305F\u308A: ${options.photosPerPage}\u679A`));
+  if (options.format === "pdf" || options.format === "both") {
+    console.log(chalk2.gray(`PDF\u753B\u8CEA: ${pdfQuality} - ${qualityLabels[pdfQuality]}`));
+  }
+  if (aliasConfig.enabled) {
+    const presetName = aliasConfig.activePreset || "\u30AB\u30B9\u30BF\u30E0";
+    console.log(chalk2.gray(`\u30A8\u30A4\u30EA\u30A2\u30B9: ${presetName}`));
+  }
   console.log("");
-  const outputDir = path6.resolve(options.output);
+  const outputDir = path7.resolve(options.output);
   try {
-    await fs6.mkdir(outputDir, { recursive: true });
+    await fs7.mkdir(outputDir, { recursive: true });
   } catch {
   }
   const photosPerPage = parseInt(options.photosPerPage, 10);
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const baseFileName = path6.basename(inputPath, ".json");
+  const baseFileName = path7.basename(inputPath, ".json");
   const formats = options.format === "both" ? ["excel", "pdf"] : [options.format];
   for (const format of formats) {
     if (format === "excel") {
       await exportExcel(inputData, outputDir, baseFileName, dateStr, photosPerPage, options.title);
     } else if (format === "pdf") {
-      await exportPdf(inputData, outputDir, baseFileName, dateStr, photosPerPage, options.title, options.font);
+      await exportPdf(inputData, outputDir, baseFileName, dateStr, photosPerPage, options.title, options.font, pdfQuality);
     } else {
       console.error(chalk2.yellow(`\u8B66\u544A: \u4E0D\u660E\u306A\u5F62\u5F0F: ${format}`));
     }
@@ -1802,15 +2108,15 @@ async function exportExcel(data, outputDir, baseName, dateStr, photosPerPage, ti
       photosPerPage,
       title
     });
-    const outputPath = path6.join(outputDir, `${baseName}_${dateStr}.xlsx`);
-    await fs6.writeFile(outputPath, buffer);
+    const outputPath = path7.join(outputDir, `${baseName}_${dateStr}.xlsx`);
+    await fs7.writeFile(outputPath, buffer);
     spinner.succeed(`Excel\u51FA\u529B: ${outputPath}`);
   } catch (error) {
     spinner.fail("Excel\u751F\u6210\u306B\u5931\u6557");
     console.error(chalk2.red(error));
   }
 }
-async function exportPdf(data, outputDir, baseName, dateStr, photosPerPage, title, fontPath) {
+async function exportPdf(data, outputDir, baseName, dateStr, photosPerPage, title, fontPath, pdfQuality = "high") {
   const spinner = ora2("PDF\u30D5\u30A1\u30A4\u30EB\u3092\u751F\u6210\u4E2D...").start();
   try {
     const photoData = data.map((item) => ({
@@ -1823,10 +2129,12 @@ async function exportPdf(data, outputDir, baseName, dateStr, photosPerPage, titl
     const buffer = await generatePdfBuffer(photoData, {
       photosPerPage,
       title,
-      fontPath
+      fontPath,
+      pdfQuality,
+      imageOptimizer: optimizeImageForPdf
     });
-    const outputPath = path6.join(outputDir, `${baseName}_${dateStr}.pdf`);
-    await fs6.writeFile(outputPath, buffer);
+    const outputPath = path7.join(outputDir, `${baseName}_${dateStr}.pdf`);
+    await fs7.writeFile(outputPath, buffer);
     spinner.succeed(`PDF\u51FA\u529B: ${outputPath}`);
   } catch (error) {
     spinner.fail("PDF\u751F\u6210\u306B\u5931\u6557");
@@ -1838,24 +2146,24 @@ async function exportPdf(data, outputDir, baseName, dateStr, photosPerPage, titl
 import chalk3 from "chalk";
 
 // cli/adapters/apiKeyAdapter.ts
-import * as fs7 from "fs/promises";
-import * as path7 from "path";
+import * as fs8 from "fs/promises";
+import * as path8 from "path";
 import * as os2 from "os";
 import dotenv from "dotenv";
 dotenv.config();
-var CONFIG_DIR2 = path7.join(os2.homedir(), ".gaspm");
-var CONFIG_FILE = path7.join(CONFIG_DIR2, "config.json");
+var CONFIG_DIR2 = path8.join(os2.homedir(), ".gaspm");
+var CONFIG_FILE = path8.join(CONFIG_DIR2, "config.json");
 async function loadConfig() {
   try {
-    const content = await fs7.readFile(CONFIG_FILE, "utf-8");
+    const content = await fs8.readFile(CONFIG_FILE, "utf-8");
     return JSON.parse(content);
   } catch {
     return {};
   }
 }
 async function saveConfig(config) {
-  await fs7.mkdir(CONFIG_DIR2, { recursive: true });
-  await fs7.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+  await fs8.mkdir(CONFIG_DIR2, { recursive: true });
+  await fs8.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 async function getApiKey(optionKey) {
   if (optionKey) {
@@ -1969,8 +2277,8 @@ function handlePath() {
 // cli/commands/analyzeWeb.ts
 import express from "express";
 import cors from "cors";
-import * as fs8 from "fs/promises";
-import * as path8 from "path";
+import * as fs9 from "fs/promises";
+import * as path9 from "path";
 import { exec } from "child_process";
 var PORT = 3001;
 var sseClients = [];
@@ -2007,9 +2315,9 @@ function openBrowser(url) {
 }
 async function runAnalyzeWeb(folderPath, options = {}) {
   const { mode = "construction", output, useYolo = false, yoloConfThreshold = 0.5 } = options;
-  const absoluteFolderPath = path8.resolve(folderPath);
+  const absoluteFolderPath = path9.resolve(folderPath);
   try {
-    const stat5 = await fs8.stat(absoluteFolderPath);
+    const stat5 = await fs9.stat(absoluteFolderPath);
     if (!stat5.isDirectory()) {
       console.error(`\u30A8\u30E9\u30FC: \u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093: ${absoluteFolderPath}`);
       process.exit(1);
@@ -2094,14 +2402,7 @@ async function runAnalyzeWeb(folderPath, options = {}) {
         return;
       }
       broadcastLog(`${imagePaths.length}\u679A\u306E\u753B\u50CF\u3092\u691C\u51FA`);
-      const imageInfos = await processImages(imagePaths, {});
-      const photoInputs = imageInfos.map((info, index) => ({
-        fileName: info.fileName,
-        base64: info.base64,
-        mimeType: info.mimeType,
-        date: info.date,
-        filePath: imagePaths[index]
-      }));
+      const photoInputs = createPhotoInputs(imagePaths);
       let hierarchy;
       if (mode !== "general") {
         try {
@@ -2134,8 +2435,8 @@ async function runAnalyzeWeb(folderPath, options = {}) {
       broadcastLog(`\u89E3\u6790\u5B8C\u4E86: ${analysisResults.length}\u679A`, "success");
       analysisComplete = true;
       if (output) {
-        const outputPath = path8.resolve(output);
-        await fs8.writeFile(outputPath, JSON.stringify(analysisResults, null, 2));
+        const outputPath = path9.resolve(output);
+        await fs9.writeFile(outputPath, JSON.stringify(analysisResults, null, 2));
         broadcastLog(`\u7D50\u679C\u4FDD\u5B58: ${outputPath}`, "success");
       }
       broadcastLog("ANALYSIS_COMPLETE", "complete");
@@ -2164,11 +2465,11 @@ async function runAnalyzeWeb(folderPath, options = {}) {
 // cli/commands/server.ts
 import express2 from "express";
 import cors2 from "cors";
-import * as fs9 from "fs/promises";
-import * as path9 from "path";
+import * as fs10 from "fs/promises";
+import * as path10 from "path";
 import { exec as exec2 } from "child_process";
 var PORT2 = 3001;
-var PID_FILE = path9.join(process.cwd(), ".gaspm-server.pid");
+var PID_FILE = path10.join(process.cwd(), ".gaspm-server.pid");
 var sseClients2 = [];
 var currentAnalysis = {
   folderPath: "",
@@ -2221,7 +2522,7 @@ function broadcastStatus() {
 async function runAnalysis(folderPath, options) {
   const { mode = "construction", output, useYolo = false, yoloConfThreshold = 0.5 } = options;
   const cleanedPath = folderPath.replace(/^["']|["']$/g, "").trim();
-  const absoluteFolderPath = path9.isAbsolute(cleanedPath) ? cleanedPath : path9.resolve(cleanedPath);
+  const absoluteFolderPath = path10.isAbsolute(cleanedPath) ? cleanedPath : path10.resolve(cleanedPath);
   currentAnalysis = {
     folderPath: absoluteFolderPath,
     mode,
@@ -2232,7 +2533,7 @@ async function runAnalysis(folderPath, options) {
   };
   broadcastStatus();
   try {
-    const stat5 = await fs9.stat(absoluteFolderPath);
+    const stat5 = await fs10.stat(absoluteFolderPath);
     if (!stat5.isDirectory()) {
       throw new Error(`\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093: ${absoluteFolderPath}`);
     }
@@ -2242,14 +2543,7 @@ async function runAnalysis(folderPath, options) {
       throw new Error("\u753B\u50CF\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F");
     }
     broadcastLog2(`${imagePaths.length}\u679A\u306E\u753B\u50CF\u3092\u691C\u51FA`);
-    const imageInfos = await processImages(imagePaths, {});
-    const photoInputs = imageInfos.map((info, index) => ({
-      fileName: info.fileName,
-      base64: info.base64,
-      mimeType: info.mimeType,
-      date: info.date,
-      filePath: imagePaths[index]
-    }));
+    const photoInputs = createPhotoInputs(imagePaths);
     let hierarchy;
     if (mode !== "general") {
       try {
@@ -2282,8 +2576,8 @@ async function runAnalysis(folderPath, options) {
     currentAnalysis.status = "complete";
     broadcastLog2(`\u89E3\u6790\u5B8C\u4E86: ${results.length}\u679A`, "success");
     if (output) {
-      const outputPath = path9.resolve(output);
-      await fs9.writeFile(outputPath, JSON.stringify(results, null, 2));
+      const outputPath = path10.resolve(output);
+      await fs10.writeFile(outputPath, JSON.stringify(results, null, 2));
       broadcastLog2(`\u7D50\u679C\u4FDD\u5B58: ${outputPath}`, "success");
     }
     broadcastStatus();
@@ -2401,7 +2695,7 @@ async function startServer() {
     broadcastLog2("\u30B5\u30FC\u30D0\u30FC\u7D42\u4E86", "info");
     setTimeout(() => {
       server.close();
-      fs9.unlink(PID_FILE).catch(() => {
+      fs10.unlink(PID_FILE).catch(() => {
       });
       process.exit(0);
     }, 500);
@@ -2414,13 +2708,13 @@ async function startServer() {
 `);
     console.log(`   \u4F7F\u3044\u65B9: gaspm analyze ./photos --server
 `);
-    await fs9.writeFile(PID_FILE, process.pid.toString());
+    await fs10.writeFile(PID_FILE, process.pid.toString());
     openBrowser2(`http://localhost:${PORT2}/web-analyzer.html`);
   });
   process.on("SIGINT", async () => {
     console.log("\n\u7D42\u4E86\u4E2D...");
     server.close();
-    await fs9.unlink(PID_FILE).catch(() => {
+    await fs10.unlink(PID_FILE).catch(() => {
     });
     process.exit(0);
   });
@@ -2433,9 +2727,9 @@ async function stopServer() {
       return;
     } catch {
     }
-    const pid = await fs9.readFile(PID_FILE, "utf-8");
+    const pid = await fs10.readFile(PID_FILE, "utf-8");
     process.kill(parseInt(pid, 10));
-    await fs9.unlink(PID_FILE);
+    await fs10.unlink(PID_FILE);
     console.log("\u2705 \u30B5\u30FC\u30D0\u30FC\u3092\u505C\u6B62\u3057\u307E\u3057\u305F");
   } catch {
     console.log("\u30B5\u30FC\u30D0\u30FC\u306F\u8D77\u52D5\u3057\u3066\u3044\u307E\u305B\u3093");
@@ -2473,8 +2767,8 @@ async function isServerRunning() {
 // cli/index.ts
 var program = new Command();
 program.name("gaspm").description("GASPhotoAIManager CLI - \u5DE5\u4E8B\u5199\u771FAI\u89E3\u6790\u30C4\u30FC\u30EB").version("1.0.0");
-program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").option("--server", "\u5E38\u99D0\u30B5\u30FC\u30D0\u30FC\u7D4C\u7531\u3067\u89E3\u6790", false).action(analyzeCommand);
-program.command("export").description("\u89E3\u6790\u7D50\u679C\u3092Excel/PDF\u306B\u51FA\u529B").argument("<input>", "\u5165\u529BJSON\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("-f, --format <format>", "\u51FA\u529B\u5F62\u5F0F (excel/pdf/both)", "both").option("-o, --output <dir>", "\u51FA\u529B\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA", ".").option("-p, --photos-per-page <number>", "\u30DA\u30FC\u30B8\u3042\u305F\u308A\u306E\u5199\u771F\u6570 (2/3)", "3").option("-t, --title <title>", "\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\u30BF\u30A4\u30C8\u30EB", "\u5DE5\u4E8B\u5199\u771F\u5E33").option("--font <path>", "\u65E5\u672C\u8A9E\u30D5\u30A9\u30F3\u30C8\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").action(exportCommand);
+program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").option("--server", "\u5E38\u99D0\u30B5\u30FC\u30D0\u30FC\u7D4C\u7531\u3067\u89E3\u6790", false).option("--cache <file>", "Step1\u30AD\u30E3\u30C3\u30B7\u30E5\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("--use-cache", "Step1\u30AD\u30E3\u30C3\u30B7\u30E5\u3092\u4F7F\u7528", false).action(analyzeCommand);
+program.command("export").description("\u89E3\u6790\u7D50\u679C\u3092Excel/PDF\u306B\u51FA\u529B").argument("<input>", "\u5165\u529BJSON\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("-f, --format <format>", "\u51FA\u529B\u5F62\u5F0F (excel/pdf/both)", "both").option("-o, --output <dir>", "\u51FA\u529B\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA", ".").option("-p, --photos-per-page <number>", "\u30DA\u30FC\u30B8\u3042\u305F\u308A\u306E\u5199\u771F\u6570 (2/3)", "3").option("-t, --title <title>", "\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\u30BF\u30A4\u30C8\u30EB", "\u5DE5\u4E8B\u5199\u771F\u5E33").option("--font <path>", "\u65E5\u672C\u8A9E\u30D5\u30A9\u30F3\u30C8\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("-q, --pdf-quality <quality>", "PDF\u753B\u8CEA (high=\u5370\u5237\u7528/medium=\u30C7\u30B8\u30BF\u30EB\u63D0\u51FA\u7528/low=\u30C9\u30E9\u30D5\u30C8\u7528/preview=\u30D7\u30EC\u30D3\u30E5\u30FC)", "high").option("--alias <file>", "\u30A8\u30A4\u30EA\u30A2\u30B9\u8A2D\u5B9A\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (.alias-config.json)").option("--preset <name>", "\u30A8\u30A4\u30EA\u30A2\u30B9\u30D7\u30EA\u30BB\u30C3\u30C8 (\u8217\u88C5\u88DC\u4FEE)").action(exportCommand);
 program.command("config").description("\u8A2D\u5B9A\u7BA1\u7406").argument("[action]", "\u30A2\u30AF\u30B7\u30E7\u30F3 (set-key/show/path)").argument("[value]", "\u8A2D\u5B9A\u5024").action(configCommand);
 program.command("analyze:web").description("\u30D6\u30E9\u30A6\u30B6UI\u3067\u5199\u771F\u89E3\u6790\uFF08\u81EA\u52D5\u8D77\u52D5\u30FB\u81EA\u52D5\u7D42\u4E86\uFF09").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").action((folder, options) => {
   runAnalyzeWeb(folder, {
