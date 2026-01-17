@@ -12,7 +12,6 @@ import express from 'express';
 import cors from 'cors';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { scanFolder, processImages } from '../adapters/imageAdapter';
 import { getMergedHierarchy } from '../adapters/masterAdapter';
@@ -89,9 +88,8 @@ export async function runAnalyzeWeb(folderPath: string, options: {
   app.use(cors());
   app.use(express.json({ limit: '100mb' }));
 
-  // 静的ファイル配信
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const projectRoot = path.resolve(__dirname, '../..');
+  // 静的ファイル配信（process.cwd()を使用）
+  const projectRoot = process.cwd();
   app.use(express.static(projectRoot));
 
   // Health check
