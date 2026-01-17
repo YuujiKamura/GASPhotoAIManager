@@ -93,7 +93,8 @@
       "Bash(npm i:*)",
       "Bash(git restore:*)",
       "Bash(claude)",
-      "Bash(claude --print-system-prompt:*)"
+      "Bash(claude --print-system-prompt:*)",
+      "Bash(python models/yolo_detect.py:*)"
     ]
   }
 }

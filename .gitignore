@@ -36,3 +36,8 @@ test-output/
 temp-images/
 test-batch10/
 test-single/
+test-yolo/
+
+# YOLO models (large binary files)
+models/*.pt
+result.json
