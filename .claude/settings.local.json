@@ -95,7 +95,10 @@
       "Bash(claude)",
       "Bash(claude --print-system-prompt:*)",
       "Bash(python models/yolo_detect.py:*)",
-      "Bash(./node_modules/.bin/esbuild:*)"
+      "Bash(./node_modules/.bin/esbuild:*)",
+      "Bash(for i in 1 2 3 4 5 6)",
+      "Bash(do sleep 10)",
+      "Bash(done)"
     ]
   }
 }

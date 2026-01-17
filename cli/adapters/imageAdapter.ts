@@ -194,3 +194,20 @@ export function extractBase64Data(base64WithPrefix: string): string {
   }
   return base64WithPrefix;
 }
+
+/**
+ * ファイルパスからPhotoInput配列を作成（base64なし、解析用）
+ */
+export function createPhotoInputs(filePaths: string[]): {
+  fileName: string;
+  base64: string;
+  mimeType: string;
+  filePath: string;
+}[] {
+  return filePaths.map(p => ({
+    fileName: path.basename(p),
+    base64: '',
+    mimeType: 'image/jpeg',
+    filePath: p,
+  }));
+}

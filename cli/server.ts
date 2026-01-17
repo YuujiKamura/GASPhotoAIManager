@@ -12,7 +12,7 @@ import express from 'express';
 import cors from 'cors';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { scanFolder, processImages } from './adapters/imageAdapter';
+import { scanFolder, createPhotoInputs } from './adapters/imageAdapter';
 import { getMergedHierarchy } from './adapters/masterAdapter';
 import {
   analyzePhotos,
@@ -145,17 +145,8 @@ app.post('/api/analyze', async (req, res) => {
         } as AnalyzeResponse);
       }
 
-      // 画像処理
-      broadcastLog(`画像処理中: ${imagePaths.length}枚`);
-      const imageInfos = await processImages(imagePaths, {});
-
-      photoInputs = imageInfos.map((info, index) => ({
-        fileName: info.fileName,
-        base64: info.base64,
-        mimeType: info.mimeType,
-        date: info.date,
-        filePath: imagePaths[index],
-      }));
+      broadcastLog(`${imagePaths.length}枚の画像を検出`);
+      photoInputs = createPhotoInputs(imagePaths);
     }
     // base64画像直接指定の場合
     else if (body.photos && body.photos.length > 0) {

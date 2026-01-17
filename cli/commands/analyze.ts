@@ -12,7 +12,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
-import { scanFolder, processImage } from '../adapters/imageAdapter';
+import { scanFolder, processImage, createPhotoInputs } from '../adapters/imageAdapter';
 import { getMergedHierarchy } from '../adapters/masterAdapter';
 import {
   analyzePhotos,
@@ -75,12 +75,7 @@ export async function analyzeCommand(
   }
 
   // PhotoInput作成（ファイルパスのみ、base64は後で）
-  const photoInputs: PhotoInput[] = imagePaths.map(p => ({
-    fileName: path.basename(p),
-    base64: '',  // 解析時は不要
-    mimeType: 'image/jpeg',
-    filePath: p,
-  }));
+  const photoInputs = createPhotoInputs(imagePaths);
 
   // 工種マスタ読み込み（constructionモードの場合）
   let hierarchy: Record<string, unknown> | undefined;

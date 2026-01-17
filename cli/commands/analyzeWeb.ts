@@ -13,7 +13,7 @@ import cors from 'cors';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec } from 'child_process';
-import { scanFolder, processImages } from '../adapters/imageAdapter';
+import { scanFolder, createPhotoInputs } from '../adapters/imageAdapter';
 import { getMergedHierarchy } from '../adapters/masterAdapter';
 import {
   analyzePhotos,
@@ -192,15 +192,7 @@ export async function runAnalyzeWeb(folderPath: string, options: {
 
       broadcastLog(`${imagePaths.length}枚の画像を検出`);
 
-      // 画像処理
-      const imageInfos = await processImages(imagePaths, {});
-      const photoInputs: PhotoInput[] = imageInfos.map((info, index) => ({
-        fileName: info.fileName,
-        base64: info.base64,
-        mimeType: info.mimeType,
-        date: info.date,
-        filePath: imagePaths[index],
-      }));
+      const photoInputs = createPhotoInputs(imagePaths);
 
       // 工種マスタ読み込み
       let hierarchy: Record<string, unknown> | undefined;
