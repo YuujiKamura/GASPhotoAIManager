@@ -5,7 +5,8 @@
  * Step2: マスタ照合 (Text) - 階層マスタとの照合で分類
  *
  * ## 変更履歴
- * - 2026-01-17: Windowsコマンドライン制限対策（プロンプトファイル経由）
+ * - 2026-01-17: Step1キャッシュ機能追加（再実行時の高速化）
+ * - 2026-01-17: Windowsコマンドライン制限対策（stdin経由）
  * - 2026-01-17: YOLO前処理統合（解析速度29%向上）
  * - 2026-01-17: 2段階処理に変更（マスタ整合性向上）
  */
@@ -160,6 +161,9 @@ export interface AnalyzeOptions {
   // YOLO前処理オプション
   useYolo?: boolean;           // YOLO前処理を使用するか (default: false)
   yoloConfThreshold?: number;  // YOLO信頼度閾値 (default: 0.5)
+  // Step1キャッシュオプション
+  step1CachePath?: string;     // Step1結果のキャッシュファイルパス
+  useStep1Cache?: boolean;     // キャッシュを使用するか (default: false)
 }
 
 // ============================================
@@ -194,6 +198,39 @@ const formatShootingTime = (timestamp: number): string => {
   const minutes = date.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;
 };
+
+// ============================================
+// Step1キャッシュ
+// ============================================
+
+interface Step1Cache {
+  version: string;
+  createdAt: number;
+  entries: Record<string, RawImageData>;  // fileName -> RawImageData
+}
+
+const CACHE_VERSION = '1.0';
+
+async function loadStep1Cache(cachePath: string): Promise<Step1Cache | null> {
+  try {
+    if (!existsSync(cachePath)) return null;
+    const content = await fs.readFile(cachePath, 'utf-8');
+    const cache = JSON.parse(content) as Step1Cache;
+    if (cache.version !== CACHE_VERSION) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
+async function saveStep1Cache(cachePath: string, entries: Record<string, RawImageData>): Promise<void> {
+  const cache: Step1Cache = {
+    version: CACHE_VERSION,
+    createdAt: Date.now(),
+    entries,
+  };
+  await fs.writeFile(cachePath, JSON.stringify(cache, null, 2), 'utf-8');
+}
 
 // ============================================
 // Claude Code CLI実行
@@ -588,9 +625,21 @@ export async function analyzePhotos(
     hierarchy,
     useYolo = false,
     yoloConfThreshold = 0.5,
+    step1CachePath,
+    useStep1Cache = false,
   } = options;
 
   const analysisStart = Date.now();
+
+  // Step1キャッシュのロード
+  let step1Cache: Step1Cache | null = null;
+  const cacheEntries: Record<string, RawImageData> = {};
+  if (step1CachePath && useStep1Cache) {
+    step1Cache = await loadStep1Cache(step1CachePath);
+    if (step1Cache) {
+      onLog?.(`Step1キャッシュロード: ${Object.keys(step1Cache.entries).length}件`, 'info');
+    }
+  }
 
   // メトリクス収集用
   const batchMetrics: BatchMetrics[] = [];
@@ -645,61 +694,100 @@ export async function analyzePhotos(
   }
 
   // ============================================
-  // Step1: 画像認識
+  // Step1: 画像認識（キャッシュ対応）
   // ============================================
-  onLog?.(`Step1開始: ${batches.length}バッチ`, 'info');
   const step1Start = Date.now();
 
-  // バッチごとの一時ファイルパスを保持
+  // キャッシュから取得済みの写真と未処理の写真を分離
+  const cachedRawData: RawImageData[] = [];
+  const uncachedPhotos: PhotoInput[] = [];
+
+  for (const photo of photos) {
+    if (step1Cache?.entries[photo.fileName]) {
+      cachedRawData.push(step1Cache.entries[photo.fileName]);
+      cacheEntries[photo.fileName] = step1Cache.entries[photo.fileName];
+    } else {
+      uncachedPhotos.push(photo);
+    }
+  }
+
+  if (cachedRawData.length > 0) {
+    onLog?.(`Step1キャッシュヒット: ${cachedRawData.length}枚`, 'success');
+  }
+
+  // 未処理の写真がある場合のみStep1実行
+  let step1Results: { batchIndex: number; rawData: RawImageData[]; duration: number; imageNames: string[]; batch: PhotoInput[] }[] = [];
   const allTempPaths: string[][] = [];
 
-  // 並列実行用のタスク作成
-  const step1Tasks = batches.map(async (batch, batchIndex) => {
-    checkAbort(shouldAbort, `Step1 バッチ ${batchIndex + 1}`);
+  if (uncachedPhotos.length > 0) {
+    // 未処理分をバッチに分割
+    const uncachedBatches: PhotoInput[][] = [];
+    for (let i = 0; i < uncachedPhotos.length; i += batchSize) {
+      uncachedBatches.push(uncachedPhotos.slice(i, i + batchSize));
+    }
 
-    const batchStart = Date.now();
-    const imageNames = batch.map(p => p.fileName);
+    onLog?.(`Step1開始: ${uncachedBatches.length}バッチ (${uncachedPhotos.length}枚)`, 'info');
 
-    onLog?.(`Step1 バッチ${batchIndex + 1}/${batches.length} 開始 (${batch.length}枚)`, 'info');
-    onMetrics?.({
-      type: 'batch_start',
-      batchIndex,
-      totalBatches: batches.length,
-      imageCount: batch.length,
-      images: imageNames
+    // 並列実行用のタスク作成
+    const step1Tasks = uncachedBatches.map(async (batch, batchIndex) => {
+      checkAbort(shouldAbort, `Step1 バッチ ${batchIndex + 1}`);
+
+      const batchStart = Date.now();
+      const imageNames = batch.map(p => p.fileName);
+
+      onLog?.(`Step1 バッチ${batchIndex + 1}/${uncachedBatches.length} 開始 (${batch.length}枚)`, 'info');
+      onMetrics?.({
+        type: 'batch_start',
+        batchIndex,
+        totalBatches: uncachedBatches.length,
+        imageCount: batch.length,
+        images: imageNames
+      });
+
+      // ファイルパス準備
+      const tempPaths: string[] = [];
+      for (const photo of batch) {
+        if (photo.filePath) {
+          tempPaths.push(photo.filePath);
+        } else {
+          const tempPath = await saveToTempFile(photo);
+          tempPaths.push(tempPath);
+          photo.filePath = tempPath;
+        }
+      }
+      allTempPaths[batchIndex] = tempPaths;
+
+      // Step1実行
+      onMetrics?.({ type: 'step_start', step: 1, batchIndex });
+      const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
+      const duration = Date.now() - batchStart;
+
+      // 新規結果をキャッシュに追加
+      for (const data of rawData) {
+        cacheEntries[data.fileName] = data;
+      }
+
+      onLog?.(`Step1 バッチ${batchIndex + 1} 完了: ${formatDuration(duration)}`, 'info');
+      onMetrics?.({ type: 'step_complete', step: 1, batchIndex, duration });
+
+      return { batchIndex, rawData, duration, imageNames, batch };
     });
 
-    // ファイルパス準備
-    const tempPaths: string[] = [];
-    for (const photo of batch) {
-      if (photo.filePath) {
-        tempPaths.push(photo.filePath);
-      } else {
-        const tempPath = await saveToTempFile(photo);
-        tempPaths.push(tempPath);
-        photo.filePath = tempPath;
-      }
+    // 全バッチを並列実行
+    step1Results = await Promise.all(step1Tasks);
+    step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
+
+    // キャッシュ保存
+    if (step1CachePath) {
+      await saveStep1Cache(step1CachePath, cacheEntries);
+      onLog?.(`Step1キャッシュ保存: ${Object.keys(cacheEntries).length}件`, 'info');
     }
-    allTempPaths[batchIndex] = tempPaths;
-
-    // Step1実行
-    onMetrics?.({ type: 'step_start', step: 1, batchIndex });
-    const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
-    const duration = Date.now() - batchStart;
-
-    onLog?.(`Step1 バッチ${batchIndex + 1} 完了: ${formatDuration(duration)}`, 'info');
-    onMetrics?.({ type: 'step_complete', step: 1, batchIndex, duration });
-
-    return { batchIndex, rawData, duration, imageNames, batch };
-  });
-
-  // 全バッチを並列実行（バッチ数 = parallelBatches以下）
-  const step1Results = await Promise.all(step1Tasks);
-  // batchIndex順にソート
-  step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
+  } else {
+    onLog?.(`Step1: 全件キャッシュ済み`, 'success');
+  }
 
   const step1TotalTime = Date.now() - step1Start;
-  onLog?.(`Step1全完了: ${formatDuration(step1TotalTime)} (${batches.length}バッチ)`, 'success');
+  onLog?.(`Step1全完了: ${formatDuration(step1TotalTime)}`, 'success');
 
   // ============================================
   // Step2: 全結果をまとめて1回で照合
@@ -707,8 +795,10 @@ export async function analyzePhotos(
   let allResults: AnalysisResult[] = [];
   let step2TotalTime = 0;
 
-  // 全rawDataをマージ
-  const allRawData: RawImageData[] = step1Results.flatMap(r => r.rawData);
+  // 全rawDataをマージ（キャッシュ分 + 新規分）
+  const newRawData: RawImageData[] = step1Results.flatMap(r => r.rawData);
+  // 元の写真順序を維持
+  const allRawData: RawImageData[] = photos.map(p => cacheEntries[p.fileName]).filter(Boolean);
 
   if (mode === 'construction' && hierarchy) {
     onLog?.(`Step2開始: ${allRawData.length}件を一括照合`, 'info');

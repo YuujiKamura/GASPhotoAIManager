@@ -4,6 +4,7 @@
  * 写真フォルダを解析してJSON出力
  *
  * ## 変更履歴
+ * - 2026-01-17: Step1キャッシュオプション追加（--cache, --use-cache）
  * - 2026-01-17: 工種マスタ対応追加
  * - 2026-01-17: Gemini API → Claude API に移行
  */
@@ -30,6 +31,8 @@ interface AnalyzeOptions {
   yolo: boolean;
   yoloConf: string;
   server: boolean;
+  cache?: string;       // Step1キャッシュファイルパス
+  useCache: boolean;    // キャッシュを使用するか
 }
 
 export async function analyzeCommand(
@@ -91,17 +94,22 @@ export async function analyzeCommand(
   // AI解析
   const yoloEnabled = options.yolo === true;
   const yoloConfThreshold = parseFloat(options.yoloConf || '0.5');
+  const step1CachePath = options.cache || path.join(path.dirname(path.resolve(options.output)), '.step1-cache.json');
+  const useStep1Cache = options.useCache === true;
 
   console.log(chalk.gray(`\nモード: ${options.mode} (Claude Code CLI使用)`));
   if (yoloEnabled) {
     console.log(chalk.gray(`YOLO前処理: 有効 (閾値=${yoloConfThreshold})`));
+  }
+  if (useStep1Cache) {
+    console.log(chalk.gray(`Step1キャッシュ: ${step1CachePath}`));
   }
   if (options.instruction) {
     console.log(chalk.gray(`指示: ${options.instruction}`));
   }
   console.log('');
 
-  const analyzeSpinner = ora('AI解析中...').start();
+  let analyzeSpinner = ora('AI解析中...').start();
   let results: AnalysisResult[];
 
   try {
@@ -112,11 +120,18 @@ export async function analyzeCommand(
       hierarchy,
       useYolo: yoloEnabled,
       yoloConfThreshold,
+      step1CachePath,
+      useStep1Cache,
       onLog: (msg, type) => {
         if (type === 'error') {
           analyzeSpinner.warn(msg);
+        } else if (type === 'success') {
+          analyzeSpinner.succeed(msg);
+          analyzeSpinner = ora('AI解析中...').start();
         } else if (msg.startsWith('DEBUG')) {
           // デバッグログは詳細表示
+          analyzeSpinner.info(msg);
+        } else if (msg.includes('キャッシュ')) {
           analyzeSpinner.info(msg);
         }
       },

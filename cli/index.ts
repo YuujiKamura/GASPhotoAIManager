@@ -32,6 +32,8 @@ program
   .option('--yolo', 'YOLO前処理を有効化（29%高速化）', false)
   .option('--yolo-conf <threshold>', 'YOLO信頼度閾値', '0.5')
   .option('--server', '常駐サーバー経由で解析', false)
+  .option('--cache <file>', 'Step1キャッシュファイルパス')
+  .option('--use-cache', 'Step1キャッシュを使用', false)
   .action(analyzeCommand);
 
 // export コマンド
