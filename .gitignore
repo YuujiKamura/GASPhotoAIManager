@@ -43,3 +43,10 @@ models/*.pt
 result.json
 .gaspm-server.pid
 temp-images
+
+# Test/cache files
+*.step1-cache.json
+test-*.json
+test-*.pdf
+rust-compare.json
+dist-cli/
