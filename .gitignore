@@ -34,3 +34,5 @@ test-output/
 *.sw?
 .temp/
 temp-images/
+test-batch10/
+test-single/

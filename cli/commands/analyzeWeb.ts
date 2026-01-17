@@ -212,7 +212,8 @@ export async function runAnalyzeWeb(folderPath: string, options: {
       broadcastLog(`AI解析開始: ${photoInputs.length}枚`);
       analysisResults = await analyzePhotos(photoInputs, {
         mode,
-        batchSize: 5,
+        batchSize: 10,
+        parallelBatches: 1,  // 順次処理（並列CLI呼び出しはオーバーヘッド大）
         hierarchy,
         onLog: (msg, type) => broadcastLog(msg, type),
         onProgress: (current, total, fileName) => {

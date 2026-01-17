@@ -233,28 +233,15 @@ function runClaudeCode(
 // ============================================
 
 const STEP1_PROMPT = `
-あなたは工事写真の解析専門家です。画像から以下の情報を抽出してください。
-
-出力形式（JSON配列）:
+工事写真を解析。JSON配列で出力:
 - fileName: ファイル名
-- hasBoard: 黒板が写っているか (true/false)
-- detectedText: 黒板や看板から読み取れる全てのテキスト
-- measurements: 数値データ（温度、寸法、密度等）をそのまま記載（例: "160.4℃", "厚さ50mm"）
-- sceneDescription: 写真に写っているものの客観的な説明
-- photoCategoryGuess: 以下から1つ選択
-  - "品質管理" (温度測定、密度測定など)
-  - "施工状況" (作業中の様子)
-  - "出来形" (完成した構造物の測定)
-  - "安全管理" (朝礼、KY活動など)
-  - "着手前完成" (工事前後の状態)
-  - "使用材料" (材料の搬入・検収)
+- hasBoard: 黒板有無 (true/false)
+- detectedText: 黒板・看板のテキスト
+- measurements: 数値データ（温度、寸法等）
+- sceneDescription: 写真の説明
+- photoCategoryGuess: 品質管理/施工状況/出来形/安全管理/着手前完成/使用材料
 
-注意:
-- 黒板のテキストは可能な限り正確にOCRしてください
-- 数値は単位も含めて正確に記載
-- 推測せず、見えるものだけを記載
-
-出力はJSON配列のみ。説明不要。
+JSON配列のみ出力。
 `;
 
 function buildStep1Prompt(photos: PhotoInput[]): string {
@@ -469,13 +456,21 @@ export async function analyzePhotos(
   const imageMetrics: ImageMetrics[] = [];
   const rawResponses: AnalysisMetrics['rawResponses'] = [];
 
-  onLog?.(`解析開始: ${photos.length}枚 (並列Step1 + 統合Step2)`, 'info');
+  onLog?.(`解析開始: ${photos.length}枚 (${parallelBatches}並列Step1 + 統合Step2)`, 'info');
   onMetrics?.({ type: 'analysis_start', totalImages: photos.length, mode });
 
-  // バッチに分割
+  // 並列数に応じてバッチに分割（parallelBatches個のバッチを作成）
   const batches: PhotoInput[][] = [];
-  for (let i = 0; i < photos.length; i += batchSize) {
-    batches.push(photos.slice(i, i + batchSize));
+  const numBatches = Math.min(parallelBatches, photos.length);
+  const baseSize = Math.floor(photos.length / numBatches);
+  const remainder = photos.length % numBatches;
+
+  let offset = 0;
+  for (let i = 0; i < numBatches; i++) {
+    // 余りを前のバッチに1つずつ分配
+    const size = baseSize + (i < remainder ? 1 : 0);
+    batches.push(photos.slice(offset, offset + size));
+    offset += size;
   }
 
   // ============================================
@@ -527,14 +522,8 @@ export async function analyzePhotos(
     return { batchIndex, rawData, duration, imageNames, batch };
   });
 
-  // 並列数を制限して実行
-  const step1Results: { batchIndex: number; rawData: RawImageData[]; duration: number; imageNames: string[]; batch: PhotoInput[] }[] = [];
-  for (let i = 0; i < step1Tasks.length; i += parallelBatches) {
-    const chunk = step1Tasks.slice(i, i + parallelBatches);
-    const results = await Promise.all(chunk);
-    step1Results.push(...results);
-  }
-
+  // 全バッチを並列実行（バッチ数 = parallelBatches以下）
+  const step1Results = await Promise.all(step1Tasks);
   // batchIndex順にソート
   step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
 
