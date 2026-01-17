@@ -263,6 +263,14 @@ export const LAYOUT_FIELDS: FieldDefinition[] = [
     readOnly: true
   },
   {
+    id: 'f_photoCategory',
+    key: 'photoCategory',
+    labelKey: 'labelPhotoCategory',
+    rowSpan: 1,
+    heightClass: 'h-[28px]',
+    multiline: false
+  },
+  {
     id: 'f_workType',
     key: 'workType',
     labelKey: 'labelWorkType',

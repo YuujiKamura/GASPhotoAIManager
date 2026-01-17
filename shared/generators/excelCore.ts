@@ -42,6 +42,7 @@ export interface ExcelOptions {
 
 const FIELD_LABELS: Record<string, string> = {
   labelDate: '撮影日時',
+  labelPhotoCategory: '写真区分',
   labelWorkType: '工種',
   labelVariety: '種別',
   labelDetail: '細別',
