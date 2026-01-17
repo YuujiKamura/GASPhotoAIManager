@@ -50,3 +50,9 @@ test-*.json
 test-*.pdf
 rust-compare.json
 dist-cli/
+
+# Local settings (may contain API keys)
+.claude/settings.local.json
+
+# Merged codebase snapshot
+merged_codebase.txt
