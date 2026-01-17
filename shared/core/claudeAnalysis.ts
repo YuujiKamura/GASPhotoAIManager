@@ -233,7 +233,9 @@ ${rawDataStr}
 ## 出力ルール
 1. workType, variety, detail は必ずマスタに存在する値を選択
 2. マスタにない値は絶対に使用しない
-3. remarks はマスタの最下層キーまたはaliasesから選択
+3. remarks はマスタの最下層キー（正式名称）を出力
+   - matchPatterns は検索用パターン。OCRテキストがmatchPatternsにマッチした場合、その親キーを出力
+   - 例: OCRで"到着温度"→ 親キー"アスファルト混合物温度測定"を出力
 4. 該当なしの場合は空文字""
 
 ## 出力形式（JSON配列）

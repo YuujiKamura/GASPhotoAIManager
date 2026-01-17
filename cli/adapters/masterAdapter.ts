@@ -174,12 +174,12 @@ export async function extractAllValidValues(): Promise<{
   await traverseHierarchy((_, workTypeKey, varietyKey, detailKey, detail) => {
     if (workTypeKey) workTypes.add(workTypeKey);
     if (varietyKey) varieties.add(varietyKey);
-    if (detailKey && detailKey !== 'aliases') {
+    if (detailKey && detailKey !== 'matchPatterns') {
       details.add(detailKey);
-      const aliases = detail?.aliases as string[] | undefined;
-      if (aliases) aliases.forEach(a => remarks.add(a));
+      const matchPatterns = detail?.matchPatterns as string[] | undefined;
+      if (matchPatterns) matchPatterns.forEach(a => remarks.add(a));
       for (const remarkKey in detail) {
-        if (remarkKey !== 'aliases' && remarkKey) remarks.add(remarkKey);
+        if (remarkKey !== 'matchPatterns' && remarkKey) remarks.add(remarkKey);
       }
     }
   });
