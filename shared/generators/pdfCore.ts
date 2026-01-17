@@ -143,8 +143,8 @@ export async function generatePdfBuffer(
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   // ラベル定義（正しい階層: 写真区分 → 工種 → 種別 → 細別）
-  // 現在のデータ構造: workType=写真区分, variety=工種, detail=種別
-  const labels = { date: '日時', photoCategory: '写真区分', workType: '工種', variety: '種別', station: '測点', remarks: '備考', measurements: '測定値' };
+  // 現在のデータ構造: workType=写真区分, variety=工種, detail=種別, subDetail=細別
+  const labels = { date: '日時', photoCategory: '写真区分', workType: '工種', variety: '種別', detail: '細別', station: '測点', remarks: '備考', measurements: '測定値' };
 
   // レイアウト計算（layoutConfigの値を使用、ヘッダーなし）
   const usableHeight = A4_HEIGHT - MARGIN * 2;
@@ -237,13 +237,14 @@ export async function generatePdfBuffer(
       const infoX = MARGIN + photoWidth;
       const analysis = photo.analysis || {};
 
-      // 正しい階層順序: 日時 → 写真区分 → 工種 → 種別 → 測点 → 備考 → 測定値
-      // データマッピング: workType=写真区分, variety=工種, detail=種別
+      // 正しい階層順序: 日時 → 写真区分 → 工種 → 種別 → 細別 → 測点 → 備考 → 測定値
+      // データマッピング: workType=写真区分, variety=工種, detail=種別, subDetail=細別
       const infoLines = [
         { label: labels.date, value: photo.date ? new Date(photo.date).toISOString().slice(0, 10) : '-' },
         { label: labels.photoCategory, value: analysis.workType || '-' },
         { label: labels.workType, value: analysis.variety || '-' },
         { label: labels.variety, value: analysis.detail || '-' },
+        { label: labels.detail, value: analysis.subDetail || '-' },
         { label: labels.station, value: analysis.station || '-' },
         { label: labels.remarks, value: analysis.remarks || '-' },
         { label: labels.measurements, value: analysis.measurements || '-' }

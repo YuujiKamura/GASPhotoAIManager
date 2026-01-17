@@ -47,9 +47,10 @@ export type ChangeStage =
 export interface AIAnalysisResult {
   fileName: string;
   photoCategory?: string; // 写真区分 (Photo Category: 着手前及び完成写真, 施工状況写真, 品質管理写真等)
-  workType: string; // 工種 (Construction Type: 舗装工, 道路土工, 区画線工等)
-  variety?: string; // 種別 (Variety: 舗装打換え工, 上層路盤工等)
-  detail?: string; // 細別 (Detail: 表層工, プライムコート等)
+  workType: string; // 工種 (Construction Type: 舗装工, 道路土工, 区画線工等) - 現状は写真区分として使用
+  variety?: string; // 種別 (Variety: 舗装打換え工, 上層路盤工等) - 現状は工種として使用
+  detail?: string; // 細別 (Detail: 表層工, プライムコート等) - 現状は種別として使用
+  subDetail?: string; // 細別 (Sub-detail: 実際の細別値) - 将来的に使用
   station: string; // 測点 OR Location/Time
   remarks: string; // 備考 (黒板の記載内容の正規化) OR Title/Key Point
   remarksCategory?: string; // 備考の種類（到着温度、敷均し温度、転圧状況など）- スキーマ分離用
