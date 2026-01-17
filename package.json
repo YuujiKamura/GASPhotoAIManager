@@ -13,6 +13,7 @@
     "build:cli": "node -e \"require('child_process').execSync('npx esbuild cli/index.ts --bundle --platform=node --target=node18 --outfile=dist-cli/index.js --format=esm --packages=external', {stdio: 'inherit'})\"",
     "cli": "node dist-cli/index.js",
     "a": "node dist-cli/index.js analyze",
+    "aw": "node dist-cli/index.js analyze:web",
     "server": "node dist-cli/server.js",
     "build:server": "node -e \"require('child_process').execSync('npx esbuild cli/server.ts --bundle --platform=node --target=node18 --outfile=dist-cli/server.js --format=esm --packages=external', {stdio: 'inherit'})\"",
     "preview": "vite preview",

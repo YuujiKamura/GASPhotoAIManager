@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { analyzeCommand } from './commands/analyze';
 import { exportCommand } from './commands/export';
 import { configCommand } from './commands/config';
+import { runAnalyzeWeb } from './commands/analyzeWeb';
 
 const program = new Command();
 
@@ -48,5 +49,16 @@ program
   .argument('[action]', 'アクション (set-key/show/path)')
   .argument('[value]', '設定値')
   .action(configCommand);
+
+// analyze:web コマンド（ブラウザUIで解析）
+program
+  .command('analyze:web')
+  .description('ブラウザUIで写真解析（自動起動・自動終了）')
+  .argument('<folder>', '解析する写真フォルダのパス')
+  .option('-o, --output <file>', '出力ファイルパス (JSON)')
+  .option('-m, --mode <mode>', 'アプリモード (construction/general)', 'construction')
+  .action((folder, options) => {
+    runAnalyzeWeb(folder, options);
+  });
 
 program.parse();
