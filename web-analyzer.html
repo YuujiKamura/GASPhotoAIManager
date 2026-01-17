@@ -135,6 +135,75 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+
+    /* Control panel */
+    .control-panel {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 16px;
+      text-align: left;
+    }
+    .control-panel h3 {
+      margin-bottom: 16px;
+      font-size: 1rem;
+      color: #c9d1d9;
+    }
+    .input-group {
+      margin-bottom: 16px;
+    }
+    .input-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+    .input-group input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: monospace;
+    }
+    .input-group input[type="text"]:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .input-group select {
+      padding: 10px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+    }
+    .input-group .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .btn-start {
+      width: 100%;
+      padding: 12px;
+      background: #238636;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn-start:hover {
+      background: #2ea043;
+    }
+    .btn-start:disabled {
+      background: #21262d;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -164,9 +233,35 @@
     <!-- Idle state panel -->
     <div id="idleState" class="idle-panel">
       <h2><span class="status-indicator"></span>解析待機中</h2>
-      <p>常駐サーバーが起動しています。以下のコマンドで解析を開始してください:</p>
-      <code>gaspm analyze ./photos --server</code>
-      <p style="margin-top: 16px; font-size: 0.8rem;">オプション: --mode construction --yolo</p>
+      <p>常駐サーバーが起動しています。下のフォームから解析を開始できます。</p>
+
+      <div class="control-panel">
+        <h3>解析設定</h3>
+
+        <div class="input-group">
+          <label for="folderInput">フォルダパス</label>
+          <input type="text" id="folderInput" placeholder="例: C:\photos\工事A">
+        </div>
+
+        <div class="input-group">
+          <label for="modeSelect">モード</label>
+          <select id="modeSelect">
+            <option value="construction">工事写真 (construction)</option>
+            <option value="general">一般 (general)</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="yoloCheck">
+            YOLO前処理を有効化（高速化）
+          </label>
+        </div>
+
+        <button id="startAnalysis" class="btn-start">解析開始</button>
+      </div>
+
+      <p style="margin-top: 16px; font-size: 0.8rem; color: #6e7681;">CLIからも開始可能: <code style="padding:4px 8px;">gaspm analyze ./photos --server</code></p>
     </div>
 
     <!-- Summary -->
@@ -296,6 +391,10 @@
       shutdown: document.getElementById('shutdown'),
       idleState: document.getElementById('idleState'),
       infoBar: document.getElementById('infoBar'),
+      folderInput: document.getElementById('folderInput'),
+      modeSelect: document.getElementById('modeSelect'),
+      yoloCheck: document.getElementById('yoloCheck'),
+      startAnalysis: document.getElementById('startAnalysis'),
     };
 
     // Show idle or running state
@@ -306,6 +405,9 @@
       els.statusBadge.className = 'status-badge';
       els.statusBadge.style.background = '#238636';
       document.title = '待機中 - ダッシュボード';
+      // Reset start button
+      els.startAnalysis.disabled = false;
+      els.startAnalysis.textContent = '解析開始';
     }
 
     function showRunningState() {
@@ -314,6 +416,45 @@
       els.statusBadge.textContent = '解析中';
       els.statusBadge.className = 'status-badge running';
       document.title = '解析中 - ダッシュボード';
+    }
+
+    // Start analysis from UI
+    async function startAnalysisFromUI() {
+      const folderPath = els.folderInput.value.trim();
+
+      if (!folderPath) {
+        alert('フォルダパスを入力してください');
+        return;
+      }
+
+      els.startAnalysis.disabled = true;
+      els.startAnalysis.textContent = '解析中...';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            folderPath,
+            options: {
+              mode: els.modeSelect.value,
+              useYolo: els.yoloCheck.checked,
+            }
+          })
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || '解析リクエスト失敗');
+        }
+
+        // 解析開始成功 - UIは SSE で自動更新される
+
+      } catch (err) {
+        alert('エラー: ' + err.message);
+        els.startAnalysis.disabled = false;
+        els.startAnalysis.textContent = '解析開始';
+      }
     }
 
     // Helpers
@@ -529,6 +670,7 @@
     els.exportJson.addEventListener('click', exportJson);
     els.exportCsv.addEventListener('click', exportCsv);
     els.shutdown.addEventListener('click', shutdown);
+    els.startAnalysis.addEventListener('click', startAnalysisFromUI);
 
     // SSE
     function connectSSE() {
