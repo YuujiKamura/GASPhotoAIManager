@@ -103,7 +103,9 @@ async function runAnalysis(folderPath: string, options: {
   yoloConfThreshold?: number;
 }): Promise<void> {
   const { mode = 'construction', output, useYolo = false, yoloConfThreshold = 0.5 } = options;
-  const absoluteFolderPath = path.resolve(folderPath);
+  // 入力パスから引用符を除去し、絶対パスに変換
+  const cleanedPath = folderPath.replace(/^["']|["']$/g, '').trim();
+  const absoluteFolderPath = path.isAbsolute(cleanedPath) ? cleanedPath : path.resolve(cleanedPath);
 
   // 状態リセット
   currentAnalysis = {

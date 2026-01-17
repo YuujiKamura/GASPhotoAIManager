@@ -984,11 +984,15 @@ async function executeStep2WithMetrics(rawData, hierarchy, batchIndex, rawRespon
 
 // cli/commands/analyze.ts
 async function analyzeCommand(folder, options) {
+  if (options.server) {
+    await analyzeViaServer(folder, options);
+    return;
+  }
   console.log(chalk.blue("\n\u{1F4F8} GASPhotoAIManager CLI - \u5199\u771F\u89E3\u6790\n"));
   const folderPath = path5.resolve(folder);
   try {
-    const stat4 = await fs4.stat(folderPath);
-    if (!stat4.isDirectory()) {
+    const stat5 = await fs4.stat(folderPath);
+    if (!stat5.isDirectory()) {
       console.error(chalk.red(`\u30A8\u30E9\u30FC: ${folderPath} \u306F\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093`));
       process.exit(1);
     }
@@ -1120,6 +1124,52 @@ async function analyzeCommand(folder, options) {
 \u51FA\u529B\u30D5\u30A1\u30A4\u30EB: ${outputPath}`));
   console.log(chalk.gray(`\u6B21\u306E\u30B9\u30C6\u30C3\u30D7: gaspm export ${options.output} -f both
 `));
+}
+async function analyzeViaServer(folder, options) {
+  const SERVER_URL = "http://localhost:3001";
+  const folderPath = path5.resolve(folder);
+  console.log(chalk.blue("\n\u{1F4F8} GASPhotoAIManager CLI - \u30B5\u30FC\u30D0\u30FC\u7D4C\u7531\u89E3\u6790\n"));
+  try {
+    const healthRes = await fetch(`${SERVER_URL}/api/health`);
+    if (!healthRes.ok) {
+      throw new Error("Server not responding");
+    }
+  } catch {
+    console.error(chalk.red("\u30A8\u30E9\u30FC: \u30B5\u30FC\u30D0\u30FC\u304C\u8D77\u52D5\u3057\u3066\u3044\u307E\u305B\u3093"));
+    console.error(chalk.yellow("\u5148\u306B `gaspm server start` \u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\n"));
+    process.exit(1);
+  }
+  const spinner = ora("\u30B5\u30FC\u30D0\u30FC\u306B\u89E3\u6790\u30EA\u30AF\u30A8\u30B9\u30C8\u3092\u9001\u4FE1\u4E2D...").start();
+  try {
+    const res = await fetch(`${SERVER_URL}/api/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folderPath,
+        options: {
+          mode: options.mode,
+          output: options.output,
+          useYolo: options.yolo,
+          yoloConfThreshold: parseFloat(options.yoloConf || "0.5")
+        }
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "\u30EA\u30AF\u30A8\u30B9\u30C8\u5931\u6557");
+    }
+    spinner.succeed("\u89E3\u6790\u958B\u59CB");
+    console.log(chalk.green("\n\u2705 \u89E3\u6790\u304C\u30B5\u30FC\u30D0\u30FC\u3067\u958B\u59CB\u3055\u308C\u307E\u3057\u305F"));
+    console.log(chalk.gray(`   \u30D5\u30A9\u30EB\u30C0: ${folderPath}`));
+    console.log(chalk.gray(`   \u30C0\u30C3\u30B7\u30E5\u30DC\u30FC\u30C9\u3067\u9032\u6357\u3092\u78BA\u8A8D: http://localhost:3001/web-analyzer.html
+`));
+  } catch (error) {
+    spinner.fail("\u89E3\u6790\u30EA\u30AF\u30A8\u30B9\u30C8\u5931\u6557");
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red(`\u30A8\u30E9\u30FC: ${errMsg}
+`));
+    process.exit(1);
+  }
 }
 
 // cli/commands/export.ts
@@ -1943,8 +1993,8 @@ async function runAnalyzeWeb(folderPath, options = {}) {
   const { mode = "construction", output, useYolo = false, yoloConfThreshold = 0.5 } = options;
   const absoluteFolderPath = path8.resolve(folderPath);
   try {
-    const stat4 = await fs8.stat(absoluteFolderPath);
-    if (!stat4.isDirectory()) {
+    const stat5 = await fs8.stat(absoluteFolderPath);
+    if (!stat5.isDirectory()) {
       console.error(`\u30A8\u30E9\u30FC: \u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093: ${absoluteFolderPath}`);
       process.exit(1);
     }
@@ -2095,10 +2145,319 @@ async function runAnalyzeWeb(folderPath, options = {}) {
   });
 }
 
+// cli/commands/server.ts
+import express2 from "express";
+import cors2 from "cors";
+import * as fs9 from "fs/promises";
+import * as path9 from "path";
+import { exec as exec2 } from "child_process";
+var PORT2 = 3001;
+var PID_FILE = path9.join(process.cwd(), ".gaspm-server.pid");
+var sseClients2 = [];
+var currentAnalysis = {
+  folderPath: "",
+  mode: "construction",
+  status: "idle",
+  results: null,
+  metrics: null,
+  error: null
+};
+function broadcastLog2(msg, type = "info") {
+  const data = JSON.stringify({ type, message: msg, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  sseClients2.forEach((client) => {
+    try {
+      client.res.write(`data: ${data}
+
+`);
+    } catch {
+    }
+  });
+  console.log(`[${type}] ${msg}`);
+}
+function broadcastMetrics2(event) {
+  const data = JSON.stringify({ type: "metrics", event, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  sseClients2.forEach((client) => {
+    try {
+      client.res.write(`data: ${data}
+
+`);
+    } catch {
+    }
+  });
+}
+function broadcastStatus() {
+  const data = JSON.stringify({
+    type: "status",
+    status: currentAnalysis.status,
+    folderPath: currentAnalysis.folderPath,
+    mode: currentAnalysis.mode,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  });
+  sseClients2.forEach((client) => {
+    try {
+      client.res.write(`data: ${data}
+
+`);
+    } catch {
+    }
+  });
+}
+async function runAnalysis(folderPath, options) {
+  const { mode = "construction", output, useYolo = false, yoloConfThreshold = 0.5 } = options;
+  const cleanedPath = folderPath.replace(/^["']|["']$/g, "").trim();
+  const absoluteFolderPath = path9.isAbsolute(cleanedPath) ? cleanedPath : path9.resolve(cleanedPath);
+  currentAnalysis = {
+    folderPath: absoluteFolderPath,
+    mode,
+    status: "running",
+    results: null,
+    metrics: null,
+    error: null
+  };
+  broadcastStatus();
+  try {
+    const stat5 = await fs9.stat(absoluteFolderPath);
+    if (!stat5.isDirectory()) {
+      throw new Error(`\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093: ${absoluteFolderPath}`);
+    }
+    broadcastLog2(`\u30D5\u30A9\u30EB\u30C0\u30B9\u30AD\u30E3\u30F3: ${absoluteFolderPath}`);
+    const imagePaths = await scanFolder(absoluteFolderPath, { recursive: false });
+    if (imagePaths.length === 0) {
+      throw new Error("\u753B\u50CF\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F");
+    }
+    broadcastLog2(`${imagePaths.length}\u679A\u306E\u753B\u50CF\u3092\u691C\u51FA`);
+    const imageInfos = await processImages(imagePaths, {});
+    const photoInputs = imageInfos.map((info, index) => ({
+      fileName: info.fileName,
+      base64: info.base64,
+      mimeType: info.mimeType,
+      date: info.date,
+      filePath: imagePaths[index]
+    }));
+    let hierarchy;
+    if (mode !== "general") {
+      try {
+        hierarchy = await getMergedHierarchy();
+        broadcastLog2("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u8AAD\u307F\u8FBC\u307F\u5B8C\u4E86");
+      } catch {
+        broadcastLog2("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u306A\u3057\uFF08general\u30E2\u30FC\u30C9\u3067\u7D9A\u884C\uFF09", "info");
+      }
+    }
+    broadcastLog2(`AI\u89E3\u6790\u958B\u59CB: ${photoInputs.length}\u679A${useYolo ? " (YOLO\u524D\u51E6\u7406\u6709\u52B9)" : ""}`);
+    const results = await analyzePhotos(photoInputs, {
+      mode,
+      batchSize: 10,
+      parallelBatches: 1,
+      hierarchy,
+      useYolo,
+      yoloConfThreshold,
+      onLog: (msg, type) => broadcastLog2(msg, type),
+      onProgress: (current, total, fileName) => {
+        broadcastLog2(`[${current}/${total}] ${fileName}`, "info");
+      },
+      onMetrics: (event) => {
+        broadcastMetrics2(event);
+        if (event.type === "analysis_complete") {
+          currentAnalysis.metrics = event.metrics;
+        }
+      }
+    });
+    currentAnalysis.results = results;
+    currentAnalysis.status = "complete";
+    broadcastLog2(`\u89E3\u6790\u5B8C\u4E86: ${results.length}\u679A`, "success");
+    if (output) {
+      const outputPath = path9.resolve(output);
+      await fs9.writeFile(outputPath, JSON.stringify(results, null, 2));
+      broadcastLog2(`\u7D50\u679C\u4FDD\u5B58: ${outputPath}`, "success");
+    }
+    broadcastStatus();
+    broadcastLog2("ANALYSIS_COMPLETE", "complete");
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    broadcastLog2(`\u30A8\u30E9\u30FC: ${errMsg}`, "error");
+    currentAnalysis.error = errMsg;
+    currentAnalysis.status = "error";
+    broadcastStatus();
+  }
+}
+function openBrowser2(url) {
+  const platform = process.platform;
+  let cmd;
+  if (platform === "win32") {
+    cmd = `start "" "${url}"`;
+  } else if (platform === "darwin") {
+    cmd = `open "${url}"`;
+  } else {
+    cmd = `xdg-open "${url}"`;
+  }
+  exec2(cmd, (err) => {
+    if (err) console.error("\u30D6\u30E9\u30A6\u30B6\u3092\u958B\u3051\u307E\u305B\u3093\u3067\u3057\u305F:", err.message);
+  });
+}
+async function serverCommand(action = "status") {
+  switch (action) {
+    case "start":
+      await startServer();
+      break;
+    case "stop":
+      await stopServer();
+      break;
+    case "status":
+      await checkStatus();
+      break;
+    default:
+      console.log("Usage: gaspm server [start|stop|status]");
+  }
+}
+async function startServer() {
+  if (await isServerRunning()) {
+    console.log(`
+\u2705 \u30B5\u30FC\u30D0\u30FC\u306F\u65E2\u306B\u8D77\u52D5\u4E2D\u3067\u3059: http://localhost:${PORT2}
+`);
+    return;
+  }
+  const app = express2();
+  app.use(cors2());
+  app.use(express2.json({ limit: "100mb" }));
+  const projectRoot = process.cwd();
+  app.use(express2.static(projectRoot));
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  });
+  app.get("/api/logs", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    const clientId = Date.now().toString();
+    sseClients2.push({ id: clientId, res });
+    res.write(`data: ${JSON.stringify({
+      type: "status",
+      status: currentAnalysis.status,
+      folderPath: currentAnalysis.folderPath,
+      mode: currentAnalysis.mode
+    })}
+
+`);
+    req.on("close", () => {
+      const idx = sseClients2.findIndex((c) => c.id === clientId);
+      if (idx >= 0) sseClients2.splice(idx, 1);
+    });
+  });
+  app.get("/api/status", (_req, res) => {
+    res.json({
+      status: currentAnalysis.status,
+      folderPath: currentAnalysis.folderPath,
+      mode: currentAnalysis.mode,
+      complete: currentAnalysis.status === "complete",
+      results: currentAnalysis.results,
+      metrics: currentAnalysis.metrics,
+      error: currentAnalysis.error
+    });
+  });
+  app.get("/api/results", (_req, res) => {
+    res.json({
+      complete: currentAnalysis.status === "complete",
+      success: currentAnalysis.status === "complete" && !currentAnalysis.error,
+      results: currentAnalysis.results,
+      metrics: currentAnalysis.metrics,
+      error: currentAnalysis.error
+    });
+  });
+  app.post("/api/analyze", async (req, res) => {
+    const { folderPath, options = {} } = req.body;
+    if (!folderPath) {
+      return res.status(400).json({ error: "folderPath is required" });
+    }
+    if (currentAnalysis.status === "running") {
+      return res.status(409).json({ error: "\u89E3\u6790\u304C\u65E2\u306B\u5B9F\u884C\u4E2D\u3067\u3059" });
+    }
+    res.json({ status: "started", folderPath });
+    runAnalysis(folderPath, {
+      mode: options.mode || "construction",
+      output: options.output,
+      useYolo: options.useYolo || false,
+      yoloConfThreshold: options.yoloConfThreshold || 0.5
+    });
+  });
+  app.post("/api/shutdown", (_req, res) => {
+    res.json({ message: "\u30B5\u30FC\u30D0\u30FC\u3092\u7D42\u4E86\u3057\u307E\u3059" });
+    broadcastLog2("\u30B5\u30FC\u30D0\u30FC\u7D42\u4E86", "info");
+    setTimeout(() => {
+      server.close();
+      fs9.unlink(PID_FILE).catch(() => {
+      });
+      process.exit(0);
+    }, 500);
+  });
+  const server = app.listen(PORT2, async () => {
+    console.log(`
+\u{1F4CA} GASPhotoAIManager \u30C0\u30C3\u30B7\u30E5\u30DC\u30FC\u30C9\u30B5\u30FC\u30D0\u30FC`);
+    console.log(`   URL: http://localhost:${PORT2}/web-analyzer.html`);
+    console.log(`   \u72B6\u614B: \u89E3\u6790\u5F85\u6A5F\u4E2D
+`);
+    console.log(`   \u4F7F\u3044\u65B9: gaspm analyze ./photos --server
+`);
+    await fs9.writeFile(PID_FILE, process.pid.toString());
+    openBrowser2(`http://localhost:${PORT2}/web-analyzer.html`);
+  });
+  process.on("SIGINT", async () => {
+    console.log("\n\u7D42\u4E86\u4E2D...");
+    server.close();
+    await fs9.unlink(PID_FILE).catch(() => {
+    });
+    process.exit(0);
+  });
+}
+async function stopServer() {
+  try {
+    try {
+      await fetch(`http://localhost:${PORT2}/api/shutdown`, { method: "POST" });
+      console.log("\u2705 \u30B5\u30FC\u30D0\u30FC\u3092\u505C\u6B62\u3057\u307E\u3057\u305F");
+      return;
+    } catch {
+    }
+    const pid = await fs9.readFile(PID_FILE, "utf-8");
+    process.kill(parseInt(pid, 10));
+    await fs9.unlink(PID_FILE);
+    console.log("\u2705 \u30B5\u30FC\u30D0\u30FC\u3092\u505C\u6B62\u3057\u307E\u3057\u305F");
+  } catch {
+    console.log("\u30B5\u30FC\u30D0\u30FC\u306F\u8D77\u52D5\u3057\u3066\u3044\u307E\u305B\u3093");
+  }
+}
+async function checkStatus() {
+  if (await isServerRunning()) {
+    console.log(`
+\u2705 \u30B5\u30FC\u30D0\u30FC\u7A3C\u50CD\u4E2D: http://localhost:${PORT2}/web-analyzer.html
+`);
+    try {
+      const res = await fetch(`http://localhost:${PORT2}/api/status`);
+      const data = await res.json();
+      console.log(`   \u89E3\u6790\u72B6\u614B: ${data.status}`);
+      if (data.folderPath) {
+        console.log(`   \u30D5\u30A9\u30EB\u30C0: ${data.folderPath}`);
+      }
+      console.log("");
+    } catch {
+    }
+  } else {
+    console.log("\n\u274C \u30B5\u30FC\u30D0\u30FC\u306F\u505C\u6B62\u3057\u3066\u3044\u307E\u3059\n");
+    console.log("   \u8D77\u52D5: gaspm server start\n");
+  }
+}
+async function isServerRunning() {
+  try {
+    const res = await fetch(`http://localhost:${PORT2}/api/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // cli/index.ts
 var program = new Command();
 program.name("gaspm").description("GASPhotoAIManager CLI - \u5DE5\u4E8B\u5199\u771FAI\u89E3\u6790\u30C4\u30FC\u30EB").version("1.0.0");
-program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").action(analyzeCommand);
+program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").option("--server", "\u5E38\u99D0\u30B5\u30FC\u30D0\u30FC\u7D4C\u7531\u3067\u89E3\u6790", false).action(analyzeCommand);
 program.command("export").description("\u89E3\u6790\u7D50\u679C\u3092Excel/PDF\u306B\u51FA\u529B").argument("<input>", "\u5165\u529BJSON\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("-f, --format <format>", "\u51FA\u529B\u5F62\u5F0F (excel/pdf/both)", "both").option("-o, --output <dir>", "\u51FA\u529B\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA", ".").option("-p, --photos-per-page <number>", "\u30DA\u30FC\u30B8\u3042\u305F\u308A\u306E\u5199\u771F\u6570 (2/3)", "3").option("-t, --title <title>", "\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\u30BF\u30A4\u30C8\u30EB", "\u5DE5\u4E8B\u5199\u771F\u5E33").option("--font <path>", "\u65E5\u672C\u8A9E\u30D5\u30A9\u30F3\u30C8\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").action(exportCommand);
 program.command("config").description("\u8A2D\u5B9A\u7BA1\u7406").argument("[action]", "\u30A2\u30AF\u30B7\u30E7\u30F3 (set-key/show/path)").argument("[value]", "\u8A2D\u5B9A\u5024").action(configCommand);
 program.command("analyze:web").description("\u30D6\u30E9\u30A6\u30B6UI\u3067\u5199\u771F\u89E3\u6790\uFF08\u81EA\u52D5\u8D77\u52D5\u30FB\u81EA\u52D5\u7D42\u4E86\uFF09").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").action((folder, options) => {
@@ -2109,4 +2468,5 @@ program.command("analyze:web").description("\u30D6\u30E9\u30A6\u30B6UI\u3067\u51
     yoloConfThreshold: parseFloat(options.yoloConf || "0.5")
   });
 });
+program.command("server").description("\u5E38\u99D0\u30C0\u30C3\u30B7\u30E5\u30DC\u30FC\u30C9\u30B5\u30FC\u30D0\u30FC\u7BA1\u7406").argument("[action]", "start/stop/status", "status").action(serverCommand);
 program.parse();
