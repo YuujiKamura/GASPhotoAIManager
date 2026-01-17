@@ -396,8 +396,8 @@ var getMergedHierarchy = async () => {
 // shared/core/claudeAnalysis.ts
 import { execSync } from "child_process";
 import * as fs3 from "fs/promises";
+import { existsSync } from "fs";
 import * as path3 from "path";
-import * as os2 from "os";
 var formatDuration = (ms) => {
   if (ms < 1e3) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1e3).toFixed(2)}s`;
@@ -418,9 +418,21 @@ function runClaudeCode(prompt, imagePaths, onLog) {
   const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, " ");
   let cmd;
   if (imagePaths && imagePaths.length > 0) {
-    const imageArgs = imagePaths.map((p) => `"${p}"`).join(" ");
+    for (const p of imagePaths) {
+      if (!existsSync(p)) {
+        onLog?.(`Warning: File not found: ${p}`, "error");
+      } else {
+        onLog?.(`File exists: ${p}`, "info");
+      }
+    }
+    const cwd = process.cwd();
+    const relativePaths = imagePaths.map((p) => {
+      const rel = path3.relative(cwd, p).replace(/\\/g, "/");
+      return rel.startsWith(".") ? rel : `./${rel}`;
+    });
+    const imageArgs = relativePaths.map((p) => `"${p}"`).join(" ");
     cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
-    onLog?.(`Step1: claude [${imagePaths.length} images]`, "info");
+    onLog?.(`Command: ${cmd.substring(0, 200)}...`, "info");
   } else {
     cmd = `claude -p "${escapedPrompt}" --output-format text`;
     onLog?.(`Step2: claude [text only]`, "info");
@@ -472,12 +484,6 @@ function buildStep1Prompt(photos) {
 ${photoInfoList}
 `.trim();
 }
-async function executeStep1(photos, onLog) {
-  const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
-  const prompt = buildStep1Prompt(photos);
-  const response = runClaudeCode(prompt, imagePaths, onLog);
-  return parseJsonResponse(response, photos.length, onLog);
-}
 function buildStep2Prompt(rawData, hierarchy) {
   const hierarchyStr = JSON.stringify(hierarchy, null, 0);
   const rawDataStr = rawData.map((d) => `
@@ -518,11 +524,6 @@ ${rawDataStr}
 
 \u51FA\u529B\u306FJSON\u914D\u5217\u306E\u307F\u3002\u8AAC\u660E\u4E0D\u8981\u3002
 `.trim();
-}
-async function executeStep2(rawData, hierarchy, onLog) {
-  const prompt = buildStep2Prompt(rawData, hierarchy);
-  const response = runClaudeCode(prompt, void 0, onLog);
-  return parseJsonResponse(response, rawData.length, onLog);
 }
 function parseJsonResponse(text, expectedCount, onLog) {
   onLog?.(`Raw response (${text.length} chars): ${text.substring(0, 500)}...`, "info");
@@ -573,7 +574,9 @@ function mergeResults(rawData, classified) {
   });
 }
 async function saveToTempFile(photo) {
-  const tempDir = os2.tmpdir();
+  const projectRoot = process.cwd();
+  const tempDir = path3.join(projectRoot, "temp-images");
+  await fs3.mkdir(tempDir, { recursive: true });
   const tempPath = path3.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
   let base64Data = photo.base64;
   if (base64Data.includes(",")) {
@@ -596,12 +599,19 @@ async function analyzePhotos(photos, options) {
     batchSize = 5,
     onLog,
     onProgress,
+    onMetrics,
     shouldAbort,
     hierarchy
   } = options;
-  const startTime = Date.now();
+  const analysisStart = Date.now();
   const allResults = [];
+  const batchMetrics = [];
+  const imageMetrics = [];
+  const rawResponses = [];
+  let step1TotalTime = 0;
+  let step2TotalTime = 0;
   onLog?.(`\u89E3\u6790\u958B\u59CB: ${photos.length}\u679A (2\u6BB5\u968E\u51E6\u7406)`, "info");
+  onMetrics?.({ type: "analysis_start", totalImages: photos.length, mode });
   const batches = [];
   for (let i = 0; i < photos.length; i += batchSize) {
     batches.push(photos.slice(i, i + batchSize));
@@ -609,7 +619,16 @@ async function analyzePhotos(photos, options) {
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     checkAbort(shouldAbort, `\u30D0\u30C3\u30C1 ${batchIndex + 1}/${batches.length}`);
     const batch = batches[batchIndex];
+    const batchStart = Date.now();
+    const imageNames = batch.map((p) => p.fileName);
     onLog?.(`\u30D0\u30C3\u30C1 ${batchIndex + 1}/${batches.length} (${batch.length}\u679A)`, "info");
+    onMetrics?.({
+      type: "batch_start",
+      batchIndex,
+      totalBatches: batches.length,
+      imageCount: batch.length,
+      images: imageNames
+    });
     const tempPaths = [];
     for (const photo of batch) {
       if (photo.filePath) {
@@ -620,15 +639,25 @@ async function analyzePhotos(photos, options) {
         photo.filePath = tempPath;
       }
     }
+    let step1Duration = 0;
+    let step2Duration = 0;
     try {
+      onMetrics?.({ type: "step_start", step: 1, batchIndex });
       const step1Start = Date.now();
-      const rawData = await executeStep1(batch, onLog);
-      onLog?.(`Step1\u5B8C\u4E86: ${formatDuration(Date.now() - step1Start)}`, "info");
+      const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics);
+      step1Duration = Date.now() - step1Start;
+      step1TotalTime += step1Duration;
+      onLog?.(`Step1\u5B8C\u4E86: ${formatDuration(step1Duration)}`, "info");
+      onMetrics?.({ type: "step_complete", step: 1, batchIndex, duration: step1Duration });
       let batchResults;
       if (mode === "construction" && hierarchy) {
+        onMetrics?.({ type: "step_start", step: 2, batchIndex });
         const step2Start = Date.now();
-        const classified = await executeStep2(rawData, hierarchy, onLog);
-        onLog?.(`Step2\u5B8C\u4E86: ${formatDuration(Date.now() - step2Start)}`, "info");
+        const classified = await executeStep2WithMetrics(rawData, hierarchy, batchIndex, rawResponses, onLog, onMetrics);
+        step2Duration = Date.now() - step2Start;
+        step2TotalTime += step2Duration;
+        onLog?.(`Step2\u5B8C\u4E86: ${formatDuration(step2Duration)}`, "info");
+        onMetrics?.({ type: "step_complete", step: 2, batchIndex, duration: step2Duration });
         batchResults = mergeResults(rawData, classified);
       } else {
         batchResults = rawData.map((raw) => ({
@@ -647,15 +676,50 @@ async function analyzePhotos(photos, options) {
           reasoning: ""
         }));
       }
+      const perImageTime = (step1Duration + step2Duration) / batch.length;
       for (const result of batchResults) {
-        onProgress?.(
-          allResults.length + 1,
-          photos.length,
-          result.fileName,
-          result
-        );
+        imageMetrics.push({
+          fileName: result.fileName,
+          step1Time: step1Duration / batch.length,
+          step2Time: step2Duration / batch.length,
+          totalTime: perImageTime,
+          status: "success"
+        });
+        onMetrics?.({ type: "image_complete", fileName: result.fileName, result });
+        onProgress?.(allResults.length + 1, photos.length, result.fileName, result);
       }
       allResults.push(...batchResults);
+      const batchEnd = Date.now();
+      batchMetrics.push({
+        index: batchIndex,
+        imageCount: batch.length,
+        startTime: batchStart,
+        endTime: batchEnd,
+        step1Duration,
+        step2Duration,
+        images: imageNames
+      });
+      onMetrics?.({
+        type: "batch_complete",
+        batchIndex,
+        duration: batchEnd - batchStart,
+        step1Duration,
+        step2Duration
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      onMetrics?.({ type: "error", message: errMsg, batchIndex });
+      for (const photo of batch) {
+        imageMetrics.push({
+          fileName: photo.fileName,
+          step1Time: 0,
+          step2Time: 0,
+          totalTime: 0,
+          status: "error",
+          error: errMsg
+        });
+      }
+      throw error;
     } finally {
       const toCleanup = tempPaths.filter((p, i) => {
         const original = batch[i];
@@ -664,12 +728,63 @@ async function analyzePhotos(photos, options) {
       await cleanupTempFiles(toCleanup);
     }
   }
-  const totalTime = Date.now() - startTime;
-  onLog?.(
-    `\u89E3\u6790\u5B8C\u4E86: ${allResults.length}\u679A, \u5408\u8A08\u6642\u9593=${formatDuration(totalTime)}`,
-    "success"
-  );
+  const analysisEnd = Date.now();
+  const totalTime = analysisEnd - analysisStart;
+  const metrics = {
+    mode,
+    totalImages: photos.length,
+    timestamps: { analysisStart, analysisEnd },
+    batches: batchMetrics,
+    perImage: imageMetrics,
+    summary: {
+      totalTime,
+      avgTimePerImage: totalTime / photos.length,
+      imagesPerSecond: photos.length / (totalTime / 1e3),
+      successCount: imageMetrics.filter((m) => m.status === "success").length,
+      errorCount: imageMetrics.filter((m) => m.status === "error").length,
+      step1TotalTime,
+      step2TotalTime
+    },
+    rawResponses
+  };
+  onLog?.(`\u89E3\u6790\u5B8C\u4E86: ${allResults.length}\u679A, \u5408\u8A08\u6642\u9593=${formatDuration(totalTime)}`, "success");
+  onMetrics?.({ type: "analysis_complete", metrics });
   return allResults;
+}
+async function executeStep1WithMetrics(photos, batchIndex, rawResponses, onLog, onMetrics) {
+  const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
+  const prompt = buildStep1Prompt(photos);
+  const start = Date.now();
+  const response = runClaudeCode(prompt, imagePaths, onLog);
+  const duration = Date.now() - start;
+  let parseSuccess = true;
+  let result;
+  try {
+    result = parseJsonResponse(response, photos.length, onLog);
+  } catch {
+    parseSuccess = false;
+    throw new Error("Step1 JSON parse failed");
+  }
+  rawResponses.push({ step: "step1", batchIndex, response, parseSuccess, duration });
+  onMetrics?.({ type: "raw_response", step: 1, batchIndex, response, duration });
+  return result;
+}
+async function executeStep2WithMetrics(rawData, hierarchy, batchIndex, rawResponses, onLog, onMetrics) {
+  const prompt = buildStep2Prompt(rawData, hierarchy);
+  const start = Date.now();
+  const response = runClaudeCode(prompt, void 0, onLog);
+  const duration = Date.now() - start;
+  let parseSuccess = true;
+  let result;
+  try {
+    result = parseJsonResponse(response, rawData.length, onLog);
+  } catch {
+    parseSuccess = false;
+    throw new Error("Step2 JSON parse failed");
+  }
+  rawResponses.push({ step: "step2", batchIndex, response, parseSuccess, duration });
+  onMetrics?.({ type: "raw_response", step: 2, batchIndex, response, duration });
+  return result;
 }
 
 // cli/commands/analyze.ts
@@ -677,8 +792,8 @@ async function analyzeCommand(folder, options) {
   console.log(chalk.blue("\n\u{1F4F8} GASPhotoAIManager CLI - \u5199\u771F\u89E3\u6790\n"));
   const folderPath = path4.resolve(folder);
   try {
-    const stat3 = await fs4.stat(folderPath);
-    if (!stat3.isDirectory()) {
+    const stat4 = await fs4.stat(folderPath);
+    if (!stat4.isDirectory()) {
       console.error(chalk.red(`\u30A8\u30E9\u30FC: ${folderPath} \u306F\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093`));
       process.exit(1);
     }
@@ -1457,10 +1572,10 @@ import chalk3 from "chalk";
 // cli/adapters/apiKeyAdapter.ts
 import * as fs7 from "fs/promises";
 import * as path6 from "path";
-import * as os3 from "os";
+import * as os2 from "os";
 import dotenv from "dotenv";
 dotenv.config();
-var CONFIG_DIR2 = path6.join(os3.homedir(), ".gaspm");
+var CONFIG_DIR2 = path6.join(os2.homedir(), ".gaspm");
 var CONFIG_FILE = path6.join(CONFIG_DIR2, "config.json");
 async function loadConfig() {
   try {
@@ -1583,10 +1698,201 @@ function handlePath() {
   console.log(getConfigPath());
 }
 
+// cli/commands/analyzeWeb.ts
+import express from "express";
+import cors from "cors";
+import * as fs8 from "fs/promises";
+import * as path7 from "path";
+import { exec } from "child_process";
+var PORT = 3001;
+var sseClients = [];
+function broadcastLog(msg, type = "info") {
+  const data = JSON.stringify({ type, message: msg, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  sseClients.forEach((client) => {
+    client.res.write(`data: ${data}
+
+`);
+  });
+  console.log(`[${type}] ${msg}`);
+}
+function broadcastMetrics(event) {
+  const data = JSON.stringify({ type: "metrics", event, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  sseClients.forEach((client) => {
+    client.res.write(`data: ${data}
+
+`);
+  });
+}
+function openBrowser(url) {
+  const platform = process.platform;
+  let cmd;
+  if (platform === "win32") {
+    cmd = `start "" "${url}"`;
+  } else if (platform === "darwin") {
+    cmd = `open "${url}"`;
+  } else {
+    cmd = `xdg-open "${url}"`;
+  }
+  exec(cmd, (err) => {
+    if (err) console.error("\u30D6\u30E9\u30A6\u30B6\u3092\u958B\u3051\u307E\u305B\u3093\u3067\u3057\u305F:", err.message);
+  });
+}
+async function runAnalyzeWeb(folderPath, options = {}) {
+  const { mode = "construction", output } = options;
+  const absoluteFolderPath = path7.resolve(folderPath);
+  try {
+    const stat4 = await fs8.stat(absoluteFolderPath);
+    if (!stat4.isDirectory()) {
+      console.error(`\u30A8\u30E9\u30FC: \u30C7\u30A3\u30EC\u30AF\u30C8\u30EA\u3067\u306F\u3042\u308A\u307E\u305B\u3093: ${absoluteFolderPath}`);
+      process.exit(1);
+    }
+  } catch {
+    console.error(`\u30A8\u30E9\u30FC: \u30D5\u30A9\u30EB\u30C0\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${absoluteFolderPath}`);
+    process.exit(1);
+  }
+  const app = express();
+  app.use(cors());
+  app.use(express.json({ limit: "100mb" }));
+  const projectRoot = process.cwd();
+  app.use(express.static(projectRoot));
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  });
+  app.get("/api/logs", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    const clientId = Date.now().toString();
+    sseClients.push({ id: clientId, res });
+    res.write(`data: ${JSON.stringify({ type: "connected", message: "\u30ED\u30B0\u30B9\u30C8\u30EA\u30FC\u30E0\u63A5\u7D9A" })}
+
+`);
+    req.on("close", () => {
+      const idx = sseClients.findIndex((c) => c.id === clientId);
+      if (idx >= 0) sseClients.splice(idx, 1);
+    });
+  });
+  let analysisResults = null;
+  let analysisMetrics = null;
+  let analysisError = null;
+  let analysisComplete = false;
+  app.get("/api/status", (_req, res) => {
+    res.json({
+      complete: analysisComplete,
+      results: analysisResults,
+      metrics: analysisMetrics,
+      error: analysisError,
+      folderPath: absoluteFolderPath,
+      mode
+    });
+  });
+  app.get("/api/results", (_req, res) => {
+    if (!analysisComplete) {
+      return res.json({ complete: false });
+    }
+    res.json({
+      complete: true,
+      success: !analysisError,
+      results: analysisResults,
+      metrics: analysisMetrics,
+      error: analysisError
+    });
+  });
+  app.get("/api/metrics", (_req, res) => {
+    res.json({
+      complete: analysisComplete,
+      metrics: analysisMetrics
+    });
+  });
+  const server = app.listen(PORT, async () => {
+    console.log(`
+\u{1F4F7} \u5199\u771F\u89E3\u6790 (Web UI)`);
+    console.log(`   \u30D5\u30A9\u30EB\u30C0: ${absoluteFolderPath}`);
+    console.log(`   \u30E2\u30FC\u30C9: ${mode}`);
+    console.log(`   URL: http://localhost:${PORT}/web-analyzer.html
+`);
+    openBrowser(`http://localhost:${PORT}/web-analyzer.html`);
+    try {
+      broadcastLog(`\u30D5\u30A9\u30EB\u30C0\u30B9\u30AD\u30E3\u30F3: ${absoluteFolderPath}`);
+      const imagePaths = await scanFolder(absoluteFolderPath, { recursive: false });
+      if (imagePaths.length === 0) {
+        broadcastLog("\u753B\u50CF\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F", "error");
+        analysisError = "\u753B\u50CF\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F";
+        analysisComplete = true;
+        return;
+      }
+      broadcastLog(`${imagePaths.length}\u679A\u306E\u753B\u50CF\u3092\u691C\u51FA`);
+      const imageInfos = await processImages(imagePaths, {});
+      const photoInputs = imageInfos.map((info, index) => ({
+        fileName: info.fileName,
+        base64: info.base64,
+        mimeType: info.mimeType,
+        date: info.date,
+        filePath: imagePaths[index]
+      }));
+      let hierarchy;
+      if (mode !== "general") {
+        try {
+          hierarchy = await getMergedHierarchy();
+          broadcastLog("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u8AAD\u307F\u8FBC\u307F\u5B8C\u4E86");
+        } catch {
+          broadcastLog("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u306A\u3057\uFF08general\u30E2\u30FC\u30C9\u3067\u7D9A\u884C\uFF09", "info");
+        }
+      }
+      broadcastLog(`AI\u89E3\u6790\u958B\u59CB: ${photoInputs.length}\u679A`);
+      analysisResults = await analyzePhotos(photoInputs, {
+        mode,
+        batchSize: 5,
+        hierarchy,
+        onLog: (msg, type) => broadcastLog(msg, type),
+        onProgress: (current, total, fileName) => {
+          broadcastLog(`[${current}/${total}] ${fileName}`, "info");
+        },
+        onMetrics: (event) => {
+          broadcastMetrics(event);
+          if (event.type === "analysis_complete") {
+            analysisMetrics = event.metrics;
+          }
+        }
+      });
+      broadcastLog(`\u89E3\u6790\u5B8C\u4E86: ${analysisResults.length}\u679A`, "success");
+      analysisComplete = true;
+      if (output) {
+        const outputPath = path7.resolve(output);
+        await fs8.writeFile(outputPath, JSON.stringify(analysisResults, null, 2));
+        broadcastLog(`\u7D50\u679C\u4FDD\u5B58: ${outputPath}`, "success");
+      }
+      broadcastLog("ANALYSIS_COMPLETE", "complete");
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Unknown error";
+      broadcastLog(`\u30A8\u30E9\u30FC: ${errMsg}`, "error");
+      analysisError = errMsg;
+      analysisComplete = true;
+    }
+  });
+  app.post("/api/shutdown", (_req, res) => {
+    res.json({ message: "\u30B5\u30FC\u30D0\u30FC\u3092\u7D42\u4E86\u3057\u307E\u3059" });
+    broadcastLog("\u30B5\u30FC\u30D0\u30FC\u7D42\u4E86", "info");
+    setTimeout(() => {
+      server.close();
+      process.exit(0);
+    }, 500);
+  });
+  process.on("SIGINT", () => {
+    console.log("\n\u7D42\u4E86\u4E2D...");
+    server.close();
+    process.exit(0);
+  });
+}
+
 // cli/index.ts
 var program = new Command();
 program.name("gaspm").description("GASPhotoAIManager CLI - \u5DE5\u4E8B\u5199\u771FAI\u89E3\u6790\u30C4\u30FC\u30EB").version("1.0.0");
 program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).action(analyzeCommand);
 program.command("export").description("\u89E3\u6790\u7D50\u679C\u3092Excel/PDF\u306B\u51FA\u529B").argument("<input>", "\u5165\u529BJSON\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("-f, --format <format>", "\u51FA\u529B\u5F62\u5F0F (excel/pdf/both)", "both").option("-o, --output <dir>", "\u51FA\u529B\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA", ".").option("-p, --photos-per-page <number>", "\u30DA\u30FC\u30B8\u3042\u305F\u308A\u306E\u5199\u771F\u6570 (2/3)", "3").option("-t, --title <title>", "\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\u30BF\u30A4\u30C8\u30EB", "\u5DE5\u4E8B\u5199\u771F\u5E33").option("--font <path>", "\u65E5\u672C\u8A9E\u30D5\u30A9\u30F3\u30C8\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").action(exportCommand);
 program.command("config").description("\u8A2D\u5B9A\u7BA1\u7406").argument("[action]", "\u30A2\u30AF\u30B7\u30E7\u30F3 (set-key/show/path)").argument("[value]", "\u8A2D\u5B9A\u5024").action(configCommand);
+program.command("analyze:web").description("\u30D6\u30E9\u30A6\u30B6UI\u3067\u5199\u771F\u89E3\u6790\uFF08\u81EA\u52D5\u8D77\u52D5\u30FB\u81EA\u52D5\u7D42\u4E86\uFF09").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").action((folder, options) => {
+  runAnalyzeWeb(folder, options);
+});
 program.parse();

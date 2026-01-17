@@ -40,6 +40,37 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ============================================
+// SSE ログストリーミング
+// ============================================
+
+type SSEClient = { id: string; res: express.Response };
+const sseClients: SSEClient[] = [];
+
+function broadcastLog(msg: string, type: string = 'info') {
+  const data = JSON.stringify({ type, message: msg, timestamp: new Date().toISOString() });
+  sseClients.forEach(client => {
+    client.res.write(`data: ${data}\n\n`);
+  });
+  console.log(`[API] ${type}: ${msg}`);
+}
+
+app.get('/api/logs', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const clientId = Date.now().toString();
+  sseClients.push({ id: clientId, res });
+  res.write(`data: ${JSON.stringify({ type: 'connected', message: 'ログストリーム接続' })}\n\n`);
+
+  req.on('close', () => {
+    const idx = sseClients.findIndex(c => c.id === clientId);
+    if (idx >= 0) sseClients.splice(idx, 1);
+  });
+});
+
+// ============================================
 // 写真解析 API
 // ============================================
 
@@ -77,7 +108,7 @@ app.post('/api/analyze', async (req, res) => {
   const startTime = Date.now();
   const body = req.body as AnalyzeRequest;
 
-  console.log(`[API] /api/analyze - mode: ${body.mode || 'construction'}`);
+  broadcastLog(`解析開始 - mode: ${body.mode || 'construction'}`);
 
   try {
     let photoInputs: PhotoInput[];
@@ -103,7 +134,7 @@ app.post('/api/analyze', async (req, res) => {
       }
 
       // 写真スキャン
-      console.log(`[API] Scanning folder: ${folderPath}`);
+      broadcastLog(`フォルダスキャン: ${folderPath}`);
       const imagePaths = await scanFolder(folderPath, { recursive: false });
 
       if (imagePaths.length === 0) {
@@ -115,7 +146,7 @@ app.post('/api/analyze', async (req, res) => {
       }
 
       // 画像処理
-      console.log(`[API] Processing ${imagePaths.length} images...`);
+      broadcastLog(`画像処理中: ${imagePaths.length}枚`);
       const imageInfos = await processImages(imagePaths, {});
 
       photoInputs = imageInfos.map((info, index) => ({
@@ -148,21 +179,21 @@ app.post('/api/analyze', async (req, res) => {
     if (body.mode !== 'general') {
       try {
         hierarchy = await getMergedHierarchy();
-        console.log('[API] Master data loaded');
+        broadcastLog('工種マスタ読み込み完了');
       } catch {
-        console.log('[API] Master data not available');
+        broadcastLog('工種マスタなし', 'warning');
       }
     }
 
     // AI解析実行
-    console.log(`[API] Analyzing ${photoInputs.length} photos...`);
+    broadcastLog(`AI解析開始: ${photoInputs.length}枚`);
     const results = await analyzePhotos(photoInputs, {
       mode: body.mode || 'construction',
       instruction: body.instruction,
       batchSize: body.batchSize || 5,
       hierarchy,
       onLog: (msg, type) => {
-        console.log(`[API] ${type}: ${msg}`);
+        broadcastLog(msg, type);
       },
     });
 
@@ -179,7 +210,7 @@ app.post('/api/analyze', async (req, res) => {
     });
 
     const totalTime = Date.now() - startTime;
-    console.log(`[API] Analysis complete: ${results.length} photos in ${totalTime}ms`);
+    broadcastLog(`解析完了: ${results.length}枚 (${totalTime}ms)`, 'success');
 
     res.json({
       success: true,
@@ -188,7 +219,7 @@ app.post('/api/analyze', async (req, res) => {
     } as AnalyzeResponse);
 
   } catch (error) {
-    console.error('[API] Error:', error);
+    broadcastLog(`エラー: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

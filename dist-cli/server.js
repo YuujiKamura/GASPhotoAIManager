@@ -420,8 +420,12 @@ function runClaudeCode(prompt, imagePaths, onLog) {
         onLog?.(`File exists: ${p}`, "info");
       }
     }
-    const normalizedPaths = imagePaths.map((p) => p.replace(/\\/g, "/"));
-    const imageArgs = normalizedPaths.map((p) => `"${p}"`).join(" ");
+    const cwd = process.cwd();
+    const relativePaths = imagePaths.map((p) => {
+      const rel = path3.relative(cwd, p).replace(/\\/g, "/");
+      return rel.startsWith(".") ? rel : `./${rel}`;
+    });
+    const imageArgs = relativePaths.map((p) => `"${p}"`).join(" ");
     cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
     onLog?.(`Command: ${cmd.substring(0, 200)}...`, "info");
   } else {
@@ -577,7 +581,7 @@ function mergeResults(rawData, classified) {
 }
 async function saveToTempFile(photo) {
   const projectRoot2 = process.cwd();
-  const tempDir = path3.join(projectRoot2, ".temp");
+  const tempDir = path3.join(projectRoot2, "temp-images");
   await fs3.mkdir(tempDir, { recursive: true });
   const tempPath = path3.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
   let base64Data = photo.base64;
@@ -689,10 +693,35 @@ app.use(express.static(projectRoot));
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
 });
+var sseClients = [];
+function broadcastLog(msg, type = "info") {
+  const data = JSON.stringify({ type, message: msg, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  sseClients.forEach((client) => {
+    client.res.write(`data: ${data}
+
+`);
+  });
+  console.log(`[API] ${type}: ${msg}`);
+}
+app.get("/api/logs", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  const clientId = Date.now().toString();
+  sseClients.push({ id: clientId, res });
+  res.write(`data: ${JSON.stringify({ type: "connected", message: "\u30ED\u30B0\u30B9\u30C8\u30EA\u30FC\u30E0\u63A5\u7D9A" })}
+
+`);
+  req.on("close", () => {
+    const idx = sseClients.findIndex((c) => c.id === clientId);
+    if (idx >= 0) sseClients.splice(idx, 1);
+  });
+});
 app.post("/api/analyze", async (req, res) => {
   const startTime = Date.now();
   const body = req.body;
-  console.log(`[API] /api/analyze - mode: ${body.mode || "construction"}`);
+  broadcastLog(`\u89E3\u6790\u958B\u59CB - mode: ${body.mode || "construction"}`);
   try {
     let photoInputs;
     if (body.folderPath) {
@@ -711,7 +740,7 @@ app.post("/api/analyze", async (req, res) => {
           error: `Folder not found: ${folderPath}`
         });
       }
-      console.log(`[API] Scanning folder: ${folderPath}`);
+      broadcastLog(`\u30D5\u30A9\u30EB\u30C0\u30B9\u30AD\u30E3\u30F3: ${folderPath}`);
       const imagePaths = await scanFolder(folderPath, { recursive: false });
       if (imagePaths.length === 0) {
         return res.json({
@@ -720,7 +749,7 @@ app.post("/api/analyze", async (req, res) => {
           timing: { total: Date.now() - startTime }
         });
       }
-      console.log(`[API] Processing ${imagePaths.length} images...`);
+      broadcastLog(`\u753B\u50CF\u51E6\u7406\u4E2D: ${imagePaths.length}\u679A`);
       const imageInfos = await processImages(imagePaths, {});
       photoInputs = imageInfos.map((info, index) => ({
         fileName: info.fileName,
@@ -746,19 +775,19 @@ app.post("/api/analyze", async (req, res) => {
     if (body.mode !== "general") {
       try {
         hierarchy = await getMergedHierarchy();
-        console.log("[API] Master data loaded");
+        broadcastLog("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u8AAD\u307F\u8FBC\u307F\u5B8C\u4E86");
       } catch {
-        console.log("[API] Master data not available");
+        broadcastLog("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u306A\u3057", "warning");
       }
     }
-    console.log(`[API] Analyzing ${photoInputs.length} photos...`);
+    broadcastLog(`AI\u89E3\u6790\u958B\u59CB: ${photoInputs.length}\u679A`);
     const results = await analyzePhotos(photoInputs, {
       mode: body.mode || "construction",
       instruction: body.instruction,
       batchSize: body.batchSize || 5,
       hierarchy,
       onLog: (msg, type) => {
-        console.log(`[API] ${type}: ${msg}`);
+        broadcastLog(msg, type);
       }
     });
     const outputData = photoInputs.map((photo, index) => {
@@ -772,14 +801,14 @@ app.post("/api/analyze", async (req, res) => {
       };
     });
     const totalTime = Date.now() - startTime;
-    console.log(`[API] Analysis complete: ${results.length} photos in ${totalTime}ms`);
+    broadcastLog(`\u89E3\u6790\u5B8C\u4E86: ${results.length}\u679A (${totalTime}ms)`, "success");
     res.json({
       success: true,
       results: outputData,
       timing: { total: totalTime }
     });
   } catch (error) {
-    console.error("[API] Error:", error);
+    broadcastLog(`\u30A8\u30E9\u30FC: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error"

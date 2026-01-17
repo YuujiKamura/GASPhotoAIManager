@@ -3,179 +3,429 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>写真解析中... - Claude Code</title>
+  <title>解析モニター - Claude Code</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e5e7eb; min-height: 100vh; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    header { padding: 20px 0; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-    header h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
-    .status { padding: 8px 16px; border-radius: 20px; font-size: 0.875rem; font-weight: 600; }
-    .status.running { background: #f59e0b; color: #000; }
-    .status.complete { background: #10b981; }
-    .status.error { background: #ef4444; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Consolas, monospace; background: #0d1117; color: #c9d1d9; min-height: 100vh; font-size: 14px; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 16px; }
 
-    .folder-info { background: #2d2d44; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
-    .folder-info .label { color: #9ca3af; font-size: 0.875rem; }
-    .folder-info .path { color: #60a5fa; font-family: monospace; word-break: break-all; }
+    /* Header */
+    header { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #30363d; margin-bottom: 16px; }
+    header h1 { font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .status-badge.running { background: #f0883e; color: #000; }
+    .status-badge.complete { background: #238636; color: #fff; }
+    .status-badge.error { background: #da3633; color: #fff; }
 
-    .log-container { background: #0d1117; border-radius: 8px; padding: 16px; margin-bottom: 20px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; }
-    .log-entry { margin-bottom: 4px; padding: 2px 0; }
-    .log-entry.info { color: #8b949e; }
-    .log-entry.success { color: #3fb950; }
-    .log-entry.error { color: #f85149; }
-    .log-entry.complete { color: #58a6ff; font-weight: bold; }
+    /* Info bar */
+    .info-bar { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .info-item { display: flex; flex-direction: column; }
+    .info-label { color: #8b949e; font-size: 0.75rem; text-transform: uppercase; }
+    .info-value { color: #58a6ff; font-family: monospace; }
 
-    .progress-bar { background: #2d2d44; border-radius: 8px; height: 8px; margin-bottom: 20px; overflow: hidden; }
-    .progress-bar .fill { background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; transition: width 0.3s; }
+    /* Grid layout */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
 
-    .results { margin-top: 20px; }
-    .photo-card { background: #2d2d44; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; gap: 16px; }
-    .photo-card img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; background: #1a1a2e; }
-    .photo-info { flex: 1; }
-    .photo-info h3 { font-size: 1rem; color: #f3f4f6; margin-bottom: 8px; }
-    .photo-info .field { margin-bottom: 4px; font-size: 0.875rem; }
-    .photo-info .label { color: #9ca3af; display: inline-block; width: 60px; }
-    .photo-info .value { color: #e5e7eb; }
+    /* Panel */
+    .panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
+    .panel-header { background: #21262d; padding: 8px 12px; font-weight: 600; font-size: 0.875rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+    .panel-body { padding: 12px; max-height: 300px; overflow-y: auto; }
 
-    .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-    .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; }
-    .btn-primary { background: #3b82f6; color: white; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-success { background: #10b981; color: white; }
-    .btn-success:hover { background: #059669; }
-    .btn-danger { background: #ef4444; color: white; }
-    .btn-danger:hover { background: #dc2626; }
+    /* Timeline */
+    .timeline { padding: 8px 0; }
+    .timeline-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.8rem; }
+    .timeline-time { width: 50px; color: #8b949e; flex-shrink: 0; }
+    .timeline-label { width: 120px; flex-shrink: 0; }
+    .timeline-bar-container { flex: 1; height: 20px; background: #21262d; border-radius: 4px; overflow: hidden; position: relative; }
+    .timeline-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .timeline-bar.step1 { background: linear-gradient(90deg, #238636, #3fb950); }
+    .timeline-bar.step2 { background: linear-gradient(90deg, #1f6feb, #58a6ff); }
+    .timeline-bar.batch { background: linear-gradient(90deg, #8957e5, #a371f7); }
+    .timeline-duration { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: #c9d1d9; }
+
+    /* Summary cards */
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+    .summary-card { background: #21262d; border-radius: 6px; padding: 12px; text-align: center; }
+    .summary-value { font-size: 1.5rem; font-weight: 700; color: #58a6ff; }
+    .summary-label { font-size: 0.75rem; color: #8b949e; margin-top: 4px; }
+
+    /* Table */
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #30363d; }
+    th { background: #21262d; color: #8b949e; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; }
+    td { font-family: monospace; }
+    tr:hover { background: #21262d; }
+    .status-ok { color: #3fb950; }
+    .status-err { color: #f85149; }
+
+    /* Log */
+    .log-container { font-family: 'Consolas', monospace; font-size: 0.75rem; line-height: 1.4; }
+    .log-entry { padding: 2px 0; display: flex; gap: 8px; }
+    .log-time { color: #6e7681; width: 70px; flex-shrink: 0; }
+    .log-type { width: 60px; flex-shrink: 0; text-transform: uppercase; font-size: 0.65rem; font-weight: 600; }
+    .log-type.info { color: #8b949e; }
+    .log-type.success { color: #3fb950; }
+    .log-type.error { color: #f85149; }
+    .log-type.metrics { color: #a371f7; }
+    .log-msg { flex: 1; word-break: break-all; }
+
+    /* Raw data */
+    .raw-data { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 8px; font-family: monospace; font-size: 0.7rem; white-space: pre-wrap; max-height: 200px; overflow-y: auto; color: #8b949e; }
+
+    /* Buttons */
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn { padding: 8px 16px; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; background: #21262d; color: #c9d1d9; transition: all 0.2s; }
+    .btn:hover { background: #30363d; }
+    .btn-primary { background: #238636; border-color: #238636; color: #fff; }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-danger { background: #da3633; border-color: #da3633; color: #fff; }
+    .btn-danger:hover { background: #f85149; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #4b5563; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 10px; }
+    /* Toggle */
+    .toggle { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; }
+    .toggle input { cursor: pointer; }
+
+    /* Spinner */
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .hidden { display: none; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1><span class="spinner" id="spinner"></span>写真解析 (Claude Code)</h1>
-      <div id="status" class="status running">解析中...</div>
+      <h1><span class="spinner" id="spinner"></span> 解析モニター</h1>
+      <div>
+        <span id="statusBadge" class="status-badge running">解析中</span>
+      </div>
     </header>
 
-    <div class="folder-info">
-      <div class="label">解析フォルダ:</div>
-      <div class="path" id="folderPath">取得中...</div>
+    <div class="info-bar">
+      <div class="info-item">
+        <span class="info-label">フォルダ</span>
+        <span class="info-value" id="folderPath">-</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">モード</span>
+        <span class="info-value" id="mode">-</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">画像数</span>
+        <span class="info-value" id="imageCount">-</span>
+      </div>
     </div>
 
-    <div class="progress-bar">
-      <div class="fill" id="progressFill" style="width: 0%"></div>
+    <!-- Summary -->
+    <div class="panel" style="margin-bottom: 16px;">
+      <div class="panel-header">サマリー</div>
+      <div class="panel-body">
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="summary-value" id="totalTime">-</div>
+            <div class="summary-label">合計時間</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value" id="avgTime">-</div>
+            <div class="summary-label">平均/枚</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value" id="speed">-</div>
+            <div class="summary-label">枚/秒</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value" id="step1Time">-</div>
+            <div class="summary-label">Step1 (Vision)</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value" id="step2Time">-</div>
+            <div class="summary-label">Step2 (Master)</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value" id="successCount">-</div>
+            <div class="summary-label">成功/エラー</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="log-container" id="logContainer"></div>
+    <div class="grid">
+      <!-- Timeline -->
+      <div class="panel">
+        <div class="panel-header">タイムライン</div>
+        <div class="panel-body">
+          <div class="timeline" id="timeline">
+            <div style="color:#8b949e;text-align:center;padding:20px;">解析待機中...</div>
+          </div>
+        </div>
+      </div>
 
-    <div class="actions" id="actions" style="display:none;">
-      <button class="btn btn-primary" id="exportJson">JSON出力</button>
-      <button class="btn btn-success" id="exportCsv">CSV出力</button>
+      <!-- Per-image table -->
+      <div class="panel">
+        <div class="panel-header">画像別処理時間</div>
+        <div class="panel-body table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ファイル</th>
+                <th>Step1</th>
+                <th>Step2</th>
+                <th>合計</th>
+                <th>状態</th>
+              </tr>
+            </thead>
+            <tbody id="imageTable">
+              <tr><td colspan="5" style="text-align:center;color:#8b949e;">解析待機中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log panel -->
+    <div class="panel" style="margin-bottom: 16px;">
+      <div class="panel-header">
+        <span>ログ</span>
+        <label class="toggle">
+          <input type="checkbox" id="showRawData"> 生データ表示
+        </label>
+      </div>
+      <div class="panel-body log-container" id="logContainer"></div>
+    </div>
+
+    <!-- Raw response panel (hidden by default) -->
+    <div class="panel hidden" id="rawPanel" style="margin-bottom: 16px;">
+      <div class="panel-header">生レスポンス</div>
+      <div class="panel-body">
+        <div class="raw-data" id="rawData">データなし</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn btn-primary" id="exportJson" disabled>JSON出力</button>
+      <button class="btn btn-primary" id="exportCsv" disabled>CSV出力</button>
       <button class="btn btn-danger" id="shutdown">終了</button>
     </div>
-
-    <div id="results" class="results"></div>
   </div>
 
   <script>
     const API_BASE = 'http://localhost:3001';
-    const logContainer = document.getElementById('logContainer');
-    const statusEl = document.getElementById('status');
-    const spinnerEl = document.getElementById('spinner');
-    const folderPathEl = document.getElementById('folderPath');
-    const progressFill = document.getElementById('progressFill');
-    const actionsEl = document.getElementById('actions');
-    const resultsEl = document.getElementById('results');
 
+    // State
     let currentResults = null;
-    let totalPhotos = 0;
-    let processedPhotos = 0;
+    let currentMetrics = null;
+    let rawResponses = [];
+    let analysisStartTime = null;
+    let batchData = [];
 
-    // ログ追加
+    // Elements
+    const els = {
+      spinner: document.getElementById('spinner'),
+      statusBadge: document.getElementById('statusBadge'),
+      folderPath: document.getElementById('folderPath'),
+      mode: document.getElementById('mode'),
+      imageCount: document.getElementById('imageCount'),
+      totalTime: document.getElementById('totalTime'),
+      avgTime: document.getElementById('avgTime'),
+      speed: document.getElementById('speed'),
+      step1Time: document.getElementById('step1Time'),
+      step2Time: document.getElementById('step2Time'),
+      successCount: document.getElementById('successCount'),
+      timeline: document.getElementById('timeline'),
+      imageTable: document.getElementById('imageTable'),
+      logContainer: document.getElementById('logContainer'),
+      rawPanel: document.getElementById('rawPanel'),
+      rawData: document.getElementById('rawData'),
+      showRawData: document.getElementById('showRawData'),
+      exportJson: document.getElementById('exportJson'),
+      exportCsv: document.getElementById('exportCsv'),
+      shutdown: document.getElementById('shutdown'),
+    };
+
+    // Helpers
+    const formatDuration = (ms) => {
+      if (ms < 1000) return `${Math.round(ms)}ms`;
+      return `${(ms / 1000).toFixed(2)}s`;
+    };
+
+    const formatTime = (date) => {
+      return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    };
+
+    // Log
     function addLog(msg, type = 'info') {
-      if (msg === 'ANALYSIS_COMPLETE') {
-        onComplete();
-        return;
-      }
-
       const entry = document.createElement('div');
-      entry.className = `log-entry ${type}`;
-      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      logContainer.appendChild(entry);
-      logContainer.scrollTop = logContainer.scrollHeight;
-
-      // 進捗更新
-      const progressMatch = msg.match(/\[(\d+)\/(\d+)\]/);
-      if (progressMatch) {
-        processedPhotos = parseInt(progressMatch[1]);
-        totalPhotos = parseInt(progressMatch[2]);
-        const percent = (processedPhotos / totalPhotos) * 100;
-        progressFill.style.width = `${percent}%`;
-      }
-
-      // 画像数検出
-      const countMatch = msg.match(/(\d+)枚の画像を検出/);
-      if (countMatch) {
-        totalPhotos = parseInt(countMatch[1]);
-      }
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-time">${formatTime(new Date())}</span>
+        <span class="log-type ${type}">${type}</span>
+        <span class="log-msg">${msg}</span>
+      `;
+      els.logContainer.appendChild(entry);
+      els.logContainer.scrollTop = els.logContainer.scrollHeight;
     }
 
-    // 完了時処理
-    async function onComplete() {
-      spinnerEl.style.display = 'none';
-      statusEl.textContent = '完了';
-      statusEl.className = 'status complete';
-      progressFill.style.width = '100%';
-      document.title = '解析完了 - Claude Code';
+    // Timeline
+    function updateTimeline() {
+      if (batchData.length === 0) return;
 
-      // 結果取得
-      try {
-        const res = await fetch(`${API_BASE}/api/results`);
-        const data = await res.json();
+      const totalDuration = batchData.reduce((sum, b) => sum + (b.step1Duration || 0) + (b.step2Duration || 0), 0);
+      let html = '';
 
-        if (data.success && data.results) {
-          currentResults = data.results;
-          displayResults(data.results);
-          actionsEl.style.display = 'flex';
-        } else if (data.error) {
-          addLog(`エラー: ${data.error}`, 'error');
-          statusEl.textContent = 'エラー';
-          statusEl.className = 'status error';
-        }
-      } catch (err) {
-        addLog(`結果取得エラー: ${err.message}`, 'error');
-      }
+      batchData.forEach((batch, i) => {
+        const step1Pct = totalDuration > 0 ? ((batch.step1Duration || 0) / totalDuration * 100) : 0;
+        const step2Pct = totalDuration > 0 ? ((batch.step2Duration || 0) / totalDuration * 100) : 0;
+
+        html += `
+          <div class="timeline-item">
+            <span class="timeline-time">B${i + 1}</span>
+            <span class="timeline-label">Step1 (${batch.imageCount}枚)</span>
+            <div class="timeline-bar-container">
+              <div class="timeline-bar step1" style="width:${step1Pct}%"></div>
+              <span class="timeline-duration">${formatDuration(batch.step1Duration || 0)}</span>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <span class="timeline-time"></span>
+            <span class="timeline-label">Step2</span>
+            <div class="timeline-bar-container">
+              <div class="timeline-bar step2" style="width:${step2Pct}%"></div>
+              <span class="timeline-duration">${formatDuration(batch.step2Duration || 0)}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      els.timeline.innerHTML = html;
     }
 
-    // 結果表示
-    function displayResults(results) {
-      resultsEl.innerHTML = results.map(r => `
-        <div class="photo-card">
-          <div style="width:120px;height:120px;background:#3d3d5c;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:0.75rem;">
-            ${r.fileName.substring(0, 10)}...
-          </div>
-          <div class="photo-info">
-            <h3>${r.fileName}</h3>
-            <div class="field"><span class="label">工種:</span> <span class="value">${r.workType || '-'}</span></div>
-            <div class="field"><span class="label">種別:</span> <span class="value">${r.variety || '-'}</span></div>
-            <div class="field"><span class="label">細別:</span> <span class="value">${r.detail || '-'}</span></div>
-            <div class="field"><span class="label">測点:</span> <span class="value">${r.station || '-'}</span></div>
-            <div class="field"><span class="label">備考:</span> <span class="value">${r.remarks || '-'}</span></div>
-            <div class="field"><span class="label">説明:</span> <span class="value">${r.description || '-'}</span></div>
-          </div>
-        </div>
+    // Image table
+    function updateImageTable(perImage) {
+      if (!perImage || perImage.length === 0) return;
+
+      els.imageTable.innerHTML = perImage.map(img => `
+        <tr>
+          <td>${img.fileName}</td>
+          <td>${formatDuration(img.step1Time)}</td>
+          <td>${formatDuration(img.step2Time)}</td>
+          <td>${formatDuration(img.totalTime)}</td>
+          <td class="${img.status === 'success' ? 'status-ok' : 'status-err'}">${img.status === 'success' ? 'OK' : 'ERR'}</td>
+        </tr>
       `).join('');
     }
 
-    // エクスポート
+    // Summary
+    function updateSummary(metrics) {
+      if (!metrics || !metrics.summary) return;
+
+      const s = metrics.summary;
+      els.totalTime.textContent = formatDuration(s.totalTime);
+      els.avgTime.textContent = formatDuration(s.avgTimePerImage);
+      els.speed.textContent = s.imagesPerSecond.toFixed(2);
+      els.step1Time.textContent = formatDuration(s.step1TotalTime);
+      els.step2Time.textContent = formatDuration(s.step2TotalTime);
+      els.successCount.textContent = `${s.successCount}/${s.errorCount}`;
+    }
+
+    // Raw data toggle
+    els.showRawData.addEventListener('change', () => {
+      els.rawPanel.classList.toggle('hidden', !els.showRawData.checked);
+    });
+
+    // Handle metrics events
+    function handleMetricsEvent(event) {
+      switch (event.type) {
+        case 'analysis_start':
+          analysisStartTime = Date.now();
+          els.imageCount.textContent = event.totalImages;
+          els.mode.textContent = event.mode;
+          addLog(`解析開始: ${event.totalImages}枚 (${event.mode}モード)`, 'info');
+          break;
+
+        case 'batch_start':
+          batchData[event.batchIndex] = {
+            index: event.batchIndex,
+            imageCount: event.imageCount,
+            images: event.images,
+            step1Duration: 0,
+            step2Duration: 0,
+          };
+          addLog(`バッチ ${event.batchIndex + 1}/${event.totalBatches} 開始 (${event.imageCount}枚)`, 'info');
+          break;
+
+        case 'step_start':
+          addLog(`Step${event.step} 開始 (バッチ${event.batchIndex + 1})`, 'info');
+          break;
+
+        case 'step_complete':
+          if (batchData[event.batchIndex]) {
+            if (event.step === 1) batchData[event.batchIndex].step1Duration = event.duration;
+            else batchData[event.batchIndex].step2Duration = event.duration;
+          }
+          addLog(`Step${event.step} 完了: ${formatDuration(event.duration)}`, 'success');
+          updateTimeline();
+          break;
+
+        case 'raw_response':
+          rawResponses.push({ step: event.step, response: event.response, duration: event.duration });
+          els.rawData.textContent = event.response.substring(0, 2000) + (event.response.length > 2000 ? '...' : '');
+          addLog(`Step${event.step} レスポンス受信 (${event.response.length}文字)`, 'metrics');
+          break;
+
+        case 'batch_complete':
+          addLog(`バッチ ${event.batchIndex + 1} 完了: ${formatDuration(event.duration)}`, 'success');
+          break;
+
+        case 'image_complete':
+          addLog(`画像完了: ${event.fileName}`, 'info');
+          break;
+
+        case 'error':
+          addLog(`エラー: ${event.message}`, 'error');
+          break;
+
+        case 'analysis_complete':
+          currentMetrics = event.metrics;
+          updateSummary(event.metrics);
+          updateImageTable(event.metrics.perImage);
+          updateTimeline();
+          onComplete();
+          break;
+      }
+    }
+
+    // Complete
+    function onComplete() {
+      els.spinner.style.display = 'none';
+      els.statusBadge.textContent = '完了';
+      els.statusBadge.className = 'status-badge complete';
+      document.title = '解析完了 - Claude Code';
+
+      els.exportJson.disabled = false;
+      els.exportCsv.disabled = false;
+
+      addLog('解析完了', 'success');
+
+      // Fetch results
+      fetch(`${API_BASE}/api/results`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            currentResults = data.results;
+            currentMetrics = data.metrics;
+          }
+        });
+    }
+
+    // Export
     function exportJson() {
       if (!currentResults) return;
-      const blob = new Blob([JSON.stringify(currentResults, null, 2)], { type: 'application/json' });
-      downloadBlob(blob, `photo-analysis-${Date.now()}.json`);
+      const blob = new Blob([JSON.stringify({ results: currentResults, metrics: currentMetrics }, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, `analysis-${Date.now()}.json`);
     }
 
     function exportCsv() {
@@ -185,12 +435,8 @@
         r.fileName, r.workType || '', r.variety || '', r.detail || '',
         r.station || '', r.remarks || '', r.description || ''
       ]);
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
-      ].join('\n');
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8' });
-      downloadBlob(blob, `photo-analysis-${Date.now()}.csv`);
+      const csv = [headers.join(','), ...rows.map(row => row.map(c => `"${(c||'').replace(/"/g, '""')}"`).join(','))].join('\n');
+      downloadBlob(new Blob(['\uFEFF' + csv], { type: 'text/csv' }), `analysis-${Date.now()}.csv`);
     }
 
     function downloadBlob(blob, filename) {
@@ -198,54 +444,60 @@
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
 
-    // サーバー終了
+    // Shutdown
     async function shutdown() {
       if (!confirm('サーバーを終了しますか？')) return;
-      try {
-        await fetch(`${API_BASE}/api/shutdown`, { method: 'POST' });
-        statusEl.textContent = '終了';
-        addLog('サーバーを終了しました', 'info');
-      } catch {}
+      await fetch(`${API_BASE}/api/shutdown`, { method: 'POST' });
     }
 
-    // イベント
-    document.getElementById('exportJson').addEventListener('click', exportJson);
-    document.getElementById('exportCsv').addEventListener('click', exportCsv);
-    document.getElementById('shutdown').addEventListener('click', shutdown);
+    // Events
+    els.exportJson.addEventListener('click', exportJson);
+    els.exportCsv.addEventListener('click', exportCsv);
+    els.shutdown.addEventListener('click', shutdown);
 
-    // SSE接続
+    // SSE
     function connectSSE() {
       const eventSource = new EventSource(`${API_BASE}/api/logs`);
       eventSource.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          addLog(data.message, data.type);
+          if (data.type === 'metrics') {
+            handleMetricsEvent(data.event);
+          } else if (data.type === 'complete') {
+            onComplete();
+          } else if (data.message) {
+            addLog(data.message, data.type);
+          }
         } catch {}
       };
       eventSource.onerror = () => {
-        addLog('接続が切断されました', 'error');
+        addLog('SSE接続エラー', 'error');
       };
     }
 
-    // 初期化
+    // Init
     async function init() {
-      // フォルダパス取得
       try {
         const res = await fetch(`${API_BASE}/api/status`);
         const data = await res.json();
-        folderPathEl.textContent = data.folderPath || '不明';
+        els.folderPath.textContent = data.folderPath || '-';
+        els.mode.textContent = data.mode || '-';
 
-        if (data.complete) {
+        if (data.complete && data.metrics) {
+          currentResults = data.results;
+          currentMetrics = data.metrics;
+          updateSummary(data.metrics);
+          updateImageTable(data.metrics.perImage);
+          batchData = data.metrics.batches || [];
+          updateTimeline();
           onComplete();
         }
       } catch (err) {
-        folderPathEl.textContent = 'サーバー接続エラー';
+        addLog('サーバー接続エラー', 'error');
       }
 
       connectSSE();

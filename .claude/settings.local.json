@@ -85,7 +85,9 @@
       "Bash(claude -p \"What is in this image? Reply with just one word.\" --output-format text ./test-images/aerial_No0_west.png)",
       "Bash(claude -p:*)",
       "Bash(gh issue create:*)",
-      "Bash(claude --version)"
+      "Bash(claude --version)",
+      "Bash(npm.cmd run:*)",
+      "Bash(netstat:*)"
     ]
   }
 }

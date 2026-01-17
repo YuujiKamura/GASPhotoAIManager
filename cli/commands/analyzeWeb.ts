@@ -19,6 +19,8 @@ import {
   analyzePhotos,
   type PhotoInput,
   type AnalysisResult,
+  type AnalysisMetrics,
+  type MetricsEvent,
   type AppMode
 } from '../../shared/core/claudeAnalysis';
 
@@ -37,6 +39,13 @@ function broadcastLog(msg: string, type: string = 'info') {
     client.res.write(`data: ${data}\n\n`);
   });
   console.log(`[${type}] ${msg}`);
+}
+
+function broadcastMetrics(event: MetricsEvent) {
+  const data = JSON.stringify({ type: 'metrics', event, timestamp: new Date().toISOString() });
+  sseClients.forEach(client => {
+    client.res.write(`data: ${data}\n\n`);
+  });
 }
 
 // ============================================
@@ -116,6 +125,7 @@ export async function runAnalyzeWeb(folderPath: string, options: {
 
   // 解析状態
   let analysisResults: AnalysisResult[] | null = null;
+  let analysisMetrics: AnalysisMetrics | null = null;
   let analysisError: string | null = null;
   let analysisComplete = false;
 
@@ -124,8 +134,10 @@ export async function runAnalyzeWeb(folderPath: string, options: {
     res.json({
       complete: analysisComplete,
       results: analysisResults,
+      metrics: analysisMetrics,
       error: analysisError,
       folderPath: absoluteFolderPath,
+      mode,
     });
   });
 
@@ -138,7 +150,16 @@ export async function runAnalyzeWeb(folderPath: string, options: {
       complete: true,
       success: !analysisError,
       results: analysisResults,
+      metrics: analysisMetrics,
       error: analysisError,
+    });
+  });
+
+  // メトリクス取得API
+  app.get('/api/metrics', (_req, res) => {
+    res.json({
+      complete: analysisComplete,
+      metrics: analysisMetrics,
     });
   });
 
@@ -196,6 +217,13 @@ export async function runAnalyzeWeb(folderPath: string, options: {
         onLog: (msg, type) => broadcastLog(msg, type),
         onProgress: (current, total, fileName) => {
           broadcastLog(`[${current}/${total}] ${fileName}`, 'info');
+        },
+        onMetrics: (event) => {
+          broadcastMetrics(event);
+          // 完了時にメトリクスを保存
+          if (event.type === 'analysis_complete') {
+            analysisMetrics = event.metrics;
+          }
         },
       });
 
