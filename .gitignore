@@ -33,3 +33,4 @@ test-output/
 *.sln
 *.sw?
 .temp/
+temp-images/

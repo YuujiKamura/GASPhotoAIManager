@@ -135,9 +135,13 @@ function runClaudeCode(
         onLog?.(`File exists: ${p}`, 'info');
       }
     }
-    // Windowsパスをスラッシュに変換
-    const normalizedPaths = imagePaths.map(p => p.replace(/\\/g, '/'));
-    const imageArgs = normalizedPaths.map(p => `"${p}"`).join(' ');
+    // 相対パスに変換（Claude CLIがアクセスしやすい）
+    const cwd = process.cwd();
+    const relativePaths = imagePaths.map(p => {
+      const rel = path.relative(cwd, p).replace(/\\/g, '/');
+      return rel.startsWith('.') ? rel : `./${rel}`;
+    });
+    const imageArgs = relativePaths.map(p => `"${p}"`).join(' ');
     cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
     onLog?.(`Command: ${cmd.substring(0, 200)}...`, 'info');
   } else {
@@ -348,9 +352,9 @@ function mergeResults(
 // ============================================
 
 async function saveToTempFile(photo: PhotoInput): Promise<string> {
-  // プロジェクト内の.tempフォルダを使用（Claude CLIがアクセスできる）
+  // プロジェクト内のtemp-imagesフォルダを使用（Claude CLIがアクセスできる）
   const projectRoot = process.cwd();
-  const tempDir = path.join(projectRoot, '.temp');
+  const tempDir = path.join(projectRoot, 'temp-images');
   await fs.mkdir(tempDir, { recursive: true });
   const tempPath = path.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
 
