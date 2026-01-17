@@ -5,6 +5,7 @@
  * Buffer返却（Canvas/fetch依存を排除）
  *
  * ## 変更履歴
+ * - 2026-01-17: テキスト自動縮小機能追加（枠に収まるようフォントサイズ調整）
  * - 2026-01-17: layoutConfigから定数を取得するように修正（Web版と共通化）
  */
 
@@ -256,22 +257,35 @@ export async function generatePdfBuffer(
         borderWidth: 0.5
       });
 
-      // 情報テキスト（サイズ統一）
-      const fontSize = 12;
+      // 情報テキスト（枠に収まるよう自動縮小）
+      const baseFontSize = 12;
+      const labelWidth = 50;  // ラベル用の幅
+      const valueMaxWidth = infoWidth - labelWidth - 10;  // 値用の最大幅（余白含む）
+
       infoLines.forEach((line, idx) => {
         const y = rowY + photoHeight - 20 - idx * 20;
         if (y > rowY + 5) {
+          // ラベル描画
           page.drawText(`${line.label}:`, {
             x: infoX + 5,
             y,
-            size: fontSize,
+            size: baseFontSize,
             font: japaneseFont,
             color: rgb(0.4, 0.4, 0.4)
           });
-          const displayValue = truncate(line.value, 20);
-          page.drawText(displayValue, {
+
+          // 値を枠に収まるよう調整
+          const { fontSize, displayText } = fitTextToWidth(
+            line.value,
+            japaneseFont,
+            valueMaxWidth,
+            baseFontSize,
+            8  // 最小8pt
+          );
+
+          page.drawText(displayText, {
             x: infoX + 55,
-            y,
+            y: y + (baseFontSize - fontSize) / 2,  // 縮小時に垂直中央揃え
             size: fontSize,
             font: japaneseFont,
             color: rgb(0.1, 0.1, 0.1)
@@ -283,7 +297,7 @@ export async function generatePdfBuffer(
       page.drawText(photo.fileName, {
         x: infoX + 5,
         y: rowY + 5,
-        size: fontSize,
+        size: baseFontSize,
         font: helvetica,
         color: rgb(0.6, 0.6, 0.6)
       });
@@ -325,4 +339,45 @@ function atob(data: string): string {
  */
 function truncate(str: string, maxLen: number): string {
   return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+}
+
+/**
+ * テキストが枠に収まるフォントサイズを計算
+ * @param text テキスト
+ * @param font フォント
+ * @param maxWidth 最大幅（pt）
+ * @param baseFontSize 基本フォントサイズ
+ * @param minFontSize 最小フォントサイズ
+ * @returns { fontSize, displayText } 調整後のフォントサイズと表示テキスト
+ */
+function fitTextToWidth(
+  text: string,
+  font: PDFFont,
+  maxWidth: number,
+  baseFontSize: number,
+  minFontSize: number = 8
+): { fontSize: number; displayText: string } {
+  let fontSize = baseFontSize;
+  let displayText = text;
+
+  // フォントサイズを縮小して収まるか試す
+  while (fontSize >= minFontSize) {
+    const textWidth = font.widthOfTextAtSize(displayText, fontSize);
+    if (textWidth <= maxWidth) {
+      return { fontSize, displayText };
+    }
+    fontSize -= 0.5;
+  }
+
+  // 最小サイズでも収まらない場合は切り詰め
+  fontSize = minFontSize;
+  while (displayText.length > 3) {
+    displayText = displayText.substring(0, displayText.length - 1);
+    const textWidth = font.widthOfTextAtSize(displayText + '…', fontSize);
+    if (textWidth <= maxWidth) {
+      return { fontSize, displayText: displayText + '…' };
+    }
+  }
+
+  return { fontSize: minFontSize, displayText: '…' };
 }
