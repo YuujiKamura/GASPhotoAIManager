@@ -34,6 +34,11 @@
     .log-entry.info { color: #60a5fa; }
     .log-entry.success { color: #34d399; }
     .log-entry.error { color: #f87171; }
+    .export-btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+    .export-btn:first-child { background: #3b82f6; color: white; }
+    .export-btn:first-child:hover { background: #2563eb; }
+    .export-btn:last-child { background: #10b981; color: white; }
+    .export-btn:last-child:hover { background: #059669; }
   </style>
 </head>
 <body>
@@ -55,6 +60,10 @@
       <p>Claude Codeで解析中...</p>
     </div>
     <div id="error" class="error" style="display:none"></div>
+    <div id="exportButtons" style="margin-top:20px; gap:10px; display:none;">
+      <button id="exportJson" class="export-btn">JSON出力</button>
+      <button id="exportCsv" class="export-btn">CSV出力</button>
+    </div>
     <div id="results" class="results"></div>
   </div>
 
@@ -67,6 +76,32 @@
     const errorEl = document.getElementById('error');
     const resultsEl = document.getElementById('results');
     const logEl = document.getElementById('log');
+    const exportButtonsEl = document.getElementById('exportButtons');
+    const exportJsonBtn = document.getElementById('exportJson');
+    const exportCsvBtn = document.getElementById('exportCsv');
+
+    let currentResults = null;  // 解析結果を保持
+
+    // SSE接続
+    let eventSource = null;
+    function connectSSE() {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(`${API_BASE}/api/logs`);
+      eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          addLog(data.message, data.type);
+        } catch {}
+      };
+      eventSource.onerror = () => {
+        statusEl.textContent = '未接続';
+        statusEl.className = 'status disconnected';
+      };
+      eventSource.onopen = () => {
+        statusEl.textContent = '接続中';
+        statusEl.className = 'status connected';
+      };
+    }
 
     // サーバー接続確認
     async function checkServer() {
@@ -75,6 +110,7 @@
         if (res.ok) {
           statusEl.textContent = '接続中';
           statusEl.className = 'status connected';
+          connectSSE();
           return true;
         }
       } catch {}
@@ -147,6 +183,9 @@
 
     // 結果表示
     function displayResults(results) {
+      currentResults = results;  // エクスポート用に保持
+      exportButtonsEl.style.display = 'flex';  // ボタン表示
+
       resultsEl.innerHTML = results.map(r => `
         <div class="photo-card">
           <img src="data:${r.mimeType || 'image/jpeg'};base64,${r.base64}" alt="${r.fileName}">
@@ -163,9 +202,56 @@
       `).join('');
     }
 
+    // JSONエクスポート
+    function exportJson() {
+      if (!currentResults) return;
+      const exportData = currentResults.map(r => ({
+        fileName: r.fileName,
+        ...r.analysis
+      }));
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, `photo-analysis-${Date.now()}.json`);
+    }
+
+    // CSVエクスポート
+    function exportCsv() {
+      if (!currentResults) return;
+      const headers = ['ファイル名', '工種', '種別', '細別', '測点', '備考', '説明'];
+      const rows = currentResults.map(r => [
+        r.fileName,
+        r.analysis?.workType || '',
+        r.analysis?.variety || '',
+        r.analysis?.detail || '',
+        r.analysis?.station || '',
+        r.analysis?.remarks || '',
+        r.analysis?.description || ''
+      ]);
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+      const bom = '\uFEFF';  // Excel用BOM
+      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' });
+      downloadBlob(blob, `photo-analysis-${Date.now()}.csv`);
+    }
+
+    // ダウンロード処理
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
     // イベント設定
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    exportJsonBtn.addEventListener('click', exportJson);
+    exportCsvBtn.addEventListener('click', exportCsv);
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', e => {
       e.preventDefault();
