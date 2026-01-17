@@ -5,11 +5,12 @@
  * Step2: マスタ照合 (Text) - 階層マスタとの照合で分類
  *
  * ## 変更履歴
+ * - 2026-01-17: Windowsコマンドライン制限対策（プロンプトファイル経由）
  * - 2026-01-17: YOLO前処理統合（解析速度29%向上）
  * - 2026-01-17: 2段階処理に変更（マスタ整合性向上）
  */
 
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import * as fs from 'fs/promises';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from 'fs';
 import * as path from 'path';
@@ -230,6 +231,9 @@ function runClaudeCode(
   onLog?: LogFunction
 ): string {
   let cmd: string;
+
+  // プロンプトを準備
+  let fullPrompt = prompt;
   if (imagePaths && imagePaths.length > 0) {
     // 全画像をtemp-imagesにコピーして絶対パスで返す
     const tempDir = getTempImageDir();
@@ -248,27 +252,68 @@ function runClaudeCode(
 
     // プロンプトに画像パスを含める（Readツールを使うよう明示）
     const imageList = localPaths.join(', ');
-    const fullPrompt = `Read the following image files and analyze them: ${imageList}\n\n${prompt}`;
-    const escapedPrompt = fullPrompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
-    cmd = `claude -p "${escapedPrompt}" --output-format text`;
+    fullPrompt = `Read the following image files and analyze them: ${imageList}\n\n${prompt}`;
     console.log('DEBUG paths:', localPaths);
     onLog?.(`Claude CLI: ${localPaths.length}枚の画像を解析`, 'info');
   } else {
-    const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
-    cmd = `claude -p "${escapedPrompt}" --output-format text`;
     onLog?.(`Step2: claude [text only]`, 'info');
   }
 
-  try {
-    const result = execSync(cmd, {
-      encoding: 'utf-8',
-      timeout: 120000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    return result;
-  } catch (error: unknown) {
-    const err = error as Error & { stderr?: string; status?: number };
-    throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
+  // Windowsコマンドライン制限対策: 長いプロンプトはstdin経由
+  const MAX_CMD_LENGTH = 7000;  // 安全マージンを持たせる
+  const escapedPrompt = fullPrompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
+  const testCmd = `claude -p "${escapedPrompt}" --output-format text`;
+
+  console.log('DEBUG: About to exec claude, prompt length:', fullPrompt.length, 'cmd length:', testCmd.length);
+
+  if (testCmd.length > MAX_CMD_LENGTH) {
+    // stdin経由でプロンプトを渡す（コマンドライン制限回避）
+    console.log('DEBUG: Using stdin pipe due to length:', fullPrompt.length);
+    onLog?.(`stdin経由でプロンプト送信 (${fullPrompt.length}文字)`, 'info');
+
+    try {
+      const result = spawnSync('claude', ['--output-format', 'text'], {
+        input: fullPrompt,
+        encoding: 'utf-8',
+        timeout: 120000,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        shell: true,
+      });
+
+      if (result.error) {
+        throw result.error;
+      }
+      if (result.status !== 0) {
+        console.log('DEBUG error status:', result.status);
+        console.log('DEBUG stderr:', result.stderr);
+        throw new Error(`claude failed (code ${result.status}): ${result.stderr}`);
+      }
+
+      return result.stdout;
+    } catch (error: unknown) {
+      const err = error as Error & { stderr?: string; stdout?: string; status?: number };
+      console.log('DEBUG error:', err.message);
+      throw new Error(`claude failed: ${err.message}`);
+    }
+  } else {
+    cmd = testCmd;
+    try {
+      const result = execSync(cmd, {
+        encoding: 'utf-8',
+        timeout: 120000,
+        maxBuffer: 10 * 1024 * 1024,
+        shell: true,
+        windowsHide: true,
+      });
+      return result;
+    } catch (error: unknown) {
+      const err = error as Error & { stderr?: string; stdout?: string; status?: number };
+      console.log('DEBUG error:', err.message);
+      console.log('DEBUG stderr:', err.stderr);
+      console.log('DEBUG stdout:', err.stdout);
+      throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
+    }
   }
 }
 
