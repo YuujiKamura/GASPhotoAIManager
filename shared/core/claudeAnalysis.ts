@@ -1,11 +1,11 @@
 /**
- * Claude Code CLI - Core Analysis Module
+ * Claude Code CLI - Core Analysis Module (2段階処理)
  *
- * Claude Code CLIをサブプロセスとして呼び出して画像解析
- * APIキー不要（Claude Codeの認証を使用）
+ * Step1: 画像認識 (Vision) - OCR、数値抽出、シーン説明
+ * Step2: マスタ照合 (Text) - 階層マスタとの照合で分類
  *
  * ## 変更履歴
- * - 2026-01-17: Claude Code CLI経由の実行に変更
+ * - 2026-01-17: 2段階処理に変更（マスタ整合性向上）
  */
 
 import { execSync } from 'child_process';
@@ -21,8 +21,18 @@ export interface PhotoInput {
   fileName: string;
   base64: string;
   mimeType: string;
-  filePath?: string;  // 元ファイルパス（あれば）
+  filePath?: string;
   date?: number;
+}
+
+/** Step1の出力: 画像から抽出した生データ */
+interface RawImageData {
+  fileName: string;
+  hasBoard: boolean;
+  detectedText: string;
+  measurements: string;
+  sceneDescription: string;
+  photoCategoryGuess: string;  // 品質管理/施工状況/出来形/安全管理/着手前完成/使用材料
 }
 
 export interface AnalysisResult {
@@ -59,7 +69,7 @@ export type ProgressCallback = (
 ) => void;
 
 export interface AnalyzeOptions {
-  apiKey?: string;  // 未使用（Claude Code CLI使用）
+  apiKey?: string;
   mode?: AppMode;
   instruction?: string;
   batchSize?: number;
@@ -77,25 +87,6 @@ export interface AnalyzeOptions {
 export const PRIMARY_MODEL = 'claude-sonnet-4-20250514';
 export const MAX_RETRIES = 3;
 export const RETRY_DELAY_MS = 2000;
-
-export const REMARKS_CATEGORIES = [
-  "到着温度", "敷均し温度", "初期締固め前温度", "開放温度",
-  "アスファルト混合物温度測定",
-  "現場密度測定",
-  "転圧状況", "敷均し状況", "舗設状況", "初期転圧状況", "2次転圧状況",
-  "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
-  "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
-  "着手前", "完了", "竣工", "施工完了", "既済部分",
-  "不陸整正出来形", "路盤厚出来形", "表層厚出来形", "幅員出来形",
-  "朝礼実施状況", "朝礼・KYミーティング実施状況", "朝礼状況",
-  "KY活動状況", "危険予知活動状況", "KYミーティング実施状況",
-  "新規入場者教育状況", "新規入場者教育実施状況",
-  "保安施設設置状況", "点灯確認状況", "安全巡視状況",
-  "安全訓練実施状況", "避難訓練実施状況",
-  "災害発生状況", "事故発生状況", "被害状況",
-  "環境対策状況", "騒音対策状況", "粉塵対策状況",
-  "その他"
-];
 
 // ============================================
 // ヘルパー関数
@@ -123,94 +114,31 @@ const formatShootingTime = (timestamp: number): string => {
 };
 
 // ============================================
-// プロンプト生成
-// ============================================
-
-const buildPrompt = (
-  photos: PhotoInput[],
-  mode: AppMode,
-  instruction?: string,
-  hierarchy?: Record<string, unknown>
-): string => {
-  let systemPart = '';
-
-  if (mode === 'general') {
-    systemPart = `
-You are a professional photo archivist. Analyze the image and provide structured metadata.
-${instruction ? `USER INSTRUCTION: ${instruction}` : ""}
-    `.trim();
-  } else {
-    let workTypesList = '';
-    if (hierarchy && hierarchy['直接工事費']) {
-      const root = hierarchy['直接工事費'] as Record<string, unknown>;
-      const types = new Set<string>();
-      for (const catKey in root) {
-        Object.keys(root[catKey] as Record<string, unknown>).forEach(k => types.add(k));
-      }
-      workTypesList = Array.from(types).join(', ');
-    }
-
-    systemPart = `
-You are a Japanese construction site supervisor creating a formal photo ledger (工事写真帳).
-
-${workTypesList ? `AVAILABLE WORK TYPES: ${workTypesList}\nYou MUST select workType from this list.\n` : ''}
-OUTPUT FORMAT:
-- workType: 工種 (e.g., 舗装工, 道路土工)
-- variety: 種別 (e.g., 舗装打換え工)
-- detail: 細別 (e.g., 表層工)
-- station: 測点 format "地名 No.整数" (e.g., "小峯2丁目 No.4")
-- remarksCategory: Select from [${REMARKS_CATEGORIES.slice(0, 10).join(', ')}...]
-- measurements: All numerical values with units
-- description: Important info from blackboard or scene
-- hasBoard: true if blackboard is visible
-- detectedText: OCR text from blackboard
-
-For safety photos, set workType="", variety="", detail="".
-${instruction ? `USER INSTRUCTION: ${instruction}` : ""}
-    `.trim();
-  }
-
-  const photoInfoList = photos.map(p => {
-    const timeInfo = p.date ? formatShootingTime(p.date) : 'unknown';
-    return `- ${p.fileName} (撮影時間: ${timeInfo})`;
-  });
-
-  return `
-${systemPart}
-
-Analyze these ${photos.length} photo(s).
-Output a JSON array with objects containing: fileName, workType, variety, detail, station, remarksCategory, measurements, description, hasBoard, detectedText, reasoning.
-
-Photo Info:
-${photoInfoList.join("\n")}
-
-Output ONLY valid JSON array. No markdown, no explanation.
-  `.trim();
-};
-
-// ============================================
 // Claude Code CLI実行
 // ============================================
 
-async function runClaudeCode(
-  imagePaths: string[],
+function runClaudeCode(
   prompt: string,
+  imagePaths?: string[],
   onLog?: LogFunction
-): Promise<string> {
-  // プロンプトをエスケープ（シェル用）
+): string {
   const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
 
-  // コマンド構築
-  const imageArgs = imagePaths.map(p => `"${p}"`).join(' ');
-  const cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
-
-  onLog?.(`実行: claude -p "..." [${imagePaths.length} images]`, 'info');
+  let cmd: string;
+  if (imagePaths && imagePaths.length > 0) {
+    const imageArgs = imagePaths.map(p => `"${p}"`).join(' ');
+    cmd = `claude -p "${escapedPrompt}" --output-format text ${imageArgs}`;
+    onLog?.(`Step1: claude [${imagePaths.length} images]`, 'info');
+  } else {
+    cmd = `claude -p "${escapedPrompt}" --output-format text`;
+    onLog?.(`Step2: claude [text only]`, 'info');
+  }
 
   try {
     const result = execSync(cmd, {
       encoding: 'utf-8',
-      timeout: 120000,  // 2分タイムアウト
-      maxBuffer: 10 * 1024 * 1024,  // 10MB
+      timeout: 120000,
+      maxBuffer: 10 * 1024 * 1024,
     });
     return result;
   } catch (error: unknown) {
@@ -220,10 +148,123 @@ async function runClaudeCode(
 }
 
 // ============================================
-// AIレスポンス処理
+// Step1: 画像認識 (Vision)
 // ============================================
 
-const parseAIResponse = (text: string): unknown[] => {
+const STEP1_PROMPT = `
+あなたは工事写真の解析専門家です。画像から以下の情報を抽出してください。
+
+出力形式（JSON配列）:
+- fileName: ファイル名
+- hasBoard: 黒板が写っているか (true/false)
+- detectedText: 黒板や看板から読み取れる全てのテキスト
+- measurements: 数値データ（温度、寸法、密度等）をそのまま記載（例: "160.4℃", "厚さ50mm"）
+- sceneDescription: 写真に写っているものの客観的な説明
+- photoCategoryGuess: 以下から1つ選択
+  - "品質管理" (温度測定、密度測定など)
+  - "施工状況" (作業中の様子)
+  - "出来形" (完成した構造物の測定)
+  - "安全管理" (朝礼、KY活動など)
+  - "着手前完成" (工事前後の状態)
+  - "使用材料" (材料の搬入・検収)
+
+注意:
+- 黒板のテキストは可能な限り正確にOCRしてください
+- 数値は単位も含めて正確に記載
+- 推測せず、見えるものだけを記載
+
+出力はJSON配列のみ。説明不要。
+`;
+
+function buildStep1Prompt(photos: PhotoInput[]): string {
+  const photoInfoList = photos.map(p => {
+    const timeInfo = p.date ? formatShootingTime(p.date) : 'unknown';
+    return `- ${p.fileName} (撮影: ${timeInfo})`;
+  }).join('\n');
+
+  return `${STEP1_PROMPT}
+
+対象写真:
+${photoInfoList}
+`.trim();
+}
+
+async function executeStep1(
+  photos: PhotoInput[],
+  onLog?: LogFunction
+): Promise<RawImageData[]> {
+  const imagePaths = photos.map(p => p.filePath).filter(Boolean) as string[];
+  const prompt = buildStep1Prompt(photos);
+
+  const response = runClaudeCode(prompt, imagePaths, onLog);
+  return parseJsonResponse<RawImageData>(response, photos.length);
+}
+
+// ============================================
+// Step2: マスタ照合 (Text only)
+// ============================================
+
+function buildStep2Prompt(
+  rawData: RawImageData[],
+  hierarchy: Record<string, unknown>
+): string {
+  // 階層をコンパクトに整形
+  const hierarchyStr = JSON.stringify(hierarchy, null, 0);
+
+  const rawDataStr = rawData.map(d => `
+ファイル: ${d.fileName}
+黒板: ${d.hasBoard ? 'あり' : 'なし'}
+OCRテキスト: ${d.detectedText || 'なし'}
+数値: ${d.measurements || 'なし'}
+シーン: ${d.sceneDescription}
+推定区分: ${d.photoCategoryGuess}
+`).join('\n---\n');
+
+  return `
+あなたは工事写真の分類専門家です。
+以下の画像解析結果を、工種マスタに基づいて正確に分類してください。
+
+## 工種マスタ（階層構造）
+${hierarchyStr}
+
+## 画像解析結果
+${rawDataStr}
+
+## 出力ルール
+1. workType, variety, detail は必ずマスタに存在する値を選択
+2. マスタにない値は絶対に使用しない
+3. remarks はマスタの最下層キーまたはaliasesから選択
+4. 該当なしの場合は空文字""
+
+## 出力形式（JSON配列）
+- fileName: ファイル名
+- workType: 工種（マスタから選択）
+- variety: 種別（マスタから選択）
+- detail: 細別（マスタから選択）
+- remarks: 備考（マスタから選択、または数値のみ）
+- station: 測点（黒板から読み取れた場合）
+- description: 写真の説明
+- reasoning: 分類理由
+
+出力はJSON配列のみ。説明不要。
+`.trim();
+}
+
+async function executeStep2(
+  rawData: RawImageData[],
+  hierarchy: Record<string, unknown>,
+  onLog?: LogFunction
+): Promise<Partial<AnalysisResult>[]> {
+  const prompt = buildStep2Prompt(rawData, hierarchy);
+  const response = runClaudeCode(prompt, undefined, onLog);
+  return parseJsonResponse<Partial<AnalysisResult>>(response, rawData.length);
+}
+
+// ============================================
+// JSON パース
+// ============================================
+
+function parseJsonResponse<T>(text: string, expectedCount: number): T[] {
   // JSONブロックを抽出
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonMatch) {
@@ -244,29 +285,36 @@ const parseAIResponse = (text: string): unknown[] => {
   } catch {
     throw new Error("Invalid JSON response from Claude");
   }
-};
+}
 
-const mapToAnalysisResults = (parsed: unknown[]): AnalysisResult[] => {
-  return parsed.map((item: unknown) => {
-    const obj = item as Record<string, unknown>;
-    const remarksCategory = (obj.remarksCategory as string) || "";
+// ============================================
+// 結果マージ
+// ============================================
+
+function mergeResults(
+  rawData: RawImageData[],
+  classified: Partial<AnalysisResult>[]
+): AnalysisResult[] {
+  return rawData.map((raw, index) => {
+    const cls = classified.find(c => c.fileName === raw.fileName) || classified[index] || {};
+
     return {
-      fileName: (obj.fileName as string) || "unknown",
-      workType: (obj.workType as string) || "",
-      variety: (obj.variety as string) || "",
-      detail: (obj.detail as string) || "",
-      station: (obj.station as string) || "",
-      remarks: remarksCategory,
-      remarksCategory: remarksCategory,
-      remarksValue: "",
-      description: (obj.description as string) || "",
-      measurements: (obj.measurements as string) || "",
-      hasBoard: !!obj.hasBoard,
-      detectedText: (obj.detectedText as string) || "",
-      reasoning: (obj.reasoning as string) || "",
+      fileName: raw.fileName,
+      workType: cls.workType || '',
+      variety: cls.variety || '',
+      detail: cls.detail || '',
+      station: cls.station || '',
+      remarks: cls.remarks || '',
+      remarksCategory: cls.remarks || '',
+      remarksValue: '',
+      description: cls.description || raw.sceneDescription,
+      measurements: raw.measurements,
+      hasBoard: raw.hasBoard,
+      detectedText: raw.detectedText,
+      reasoning: cls.reasoning || '',
     };
   });
-};
+}
 
 // ============================================
 // 一時ファイル管理
@@ -274,10 +322,8 @@ const mapToAnalysisResults = (parsed: unknown[]): AnalysisResult[] => {
 
 async function saveToTempFile(photo: PhotoInput): Promise<string> {
   const tempDir = os.tmpdir();
-  const ext = photo.mimeType.split('/')[1] || 'jpg';
   const tempPath = path.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
 
-  // base64からバイナリに変換して保存
   let base64Data = photo.base64;
   if (base64Data.includes(',')) {
     base64Data = base64Data.split(',')[1];
@@ -307,7 +353,6 @@ export async function analyzePhotos(
 ): Promise<AnalysisResult[]> {
   const {
     mode = 'construction',
-    instruction,
     batchSize = 5,
     onLog,
     onProgress,
@@ -318,9 +363,9 @@ export async function analyzePhotos(
   const startTime = Date.now();
   const allResults: AnalysisResult[] = [];
 
-  onLog?.(`解析開始: ${photos.length}枚 (Claude Code CLI)`, 'info');
+  onLog?.(`解析開始: ${photos.length}枚 (2段階処理)`, 'info');
 
-  // バッチに分割して処理
+  // バッチに分割
   const batches: PhotoInput[][] = [];
   for (let i = 0; i < photos.length; i += batchSize) {
     batches.push(photos.slice(i, i + batchSize));
@@ -332,7 +377,7 @@ export async function analyzePhotos(
     const batch = batches[batchIndex];
     onLog?.(`バッチ ${batchIndex + 1}/${batches.length} (${batch.length}枚)`, 'info');
 
-    // 一時ファイルに保存
+    // ファイルパス準備
     const tempPaths: string[] = [];
     for (const photo of batch) {
       if (photo.filePath) {
@@ -340,34 +385,45 @@ export async function analyzePhotos(
       } else {
         const tempPath = await saveToTempFile(photo);
         tempPaths.push(tempPath);
+        photo.filePath = tempPath;  // 一時的に設定
       }
     }
 
     try {
-      const prompt = buildPrompt(batch, mode, instruction, hierarchy);
-      const apiStartTime = Date.now();
+      // Step1: 画像認識
+      const step1Start = Date.now();
+      const rawData = await executeStep1(batch, onLog);
+      onLog?.(`Step1完了: ${formatDuration(Date.now() - step1Start)}`, 'info');
 
-      let attempt = 0;
-      let response = '';
+      let batchResults: AnalysisResult[];
 
-      while (attempt < MAX_RETRIES) {
-        try {
-          response = await runClaudeCode(tempPaths, prompt, onLog);
-          break;
-        } catch (err) {
-          attempt++;
-          onLog?.(`エラー - 試行 ${attempt}/${MAX_RETRIES}: ${(err as Error).message}`, 'error');
-          if (attempt >= MAX_RETRIES) throw err;
-          await sleep(RETRY_DELAY_MS);
-        }
+      if (mode === 'construction' && hierarchy) {
+        // Step2: マスタ照合
+        const step2Start = Date.now();
+        const classified = await executeStep2(rawData, hierarchy, onLog);
+        onLog?.(`Step2完了: ${formatDuration(Date.now() - step2Start)}`, 'info');
+
+        batchResults = mergeResults(rawData, classified);
+      } else {
+        // generalモードまたはマスタなし: Step1結果のみ使用
+        batchResults = rawData.map(raw => ({
+          fileName: raw.fileName,
+          workType: '',
+          variety: '',
+          detail: '',
+          station: '',
+          remarks: raw.photoCategoryGuess,
+          remarksCategory: raw.photoCategoryGuess,
+          remarksValue: '',
+          description: raw.sceneDescription,
+          measurements: raw.measurements,
+          hasBoard: raw.hasBoard,
+          detectedText: raw.detectedText,
+          reasoning: '',
+        }));
       }
 
-      const apiTime = Date.now() - apiStartTime;
-      onLog?.(`応答: ${formatDuration(apiTime)}, ${response.length}文字`, 'info');
-
-      const parsed = parseAIResponse(response);
-      const batchResults = mapToAnalysisResults(parsed);
-
+      // 進捗通知
       for (const result of batchResults) {
         onProgress?.(
           allResults.length + 1,
@@ -380,8 +436,11 @@ export async function analyzePhotos(
       allResults.push(...batchResults);
 
     } finally {
-      // filePath由来でない一時ファイルのみ削除
-      const toCleanup = tempPaths.filter((p, i) => !batch[i].filePath);
+      // 一時ファイルのみ削除
+      const toCleanup = tempPaths.filter((p, i) => {
+        const original = batch[i];
+        return p !== original.filePath || p.includes('gaspm_');
+      });
       await cleanupTempFiles(toCleanup);
     }
   }
