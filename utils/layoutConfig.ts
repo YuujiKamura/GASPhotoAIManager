@@ -319,3 +319,54 @@ export const LAYOUT_FIELDS: FieldDefinition[] = [
     multiline: true
   }
 ];
+
+// ============================================
+// フィールドラベル定義（PDF/Excel共通）
+// ============================================
+
+export const FIELD_LABELS = {
+  date: '日時',
+  category: '区分',
+  workType: '工種',
+  variety: '種別',
+  detail: '細別',
+  station: '測点',
+  remarks: '備考',
+  measurements: '測定値',
+  // Excel用のlabelKeyマッピング
+  labelDate: '日時',
+  labelPhotoCategory: '区分',
+  labelWorkType: '工種',
+  labelVariety: '種別',
+  labelDetail: '細別',
+  labelStation: '測点',
+  labelRemarks: '備考',
+  labelMeasurements: '測定値',
+} as const;
+
+// ============================================
+// 日時フォーマット設定
+// ============================================
+
+export const DATE_FORMAT = {
+  includeTime: true,
+  locale: 'ja-JP',
+  options: {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  } as const,
+} as const;
+
+/**
+ * 日時フォーマットヘルパー
+ */
+export function formatDateTime(timestamp: number | undefined): string {
+  if (!timestamp) return '-';
+  return new Date(timestamp).toLocaleString(
+    DATE_FORMAT.locale,
+    DATE_FORMAT.options
+  );
+}

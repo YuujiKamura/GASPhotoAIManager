@@ -12,7 +12,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as fs from 'fs/promises';
-import { getPdfLayout, type PdfLayout } from '../../utils/layoutConfig';
+import { getPdfLayout, type PdfLayout, FIELD_LABELS, formatDateTime } from '../../utils/layoutConfig';
 
 // ============================================
 // 型定義
@@ -143,9 +143,7 @@ export async function generatePdfBuffer(
   }
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // ラベル定義（正しい階層: 写真区分 → 工種 → 種別 → 細別）
-  // 現在のデータ構造: workType=写真区分, variety=工種, detail=種別, subDetail=細別
-  const labels = { date: '日時', photoCategory: '写真区分', workType: '工種', variety: '種別', detail: '細別', station: '測点', remarks: '備考', measurements: '測定値' };
+  // ラベル定義はlayoutConfig.tsのFIELD_LABELSを使用
 
   // レイアウト計算（layoutConfigの値を使用、ヘッダーなし）
   const usableHeight = A4_HEIGHT - MARGIN * 2;
@@ -238,17 +236,16 @@ export async function generatePdfBuffer(
       const infoX = MARGIN + photoWidth;
       const analysis = photo.analysis || {};
 
-      // 正しい階層順序: 日時 → 写真区分 → 工種 → 種別 → 細別 → 測点 → 備考 → 測定値
-      // データマッピング: photoCategory=写真区分, workType=工種, variety=種別, detail=細別
+      // 正しい階層順序: 日時 → 区分 → 工種 → 種別 → 細別 → 測点 → 備考 → 測定値
       const infoLines = [
-        { label: labels.date, value: photo.date ? new Date(photo.date).toISOString().slice(0, 10) : '-' },
-        { label: labels.photoCategory, value: analysis.photoCategory || '-' },
-        { label: labels.workType, value: analysis.workType || '-' },
-        { label: labels.variety, value: analysis.variety || '-' },
-        { label: labels.detail, value: analysis.detail || '-' },
-        { label: labels.station, value: analysis.station || '-' },
-        { label: labels.remarks, value: analysis.remarks || '-' },
-        { label: labels.measurements, value: analysis.measurements || '-' }
+        { label: FIELD_LABELS.date, value: formatDateTime(photo.date) },
+        { label: FIELD_LABELS.category, value: analysis.photoCategory || '-' },
+        { label: FIELD_LABELS.workType, value: analysis.workType || '-' },
+        { label: FIELD_LABELS.variety, value: analysis.variety || '-' },
+        { label: FIELD_LABELS.detail, value: analysis.detail || '-' },
+        { label: FIELD_LABELS.station, value: analysis.station || '-' },
+        { label: FIELD_LABELS.remarks, value: analysis.remarks || '-' },
+        { label: FIELD_LABELS.measurements, value: analysis.measurements || '-' }
       ];
 
       // 情報欄の枠

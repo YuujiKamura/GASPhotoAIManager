@@ -9,7 +9,7 @@
  */
 
 import ExcelJS from 'exceljs';
-import { getLayoutConfig, LAYOUT_FIELDS, PDF_LAYOUT } from '../../utils/layoutConfig';
+import { getLayoutConfig, LAYOUT_FIELDS, PDF_LAYOUT, FIELD_LABELS, formatDateTime } from '../../utils/layoutConfig';
 
 // ============================================
 // 型定義
@@ -36,20 +36,7 @@ export interface ExcelOptions {
   title?: string;
 }
 
-// ============================================
-// フィールドラベル（日本語）
-// ============================================
-
-const FIELD_LABELS: Record<string, string> = {
-  labelDate: '撮影日時',
-  labelPhotoCategory: '写真区分',
-  labelWorkType: '工種',
-  labelVariety: '種別',
-  labelDetail: '細別',
-  labelStation: '測点',
-  labelRemarks: '備考',
-  labelMeasurements: '寸法',
-};
+// フィールドラベルはlayoutConfig.tsのFIELD_LABELSを使用
 
 // ============================================
 // Excel生成
@@ -163,15 +150,7 @@ export async function generateExcelBuffer(
       for (const field of visibleFields) {
         let value = '';
         if (field.key === 'date') {
-          value = photo.date
-            ? new Date(photo.date).toLocaleString('ja-JP', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
-            : '';
+          value = photo.date ? formatDateTime(photo.date) : '';
         } else if (photo.analysis) {
           value = (photo.analysis as Record<string, string>)[field.key] || '';
         }

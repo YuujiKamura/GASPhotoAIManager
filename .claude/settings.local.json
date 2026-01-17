@@ -98,7 +98,26 @@
       "Bash(./node_modules/.bin/esbuild:*)",
       "Bash(for i in 1 2 3 4 5 6)",
       "Bash(do sleep 10)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(start \"\" \"C:\\\\Users\\\\yuuji\\\\Sanyuu2Kouku\\\\GASPhotoAIManager\\\\test-output\\\\test-result_2026-01-17.pdf\")",
+      "Bash(cargo init:*)",
+      "Bash(gh repo create:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
+      "Bash(where claude)",
+      "Bash(gh issue close:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(start \"\" \"C:/Users/yuuji/Sanyuu2Kouku/photo-ai-rust/温度管理写真.pdf\")",
+      "Bash(start 温度管理写真.pdf)",
+      "Bash(npm run cli:*)",
+      "Bash(start test-result_2026-01-17.pdf)",
+      "Bash(初期締固前温度 149.9℃\" now wrap properly instead of truncating.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh issue edit:*)",
+      "Bash(python:*)",
+      "Bash(/c/Program Files/nodejs/npm install)"
     ]
   }
 }
