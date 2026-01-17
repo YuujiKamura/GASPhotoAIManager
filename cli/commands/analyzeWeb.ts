@@ -76,8 +76,10 @@ function openBrowser(url: string) {
 export async function runAnalyzeWeb(folderPath: string, options: {
   mode?: AppMode;
   output?: string;
+  useYolo?: boolean;
+  yoloConfThreshold?: number;
 } = {}) {
-  const { mode = 'construction', output } = options;
+  const { mode = 'construction', output, useYolo = false, yoloConfThreshold = 0.5 } = options;
   const absoluteFolderPath = path.resolve(folderPath);
 
   // フォルダ確認
@@ -168,6 +170,9 @@ export async function runAnalyzeWeb(folderPath: string, options: {
     console.log(`\n📷 写真解析 (Web UI)`);
     console.log(`   フォルダ: ${absoluteFolderPath}`);
     console.log(`   モード: ${mode}`);
+    if (useYolo) {
+      console.log(`   YOLO前処理: 有効 (閾値=${yoloConfThreshold})`);
+    }
     console.log(`   URL: http://localhost:${PORT}/web-analyzer.html\n`);
 
     // ブラウザを開く
@@ -209,12 +214,14 @@ export async function runAnalyzeWeb(folderPath: string, options: {
       }
 
       // AI解析実行
-      broadcastLog(`AI解析開始: ${photoInputs.length}枚`);
+      broadcastLog(`AI解析開始: ${photoInputs.length}枚${useYolo ? ' (YOLO前処理有効)' : ''}`);
       analysisResults = await analyzePhotos(photoInputs, {
         mode,
         batchSize: 10,
         parallelBatches: 1,  // 順次処理（並列CLI呼び出しはオーバーヘッド大）
         hierarchy,
+        useYolo,
+        yoloConfThreshold,
         onLog: (msg, type) => broadcastLog(msg, type),
         onProgress: (current, total, fileName) => {
           broadcastLog(`[${current}/${total}] ${fileName}`, 'info');

@@ -5,7 +5,7 @@ import { Command } from "commander";
 
 // cli/commands/analyze.ts
 import * as fs4 from "fs/promises";
-import * as path4 from "path";
+import * as path5 from "path";
 import chalk from "chalk";
 import ora from "ora";
 
@@ -394,10 +394,107 @@ var getMergedHierarchy = async () => {
 };
 
 // shared/core/claudeAnalysis.ts
-import { execSync } from "child_process";
+import { execSync as execSync2 } from "child_process";
 import * as fs3 from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync as existsSync2 } from "fs";
+import * as path4 from "path";
+
+// shared/core/yoloPreprocess.ts
+import { execSync } from "child_process";
 import * as path3 from "path";
+import { existsSync } from "fs";
+var DEFAULT_CONF_THRESHOLD = 0.25;
+var DEFAULT_DEVICE = "cpu";
+function getDefaultModelPath() {
+  const projectRoot = process.cwd();
+  return path3.join(projectRoot, "models", "yolo-construction.pt");
+}
+function getScriptPath() {
+  const projectRoot = process.cwd();
+  return path3.join(projectRoot, "models", "yolo_detect.py");
+}
+function runYoloSingle(imagePath, options = {}) {
+  const {
+    confThreshold = DEFAULT_CONF_THRESHOLD,
+    modelPath = getDefaultModelPath(),
+    device = DEFAULT_DEVICE
+  } = options;
+  const scriptPath = getScriptPath();
+  if (!existsSync(scriptPath)) {
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `YOLO script not found: ${scriptPath}`
+    };
+  }
+  if (!existsSync(modelPath)) {
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `YOLO model not found: ${modelPath}. Copy from: ~/Sanyuu2Kouku/cursor_tools/summarygenerator/runs/train/db_training/weights/best.pt`
+    };
+  }
+  if (!existsSync(imagePath)) {
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `Image not found: ${imagePath}`
+    };
+  }
+  try {
+    const cmd = `python "${scriptPath}" "${imagePath}" --model "${modelPath}" --conf ${confThreshold} --device ${device}`;
+    const stdout = execSync(cmd, {
+      encoding: "utf-8",
+      timeout: 6e4,
+      // 1分タイムアウト
+      maxBuffer: 10 * 1024 * 1024
+    });
+    const result = JSON.parse(stdout.trim());
+    return result;
+  } catch (error) {
+    const err = error;
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `YOLO execution failed: ${err.message || err.stderr}`
+    };
+  }
+}
+async function runYoloDetection(imagePaths, options = {}) {
+  const results = /* @__PURE__ */ new Map();
+  for (const imagePath of imagePaths) {
+    const result = runYoloSingle(imagePath, options);
+    if (result.error) {
+      console.warn(`[YOLO] ${result.error}`);
+      results.set(imagePath, []);
+    } else {
+      results.set(imagePath, result.detections);
+    }
+  }
+  return results;
+}
+function formatYoloHint(detections, minConfidence = 0.5) {
+  if (!detections || detections.length === 0) {
+    return "";
+  }
+  const hints = detections.filter((d) => d.confidence >= minConfidence).map((d) => `${d.class_name}(${(d.confidence * 100).toFixed(0)}%)`).join(", ");
+  return hints ? ` [\u691C\u51FA: ${hints}]` : "";
+}
+function isYoloAvailable(modelPath) {
+  const model = modelPath || getDefaultModelPath();
+  const script = getScriptPath();
+  return existsSync(model) && existsSync(script);
+}
+
+// shared/core/claudeAnalysis.ts
 var formatDuration = (ms) => {
   if (ms < 1e3) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1e3).toFixed(2)}s`;
@@ -419,7 +516,7 @@ function runClaudeCode(prompt, imagePaths, onLog) {
   let cmd;
   if (imagePaths && imagePaths.length > 0) {
     for (const p of imagePaths) {
-      if (!existsSync(p)) {
+      if (!existsSync2(p)) {
         onLog?.(`Warning: File not found: ${p}`, "error");
       } else {
         onLog?.(`File exists: ${p}`, "info");
@@ -427,7 +524,7 @@ function runClaudeCode(prompt, imagePaths, onLog) {
     }
     const cwd = process.cwd();
     const relativePaths = imagePaths.map((p) => {
-      const rel = path3.relative(cwd, p).replace(/\\/g, "/");
+      const rel = path4.relative(cwd, p).replace(/\\/g, "/");
       return rel.startsWith(".") ? rel : `./${rel}`;
     });
     const imageArgs = relativePaths.map((p) => `"${p}"`).join(" ");
@@ -438,7 +535,7 @@ function runClaudeCode(prompt, imagePaths, onLog) {
     onLog?.(`Step2: claude [text only]`, "info");
   }
   try {
-    const result = execSync(cmd, {
+    const result = execSync2(cmd, {
       encoding: "utf-8",
       timeout: 12e4,
       maxBuffer: 10 * 1024 * 1024
@@ -449,13 +546,16 @@ function runClaudeCode(prompt, imagePaths, onLog) {
     throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
   }
 }
-var REMARKS_CATEGORIES = [
+var PHOTO_CATEGORIES = [
+  // 品質管理 - 温度測定
   "\u5230\u7740\u6E29\u5EA6",
   "\u6577\u5747\u3057\u6E29\u5EA6",
   "\u521D\u671F\u7DE0\u56FA\u3081\u524D\u6E29\u5EA6",
   "\u958B\u653E\u6E29\u5EA6",
   "\u30A2\u30B9\u30D5\u30A1\u30EB\u30C8\u6DF7\u5408\u7269\u6E29\u5EA6\u6E2C\u5B9A",
+  // 品質管理 - 密度測定
   "\u73FE\u5834\u5BC6\u5EA6\u6E2C\u5B9A",
+  // 施工状況
   "\u8EE2\u5727\u72B6\u6CC1",
   "\u6577\u5747\u3057\u72B6\u6CC1",
   "\u8217\u8A2D\u72B6\u6CC1",
@@ -470,15 +570,18 @@ var REMARKS_CATEGORIES = [
   "\u53D6\u58CA\u3057\u72B6\u6CC1",
   "\u636E\u4ED8\u72B6\u6CC1",
   "\u8A2D\u7F6E\u72B6\u6CC1",
+  // 着手前・完成
   "\u7740\u624B\u524D",
   "\u5B8C\u4E86",
   "\u7AE3\u5DE5",
   "\u65BD\u5DE5\u5B8C\u4E86",
   "\u65E2\u6E08\u90E8\u5206",
+  // 出来形管理
   "\u4E0D\u9678\u6574\u6B63\u51FA\u6765\u5F62",
   "\u8DEF\u76E4\u539A\u51FA\u6765\u5F62",
   "\u8868\u5C64\u539A\u51FA\u6765\u5F62",
   "\u5E45\u54E1\u51FA\u6765\u5F62",
+  // 安全管理
   "\u671D\u793C\u5B9F\u65BD\u72B6\u6CC1",
   "\u671D\u793C\u30FBKY\u30DF\u30FC\u30C6\u30A3\u30F3\u30B0\u5B9F\u65BD\u72B6\u6CC1",
   "\u671D\u793C\u72B6\u6CC1",
@@ -492,29 +595,23 @@ var REMARKS_CATEGORIES = [
   "\u5B89\u5168\u5DE1\u8996\u72B6\u6CC1",
   "\u5B89\u5168\u8A13\u7DF4\u5B9F\u65BD\u72B6\u6CC1",
   "\u907F\u96E3\u8A13\u7DF4\u5B9F\u65BD\u72B6\u6CC1",
+  // 災害・事故
   "\u707D\u5BB3\u767A\u751F\u72B6\u6CC1",
   "\u4E8B\u6545\u767A\u751F\u72B6\u6CC1",
   "\u88AB\u5BB3\u72B6\u6CC1",
+  // 環境対策
   "\u74B0\u5883\u5BFE\u7B56\u72B6\u6CC1",
   "\u9A12\u97F3\u5BFE\u7B56\u72B6\u6CC1",
   "\u7C89\u5875\u5BFE\u7B56\u72B6\u6CC1",
+  // その他
   "\u305D\u306E\u4ED6"
 ];
 var STEP1_PROMPT = `
 \u3042\u306A\u305F\u306F\u5DE5\u4E8B\u5199\u771F\u5E33\u3092\u4F5C\u6210\u3059\u308B\u73FE\u5834\u76E3\u7763\u3067\u3059\u3002\u8907\u6570\u306E\u5199\u771F\u3092\u540C\u6642\u306B\u89E3\u6790\u3057\u3001\u4E00\u8CAB\u6027\u306E\u3042\u308B\u5206\u985E\u3092\u884C\u3063\u3066\u304F\u3060\u3055\u3044\u3002
 
-## \u5199\u771F\u533A\u5206
-1. \u7740\u624B\u524D\u53CA\u3073\u5B8C\u6210\u5199\u771F - \u5DE5\u4E8B\u524D\u5F8C\u306E\u72B6\u614B
-2. \u65BD\u5DE5\u72B6\u6CC1\u5199\u771F - \u4F5C\u696D\u4E2D\u306E\u69D8\u5B50
-3. \u5B89\u5168\u7BA1\u7406\u5199\u771F - \u671D\u793C\u3001KY\u6D3B\u52D5
-4. \u4F7F\u7528\u6750\u6599\u5199\u771F - \u6750\u6599\u306E\u642C\u5165\u30FB\u691C\u53CE
-5. \u54C1\u8CEA\u7BA1\u7406\u5199\u771F - \u6E29\u5EA6\u6E2C\u5B9A\u3001\u5BC6\u5EA6\u6E2C\u5B9A
-6. \u51FA\u6765\u5F62\u7BA1\u7406\u5199\u771F - \u5B8C\u6210\u5BF8\u6CD5\u306E\u6E2C\u5B9A
-7. \u707D\u5BB3\u5199\u771F\u30FB\u4E8B\u6545\u5199\u771F - \u7570\u5E38\u4E8B\u614B
-8. \u305D\u306E\u4ED6
-
-## \u5099\u8003\u30AB\u30C6\u30B4\u30EA\uFF08\u4EE5\u4E0B\u304B\u3089\u9078\u629E\uFF09
-${REMARKS_CATEGORIES.join(", ")}
+## \u5199\u771F\u533A\u5206\uFF08\u30D5\u30A9\u30C8\u30AB\u30C6\u30B4\u30EA\uFF09
+\u4EE5\u4E0B\u304B\u3089\u6700\u3082\u9069\u5207\u306A\u3082\u306E\u3092\u9078\u629E\uFF1A
+${PHOTO_CATEGORIES.join(", ")}
 
 ## \u51FA\u529B\u5F62\u5F0F\uFF08\u53B3\u5BC6\u306B\u3053\u306EJSON\u914D\u5217\u5F62\u5F0F\u3067\u51FA\u529B\uFF09
 [
@@ -524,7 +621,7 @@ ${REMARKS_CATEGORIES.join(", ")}
     "detectedText": "\u9ED2\u677F\u30FB\u770B\u677F\u304B\u3089\u8AAD\u307F\u53D6\u3063\u305F\u5168\u30C6\u30AD\u30B9\u30C8",
     "measurements": "\u6570\u5024\u30C7\u30FC\u30BF\uFF08\u6E29\u5EA6\u3001\u5BF8\u6CD5\u3001\u5BC6\u5EA6\u7B49\uFF09\u5358\u4F4D\u4ED8\u304D",
     "sceneDescription": "\u5199\u771F\u306B\u5199\u3063\u3066\u3044\u308B\u3082\u306E\u306E\u5BA2\u89B3\u7684\u306A\u8AAC\u660E",
-    "photoCategoryGuess": "\u5099\u8003\u30AB\u30C6\u30B4\u30EA\u304B\u3089\u9078\u629E"
+    "photoCategory": "\u5199\u771F\u533A\u5206\u304B\u3089\u9078\u629E"
   }
 ]
 
@@ -535,10 +632,11 @@ ${REMARKS_CATEGORIES.join(", ")}
 - \u63A8\u6E2C\u305B\u305A\u3001\u898B\u3048\u308B\u3082\u306E\u3060\u3051\u3092\u8A18\u8F09
 - JSON\u914D\u5217\u306E\u307F\u51FA\u529B\u3002\u8AAC\u660E\u6587\u306F\u4E0D\u8981
 `;
-function buildStep1Prompt(photos) {
+function buildStep1Prompt(photos, yoloConfThreshold = 0.5) {
   const photoInfoList = photos.map((p) => {
     const timeInfo = p.date ? formatShootingTime(p.date) : "unknown";
-    return `- ${p.fileName} (\u64AE\u5F71: ${timeInfo})`;
+    const yoloHint = formatYoloHint(p.yoloDetections || [], yoloConfThreshold);
+    return `- ${p.fileName} (\u64AE\u5F71: ${timeInfo})${yoloHint}`;
   }).join("\n");
   return `${STEP1_PROMPT}
 
@@ -554,7 +652,7 @@ function buildStep2Prompt(rawData, hierarchy) {
 OCR\u30C6\u30AD\u30B9\u30C8: ${d.detectedText || "\u306A\u3057"}
 \u6570\u5024: ${d.measurements || "\u306A\u3057"}
 \u30B7\u30FC\u30F3: ${d.sceneDescription}
-\u63A8\u5B9A\u533A\u5206: ${d.photoCategoryGuess}
+\u5199\u771F\u533A\u5206: ${d.photoCategory}
 `).join("\n---\n");
   return `
 \u3042\u306A\u305F\u306F\u5DE5\u4E8B\u5199\u771F\u306E\u5206\u985E\u5C02\u9580\u5BB6\u3067\u3059\u3002
@@ -637,9 +735,9 @@ function mergeResults(rawData, classified) {
 }
 async function saveToTempFile(photo) {
   const projectRoot = process.cwd();
-  const tempDir = path3.join(projectRoot, "temp-images");
+  const tempDir = path4.join(projectRoot, "temp-images");
   await fs3.mkdir(tempDir, { recursive: true });
-  const tempPath = path3.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
+  const tempPath = path4.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
   let base64Data = photo.base64;
   if (base64Data.includes(",")) {
     base64Data = base64Data.split(",")[1];
@@ -665,12 +763,44 @@ async function analyzePhotos(photos, options) {
     onProgress,
     onMetrics,
     shouldAbort,
-    hierarchy
+    hierarchy,
+    useYolo = false,
+    yoloConfThreshold = 0.5
   } = options;
   const analysisStart = Date.now();
   const batchMetrics = [];
   const imageMetrics = [];
   const rawResponses = [];
+  if (useYolo) {
+    if (!isYoloAvailable()) {
+      onLog?.("YOLO: \u30E2\u30C7\u30EB\u307E\u305F\u306F\u30B9\u30AF\u30EA\u30D7\u30C8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3002YOLO\u524D\u51E6\u7406\u3092\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3059\u3002", "info");
+    } else {
+      const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
+      if (imagePaths.length > 0) {
+        onLog?.(`YOLO\u524D\u51E6\u7406\u958B\u59CB: ${imagePaths.length}\u679A`, "info");
+        const yoloStart = Date.now();
+        try {
+          const yoloResults = await runYoloDetection(imagePaths, {
+            confThreshold: yoloConfThreshold
+          });
+          let detectCount = 0;
+          for (const photo of photos) {
+            if (photo.filePath && yoloResults.has(photo.filePath)) {
+              photo.yoloDetections = yoloResults.get(photo.filePath);
+              if (photo.yoloDetections && photo.yoloDetections.length > 0) {
+                detectCount++;
+              }
+            }
+          }
+          const yoloDuration = Date.now() - yoloStart;
+          onLog?.(`YOLO\u524D\u51E6\u7406\u5B8C\u4E86: ${formatDuration(yoloDuration)} (\u691C\u51FA\u3042\u308A: ${detectCount}\u679A)`, "success");
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : "Unknown error";
+          onLog?.(`YOLO\u524D\u51E6\u7406\u30A8\u30E9\u30FC: ${errMsg}\uFF08\u7D9A\u884C\u3057\u307E\u3059\uFF09`, "error");
+        }
+      }
+    }
+  }
   onLog?.(`\u89E3\u6790\u958B\u59CB: ${photos.length}\u679A (${parallelBatches}\u4E26\u5217Step1 + \u7D71\u5408Step2)`, "info");
   onMetrics?.({ type: "analysis_start", totalImages: photos.length, mode });
   const batches = [];
@@ -710,7 +840,7 @@ async function analyzePhotos(photos, options) {
     }
     allTempPaths[batchIndex] = tempPaths;
     onMetrics?.({ type: "step_start", step: 1, batchIndex });
-    const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics);
+    const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
     const duration = Date.now() - batchStart;
     onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1} \u5B8C\u4E86: ${formatDuration(duration)}`, "info");
     onMetrics?.({ type: "step_complete", step: 1, batchIndex, duration });
@@ -739,8 +869,8 @@ async function analyzePhotos(photos, options) {
       variety: "",
       detail: "",
       station: "",
-      remarks: raw.photoCategoryGuess,
-      remarksCategory: raw.photoCategoryGuess,
+      remarks: raw.photoCategory,
+      remarksCategory: raw.photoCategory,
       remarksValue: "",
       description: raw.sceneDescription,
       measurements: raw.measurements,
@@ -816,9 +946,9 @@ async function analyzePhotos(photos, options) {
   onMetrics?.({ type: "analysis_complete", metrics });
   return allResults;
 }
-async function executeStep1WithMetrics(photos, batchIndex, rawResponses, onLog, onMetrics) {
+async function executeStep1WithMetrics(photos, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold = 0.5) {
   const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
-  const prompt = buildStep1Prompt(photos);
+  const prompt = buildStep1Prompt(photos, yoloConfThreshold);
   const start = Date.now();
   const response = runClaudeCode(prompt, imagePaths, onLog);
   const duration = Date.now() - start;
@@ -855,7 +985,7 @@ async function executeStep2WithMetrics(rawData, hierarchy, batchIndex, rawRespon
 // cli/commands/analyze.ts
 async function analyzeCommand(folder, options) {
   console.log(chalk.blue("\n\u{1F4F8} GASPhotoAIManager CLI - \u5199\u771F\u89E3\u6790\n"));
-  const folderPath = path4.resolve(folder);
+  const folderPath = path5.resolve(folder);
   try {
     const stat4 = await fs4.stat(folderPath);
     if (!stat4.isDirectory()) {
@@ -909,8 +1039,13 @@ async function analyzeCommand(folder, options) {
       console.log(chalk.yellow("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\uFF08\u30C7\u30D5\u30A9\u30EB\u30C8\u52D5\u4F5C\u3067\u7D9A\u884C\uFF09"));
     }
   }
+  const yoloEnabled = options.yolo === true;
+  const yoloConfThreshold = parseFloat(options.yoloConf || "0.5");
   console.log(chalk.gray(`
 \u30E2\u30FC\u30C9: ${options.mode} (Claude Code CLI\u4F7F\u7528)`));
+  if (yoloEnabled) {
+    console.log(chalk.gray(`YOLO\u524D\u51E6\u7406: \u6709\u52B9 (\u95BE\u5024=${yoloConfThreshold})`));
+  }
   if (options.instruction) {
     console.log(chalk.gray(`\u6307\u793A: ${options.instruction}`));
   }
@@ -923,6 +1058,8 @@ async function analyzeCommand(folder, options) {
       instruction: options.instruction,
       batchSize: parseInt(options.batchSize, 10),
       hierarchy,
+      useYolo: yoloEnabled,
+      yoloConfThreshold,
       onLog: (msg, type) => {
         if (type === "error") {
           analyzeSpinner.warn(msg);
@@ -959,7 +1096,7 @@ async function analyzeCommand(folder, options) {
       } : void 0
     };
   });
-  const outputPath = path4.resolve(options.output);
+  const outputPath = path5.resolve(options.output);
   const saveSpinner = ora("\u7D50\u679C\u3092\u4FDD\u5B58\u4E2D...").start();
   try {
     await fs4.writeFile(outputPath, JSON.stringify(outputData, null, 2));
@@ -987,7 +1124,7 @@ async function analyzeCommand(folder, options) {
 
 // cli/commands/export.ts
 import * as fs6 from "fs/promises";
-import * as path5 from "path";
+import * as path6 from "path";
 import chalk2 from "chalk";
 import ora2 from "ora";
 
@@ -1544,7 +1681,7 @@ function truncate(str, maxLen) {
 // cli/commands/export.ts
 async function exportCommand(input, options) {
   console.log(chalk2.blue("\n\u{1F4C4} GASPhotoAIManager CLI - \u30A8\u30AF\u30B9\u30DD\u30FC\u30C8\n"));
-  const inputPath = path5.resolve(input);
+  const inputPath = path6.resolve(input);
   let inputData;
   try {
     const content = await fs6.readFile(inputPath, "utf-8");
@@ -1565,14 +1702,14 @@ async function exportCommand(input, options) {
   console.log(chalk2.gray(`\u5F62\u5F0F: ${options.format}`));
   console.log(chalk2.gray(`\u30DA\u30FC\u30B8\u3042\u305F\u308A: ${options.photosPerPage}\u679A`));
   console.log("");
-  const outputDir = path5.resolve(options.output);
+  const outputDir = path6.resolve(options.output);
   try {
     await fs6.mkdir(outputDir, { recursive: true });
   } catch {
   }
   const photosPerPage = parseInt(options.photosPerPage, 10);
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const baseFileName = path5.basename(inputPath, ".json");
+  const baseFileName = path6.basename(inputPath, ".json");
   const formats = options.format === "both" ? ["excel", "pdf"] : [options.format];
   for (const format of formats) {
     if (format === "excel") {
@@ -1599,7 +1736,7 @@ async function exportExcel(data, outputDir, baseName, dateStr, photosPerPage, ti
       photosPerPage,
       title
     });
-    const outputPath = path5.join(outputDir, `${baseName}_${dateStr}.xlsx`);
+    const outputPath = path6.join(outputDir, `${baseName}_${dateStr}.xlsx`);
     await fs6.writeFile(outputPath, buffer);
     spinner.succeed(`Excel\u51FA\u529B: ${outputPath}`);
   } catch (error) {
@@ -1622,7 +1759,7 @@ async function exportPdf(data, outputDir, baseName, dateStr, photosPerPage, titl
       title,
       fontPath
     });
-    const outputPath = path5.join(outputDir, `${baseName}_${dateStr}.pdf`);
+    const outputPath = path6.join(outputDir, `${baseName}_${dateStr}.pdf`);
     await fs6.writeFile(outputPath, buffer);
     spinner.succeed(`PDF\u51FA\u529B: ${outputPath}`);
   } catch (error) {
@@ -1636,12 +1773,12 @@ import chalk3 from "chalk";
 
 // cli/adapters/apiKeyAdapter.ts
 import * as fs7 from "fs/promises";
-import * as path6 from "path";
+import * as path7 from "path";
 import * as os2 from "os";
 import dotenv from "dotenv";
 dotenv.config();
-var CONFIG_DIR2 = path6.join(os2.homedir(), ".gaspm");
-var CONFIG_FILE = path6.join(CONFIG_DIR2, "config.json");
+var CONFIG_DIR2 = path7.join(os2.homedir(), ".gaspm");
+var CONFIG_FILE = path7.join(CONFIG_DIR2, "config.json");
 async function loadConfig() {
   try {
     const content = await fs7.readFile(CONFIG_FILE, "utf-8");
@@ -1767,7 +1904,7 @@ function handlePath() {
 import express from "express";
 import cors from "cors";
 import * as fs8 from "fs/promises";
-import * as path7 from "path";
+import * as path8 from "path";
 import { exec } from "child_process";
 var PORT = 3001;
 var sseClients = [];
@@ -1803,8 +1940,8 @@ function openBrowser(url) {
   });
 }
 async function runAnalyzeWeb(folderPath, options = {}) {
-  const { mode = "construction", output } = options;
-  const absoluteFolderPath = path7.resolve(folderPath);
+  const { mode = "construction", output, useYolo = false, yoloConfThreshold = 0.5 } = options;
+  const absoluteFolderPath = path8.resolve(folderPath);
   try {
     const stat4 = await fs8.stat(absoluteFolderPath);
     if (!stat4.isDirectory()) {
@@ -1875,6 +2012,9 @@ async function runAnalyzeWeb(folderPath, options = {}) {
 \u{1F4F7} \u5199\u771F\u89E3\u6790 (Web UI)`);
     console.log(`   \u30D5\u30A9\u30EB\u30C0: ${absoluteFolderPath}`);
     console.log(`   \u30E2\u30FC\u30C9: ${mode}`);
+    if (useYolo) {
+      console.log(`   YOLO\u524D\u51E6\u7406: \u6709\u52B9 (\u95BE\u5024=${yoloConfThreshold})`);
+    }
     console.log(`   URL: http://localhost:${PORT}/web-analyzer.html
 `);
     openBrowser(`http://localhost:${PORT}/web-analyzer.html`);
@@ -1905,13 +2045,15 @@ async function runAnalyzeWeb(folderPath, options = {}) {
           broadcastLog("\u5DE5\u7A2E\u30DE\u30B9\u30BF\u306A\u3057\uFF08general\u30E2\u30FC\u30C9\u3067\u7D9A\u884C\uFF09", "info");
         }
       }
-      broadcastLog(`AI\u89E3\u6790\u958B\u59CB: ${photoInputs.length}\u679A`);
+      broadcastLog(`AI\u89E3\u6790\u958B\u59CB: ${photoInputs.length}\u679A${useYolo ? " (YOLO\u524D\u51E6\u7406\u6709\u52B9)" : ""}`);
       analysisResults = await analyzePhotos(photoInputs, {
         mode,
         batchSize: 10,
         parallelBatches: 1,
         // 順次処理（並列CLI呼び出しはオーバーヘッド大）
         hierarchy,
+        useYolo,
+        yoloConfThreshold,
         onLog: (msg, type) => broadcastLog(msg, type),
         onProgress: (current, total, fileName) => {
           broadcastLog(`[${current}/${total}] ${fileName}`, "info");
@@ -1926,7 +2068,7 @@ async function runAnalyzeWeb(folderPath, options = {}) {
       broadcastLog(`\u89E3\u6790\u5B8C\u4E86: ${analysisResults.length}\u679A`, "success");
       analysisComplete = true;
       if (output) {
-        const outputPath = path7.resolve(output);
+        const outputPath = path8.resolve(output);
         await fs8.writeFile(outputPath, JSON.stringify(analysisResults, null, 2));
         broadcastLog(`\u7D50\u679C\u4FDD\u5B58: ${outputPath}`, "success");
       }
@@ -1956,10 +2098,15 @@ async function runAnalyzeWeb(folderPath, options = {}) {
 // cli/index.ts
 var program = new Command();
 program.name("gaspm").description("GASPhotoAIManager CLI - \u5DE5\u4E8B\u5199\u771FAI\u89E3\u6790\u30C4\u30FC\u30EB").version("1.0.0");
-program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).action(analyzeCommand);
+program.command("analyze").description("\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u3092\u89E3\u6790").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)", "result.json").option("-i, --instruction <text>", "AI\u89E3\u6790\u3078\u306E\u8FFD\u52A0\u6307\u793A").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("-b, --batch-size <number>", "\u30D0\u30C3\u30C1\u30B5\u30A4\u30BA", "5").option("-r, --recursive", "\u30B5\u30D6\u30D5\u30A9\u30EB\u30C0\u3082\u542B\u3081\u308B", false).option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").action(analyzeCommand);
 program.command("export").description("\u89E3\u6790\u7D50\u679C\u3092Excel/PDF\u306B\u51FA\u529B").argument("<input>", "\u5165\u529BJSON\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").option("-f, --format <format>", "\u51FA\u529B\u5F62\u5F0F (excel/pdf/both)", "both").option("-o, --output <dir>", "\u51FA\u529B\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA", ".").option("-p, --photos-per-page <number>", "\u30DA\u30FC\u30B8\u3042\u305F\u308A\u306E\u5199\u771F\u6570 (2/3)", "3").option("-t, --title <title>", "\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\u30BF\u30A4\u30C8\u30EB", "\u5DE5\u4E8B\u5199\u771F\u5E33").option("--font <path>", "\u65E5\u672C\u8A9E\u30D5\u30A9\u30F3\u30C8\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9").action(exportCommand);
 program.command("config").description("\u8A2D\u5B9A\u7BA1\u7406").argument("[action]", "\u30A2\u30AF\u30B7\u30E7\u30F3 (set-key/show/path)").argument("[value]", "\u8A2D\u5B9A\u5024").action(configCommand);
-program.command("analyze:web").description("\u30D6\u30E9\u30A6\u30B6UI\u3067\u5199\u771F\u89E3\u6790\uFF08\u81EA\u52D5\u8D77\u52D5\u30FB\u81EA\u52D5\u7D42\u4E86\uFF09").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").action((folder, options) => {
-  runAnalyzeWeb(folder, options);
+program.command("analyze:web").description("\u30D6\u30E9\u30A6\u30B6UI\u3067\u5199\u771F\u89E3\u6790\uFF08\u81EA\u52D5\u8D77\u52D5\u30FB\u81EA\u52D5\u7D42\u4E86\uFF09").argument("<folder>", "\u89E3\u6790\u3059\u308B\u5199\u771F\u30D5\u30A9\u30EB\u30C0\u306E\u30D1\u30B9").option("-o, --output <file>", "\u51FA\u529B\u30D5\u30A1\u30A4\u30EB\u30D1\u30B9 (JSON)").option("-m, --mode <mode>", "\u30A2\u30D7\u30EA\u30E2\u30FC\u30C9 (construction/general)", "construction").option("--yolo", "YOLO\u524D\u51E6\u7406\u3092\u6709\u52B9\u5316\uFF0829%\u9AD8\u901F\u5316\uFF09", false).option("--yolo-conf <threshold>", "YOLO\u4FE1\u983C\u5EA6\u95BE\u5024", "0.5").action((folder, options) => {
+  runAnalyzeWeb(folder, {
+    mode: options.mode,
+    output: options.output,
+    useYolo: options.yolo,
+    yoloConfThreshold: parseFloat(options.yoloConf || "0.5")
+  });
 });
 program.parse();

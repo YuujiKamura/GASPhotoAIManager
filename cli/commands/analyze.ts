@@ -27,6 +27,8 @@ interface AnalyzeOptions {
   mode: string;
   batchSize: string;
   recursive: boolean;
+  yolo: boolean;
+  yoloConf: string;
 }
 
 export async function analyzeCommand(
@@ -99,7 +101,13 @@ export async function analyzeCommand(
   }
 
   // AI解析
+  const yoloEnabled = options.yolo === true;
+  const yoloConfThreshold = parseFloat(options.yoloConf || '0.5');
+
   console.log(chalk.gray(`\nモード: ${options.mode} (Claude Code CLI使用)`));
+  if (yoloEnabled) {
+    console.log(chalk.gray(`YOLO前処理: 有効 (閾値=${yoloConfThreshold})`));
+  }
   if (options.instruction) {
     console.log(chalk.gray(`指示: ${options.instruction}`));
   }
@@ -114,6 +122,8 @@ export async function analyzeCommand(
       instruction: options.instruction,
       batchSize: parseInt(options.batchSize, 10),
       hierarchy,
+      useYolo: yoloEnabled,
+      yoloConfThreshold,
       onLog: (msg, type) => {
         if (type === 'error') {
           analyzeSpinner.warn(msg);

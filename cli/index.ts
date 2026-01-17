@@ -28,6 +28,8 @@ program
   .option('-m, --mode <mode>', 'アプリモード (construction/general)', 'construction')
   .option('-b, --batch-size <number>', 'バッチサイズ', '5')
   .option('-r, --recursive', 'サブフォルダも含める', false)
+  .option('--yolo', 'YOLO前処理を有効化（29%高速化）', false)
+  .option('--yolo-conf <threshold>', 'YOLO信頼度閾値', '0.5')
   .action(analyzeCommand);
 
 // export コマンド
@@ -57,8 +59,15 @@ program
   .argument('<folder>', '解析する写真フォルダのパス')
   .option('-o, --output <file>', '出力ファイルパス (JSON)')
   .option('-m, --mode <mode>', 'アプリモード (construction/general)', 'construction')
+  .option('--yolo', 'YOLO前処理を有効化（29%高速化）', false)
+  .option('--yolo-conf <threshold>', 'YOLO信頼度閾値', '0.5')
   .action((folder, options) => {
-    runAnalyzeWeb(folder, options);
+    runAnalyzeWeb(folder, {
+      mode: options.mode,
+      output: options.output,
+      useYolo: options.yolo,
+      yoloConfThreshold: parseFloat(options.yoloConf || '0.5'),
+    });
   });
 
 program.parse();

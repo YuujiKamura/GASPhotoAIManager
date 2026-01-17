@@ -2,7 +2,7 @@
 import express from "express";
 import cors from "cors";
 import * as fs4 from "fs/promises";
-import * as path4 from "path";
+import * as path5 from "path";
 
 // cli/adapters/imageAdapter.ts
 import sharp from "sharp";
@@ -389,10 +389,107 @@ var getMergedHierarchy = async () => {
 };
 
 // shared/core/claudeAnalysis.ts
-import { execSync } from "child_process";
+import { execSync as execSync2 } from "child_process";
 import * as fs3 from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync as existsSync2 } from "fs";
+import * as path4 from "path";
+
+// shared/core/yoloPreprocess.ts
+import { execSync } from "child_process";
 import * as path3 from "path";
+import { existsSync } from "fs";
+var DEFAULT_CONF_THRESHOLD = 0.25;
+var DEFAULT_DEVICE = "cpu";
+function getDefaultModelPath() {
+  const projectRoot2 = process.cwd();
+  return path3.join(projectRoot2, "models", "yolo-construction.pt");
+}
+function getScriptPath() {
+  const projectRoot2 = process.cwd();
+  return path3.join(projectRoot2, "models", "yolo_detect.py");
+}
+function runYoloSingle(imagePath, options = {}) {
+  const {
+    confThreshold = DEFAULT_CONF_THRESHOLD,
+    modelPath = getDefaultModelPath(),
+    device = DEFAULT_DEVICE
+  } = options;
+  const scriptPath = getScriptPath();
+  if (!existsSync(scriptPath)) {
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `YOLO script not found: ${scriptPath}`
+    };
+  }
+  if (!existsSync(modelPath)) {
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `YOLO model not found: ${modelPath}. Copy from: ~/Sanyuu2Kouku/cursor_tools/summarygenerator/runs/train/db_training/weights/best.pt`
+    };
+  }
+  if (!existsSync(imagePath)) {
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `Image not found: ${imagePath}`
+    };
+  }
+  try {
+    const cmd = `python "${scriptPath}" "${imagePath}" --model "${modelPath}" --conf ${confThreshold} --device ${device}`;
+    const stdout = execSync(cmd, {
+      encoding: "utf-8",
+      timeout: 6e4,
+      // 1分タイムアウト
+      maxBuffer: 10 * 1024 * 1024
+    });
+    const result = JSON.parse(stdout.trim());
+    return result;
+  } catch (error) {
+    const err = error;
+    return {
+      image: imagePath,
+      model: modelPath,
+      detections: [],
+      count: 0,
+      error: `YOLO execution failed: ${err.message || err.stderr}`
+    };
+  }
+}
+async function runYoloDetection(imagePaths, options = {}) {
+  const results = /* @__PURE__ */ new Map();
+  for (const imagePath of imagePaths) {
+    const result = runYoloSingle(imagePath, options);
+    if (result.error) {
+      console.warn(`[YOLO] ${result.error}`);
+      results.set(imagePath, []);
+    } else {
+      results.set(imagePath, result.detections);
+    }
+  }
+  return results;
+}
+function formatYoloHint(detections, minConfidence = 0.5) {
+  if (!detections || detections.length === 0) {
+    return "";
+  }
+  const hints = detections.filter((d) => d.confidence >= minConfidence).map((d) => `${d.class_name}(${(d.confidence * 100).toFixed(0)}%)`).join(", ");
+  return hints ? ` [\u691C\u51FA: ${hints}]` : "";
+}
+function isYoloAvailable(modelPath) {
+  const model = modelPath || getDefaultModelPath();
+  const script = getScriptPath();
+  return existsSync(model) && existsSync(script);
+}
+
+// shared/core/claudeAnalysis.ts
 var formatDuration = (ms) => {
   if (ms < 1e3) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1e3).toFixed(2)}s`;
@@ -414,7 +511,7 @@ function runClaudeCode(prompt, imagePaths, onLog) {
   let cmd;
   if (imagePaths && imagePaths.length > 0) {
     for (const p of imagePaths) {
-      if (!existsSync(p)) {
+      if (!existsSync2(p)) {
         onLog?.(`Warning: File not found: ${p}`, "error");
       } else {
         onLog?.(`File exists: ${p}`, "info");
@@ -422,7 +519,7 @@ function runClaudeCode(prompt, imagePaths, onLog) {
     }
     const cwd = process.cwd();
     const relativePaths = imagePaths.map((p) => {
-      const rel = path3.relative(cwd, p).replace(/\\/g, "/");
+      const rel = path4.relative(cwd, p).replace(/\\/g, "/");
       return rel.startsWith(".") ? rel : `./${rel}`;
     });
     const imageArgs = relativePaths.map((p) => `"${p}"`).join(" ");
@@ -433,7 +530,7 @@ function runClaudeCode(prompt, imagePaths, onLog) {
     onLog?.(`Step2: claude [text only]`, "info");
   }
   try {
-    const result = execSync(cmd, {
+    const result = execSync2(cmd, {
       encoding: "utf-8",
       timeout: 12e4,
       maxBuffer: 10 * 1024 * 1024
@@ -444,46 +541,103 @@ function runClaudeCode(prompt, imagePaths, onLog) {
     throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
   }
 }
+var PHOTO_CATEGORIES = [
+  // 品質管理 - 温度測定
+  "\u5230\u7740\u6E29\u5EA6",
+  "\u6577\u5747\u3057\u6E29\u5EA6",
+  "\u521D\u671F\u7DE0\u56FA\u3081\u524D\u6E29\u5EA6",
+  "\u958B\u653E\u6E29\u5EA6",
+  "\u30A2\u30B9\u30D5\u30A1\u30EB\u30C8\u6DF7\u5408\u7269\u6E29\u5EA6\u6E2C\u5B9A",
+  // 品質管理 - 密度測定
+  "\u73FE\u5834\u5BC6\u5EA6\u6E2C\u5B9A",
+  // 施工状況
+  "\u8EE2\u5727\u72B6\u6CC1",
+  "\u6577\u5747\u3057\u72B6\u6CC1",
+  "\u8217\u8A2D\u72B6\u6CC1",
+  "\u521D\u671F\u8EE2\u5727\u72B6\u6CC1",
+  "2\u6B21\u8EE2\u5727\u72B6\u6CC1",
+  "\u4E73\u5264\u6563\u5E03\u72B6\u6CC1",
+  "\u7AEF\u90E8\u4E73\u5264\u5857\u5E03\u72B6\u6CC1",
+  "\u990A\u751F\u7802\u6563\u5E03\u72B6\u6CC1",
+  "\u6E05\u6383\u72B6\u6CC1",
+  "\u6398\u524A\u72B6\u6CC1",
+  "\u7A4D\u8FBC\u72B6\u6CC1",
+  "\u53D6\u58CA\u3057\u72B6\u6CC1",
+  "\u636E\u4ED8\u72B6\u6CC1",
+  "\u8A2D\u7F6E\u72B6\u6CC1",
+  // 着手前・完成
+  "\u7740\u624B\u524D",
+  "\u5B8C\u4E86",
+  "\u7AE3\u5DE5",
+  "\u65BD\u5DE5\u5B8C\u4E86",
+  "\u65E2\u6E08\u90E8\u5206",
+  // 出来形管理
+  "\u4E0D\u9678\u6574\u6B63\u51FA\u6765\u5F62",
+  "\u8DEF\u76E4\u539A\u51FA\u6765\u5F62",
+  "\u8868\u5C64\u539A\u51FA\u6765\u5F62",
+  "\u5E45\u54E1\u51FA\u6765\u5F62",
+  // 安全管理
+  "\u671D\u793C\u5B9F\u65BD\u72B6\u6CC1",
+  "\u671D\u793C\u30FBKY\u30DF\u30FC\u30C6\u30A3\u30F3\u30B0\u5B9F\u65BD\u72B6\u6CC1",
+  "\u671D\u793C\u72B6\u6CC1",
+  "KY\u6D3B\u52D5\u72B6\u6CC1",
+  "\u5371\u967A\u4E88\u77E5\u6D3B\u52D5\u72B6\u6CC1",
+  "KY\u30DF\u30FC\u30C6\u30A3\u30F3\u30B0\u5B9F\u65BD\u72B6\u6CC1",
+  "\u65B0\u898F\u5165\u5834\u8005\u6559\u80B2\u72B6\u6CC1",
+  "\u65B0\u898F\u5165\u5834\u8005\u6559\u80B2\u5B9F\u65BD\u72B6\u6CC1",
+  "\u4FDD\u5B89\u65BD\u8A2D\u8A2D\u7F6E\u72B6\u6CC1",
+  "\u70B9\u706F\u78BA\u8A8D\u72B6\u6CC1",
+  "\u5B89\u5168\u5DE1\u8996\u72B6\u6CC1",
+  "\u5B89\u5168\u8A13\u7DF4\u5B9F\u65BD\u72B6\u6CC1",
+  "\u907F\u96E3\u8A13\u7DF4\u5B9F\u65BD\u72B6\u6CC1",
+  // 災害・事故
+  "\u707D\u5BB3\u767A\u751F\u72B6\u6CC1",
+  "\u4E8B\u6545\u767A\u751F\u72B6\u6CC1",
+  "\u88AB\u5BB3\u72B6\u6CC1",
+  // 環境対策
+  "\u74B0\u5883\u5BFE\u7B56\u72B6\u6CC1",
+  "\u9A12\u97F3\u5BFE\u7B56\u72B6\u6CC1",
+  "\u7C89\u5875\u5BFE\u7B56\u72B6\u6CC1",
+  // その他
+  "\u305D\u306E\u4ED6"
+];
 var STEP1_PROMPT = `
-\u3042\u306A\u305F\u306F\u5DE5\u4E8B\u5199\u771F\u306E\u89E3\u6790\u5C02\u9580\u5BB6\u3067\u3059\u3002\u753B\u50CF\u304B\u3089\u4EE5\u4E0B\u306E\u60C5\u5831\u3092\u62BD\u51FA\u3057\u3066\u304F\u3060\u3055\u3044\u3002
+\u3042\u306A\u305F\u306F\u5DE5\u4E8B\u5199\u771F\u5E33\u3092\u4F5C\u6210\u3059\u308B\u73FE\u5834\u76E3\u7763\u3067\u3059\u3002\u8907\u6570\u306E\u5199\u771F\u3092\u540C\u6642\u306B\u89E3\u6790\u3057\u3001\u4E00\u8CAB\u6027\u306E\u3042\u308B\u5206\u985E\u3092\u884C\u3063\u3066\u304F\u3060\u3055\u3044\u3002
 
-\u51FA\u529B\u5F62\u5F0F\uFF08JSON\u914D\u5217\uFF09:
-- fileName: \u30D5\u30A1\u30A4\u30EB\u540D
-- hasBoard: \u9ED2\u677F\u304C\u5199\u3063\u3066\u3044\u308B\u304B (true/false)
-- detectedText: \u9ED2\u677F\u3084\u770B\u677F\u304B\u3089\u8AAD\u307F\u53D6\u308C\u308B\u5168\u3066\u306E\u30C6\u30AD\u30B9\u30C8
-- measurements: \u6570\u5024\u30C7\u30FC\u30BF\uFF08\u6E29\u5EA6\u3001\u5BF8\u6CD5\u3001\u5BC6\u5EA6\u7B49\uFF09\u3092\u305D\u306E\u307E\u307E\u8A18\u8F09\uFF08\u4F8B: "160.4\u2103", "\u539A\u305550mm"\uFF09
-- sceneDescription: \u5199\u771F\u306B\u5199\u3063\u3066\u3044\u308B\u3082\u306E\u306E\u5BA2\u89B3\u7684\u306A\u8AAC\u660E
-- photoCategoryGuess: \u4EE5\u4E0B\u304B\u30891\u3064\u9078\u629E
-  - "\u54C1\u8CEA\u7BA1\u7406" (\u6E29\u5EA6\u6E2C\u5B9A\u3001\u5BC6\u5EA6\u6E2C\u5B9A\u306A\u3069)
-  - "\u65BD\u5DE5\u72B6\u6CC1" (\u4F5C\u696D\u4E2D\u306E\u69D8\u5B50)
-  - "\u51FA\u6765\u5F62" (\u5B8C\u6210\u3057\u305F\u69CB\u9020\u7269\u306E\u6E2C\u5B9A)
-  - "\u5B89\u5168\u7BA1\u7406" (\u671D\u793C\u3001KY\u6D3B\u52D5\u306A\u3069)
-  - "\u7740\u624B\u524D\u5B8C\u6210" (\u5DE5\u4E8B\u524D\u5F8C\u306E\u72B6\u614B)
-  - "\u4F7F\u7528\u6750\u6599" (\u6750\u6599\u306E\u642C\u5165\u30FB\u691C\u53CE)
+## \u5199\u771F\u533A\u5206\uFF08\u30D5\u30A9\u30C8\u30AB\u30C6\u30B4\u30EA\uFF09
+\u4EE5\u4E0B\u304B\u3089\u6700\u3082\u9069\u5207\u306A\u3082\u306E\u3092\u9078\u629E\uFF1A
+${PHOTO_CATEGORIES.join(", ")}
 
-\u6CE8\u610F:
-- \u9ED2\u677F\u306E\u30C6\u30AD\u30B9\u30C8\u306F\u53EF\u80FD\u306A\u9650\u308A\u6B63\u78BA\u306BOCR\u3057\u3066\u304F\u3060\u3055\u3044
-- \u6570\u5024\u306F\u5358\u4F4D\u3082\u542B\u3081\u3066\u6B63\u78BA\u306B\u8A18\u8F09
+## \u51FA\u529B\u5F62\u5F0F\uFF08\u53B3\u5BC6\u306B\u3053\u306EJSON\u914D\u5217\u5F62\u5F0F\u3067\u51FA\u529B\uFF09
+[
+  {
+    "fileName": "\u30D5\u30A1\u30A4\u30EB\u540D",
+    "hasBoard": true/false,
+    "detectedText": "\u9ED2\u677F\u30FB\u770B\u677F\u304B\u3089\u8AAD\u307F\u53D6\u3063\u305F\u5168\u30C6\u30AD\u30B9\u30C8",
+    "measurements": "\u6570\u5024\u30C7\u30FC\u30BF\uFF08\u6E29\u5EA6\u3001\u5BF8\u6CD5\u3001\u5BC6\u5EA6\u7B49\uFF09\u5358\u4F4D\u4ED8\u304D",
+    "sceneDescription": "\u5199\u771F\u306B\u5199\u3063\u3066\u3044\u308B\u3082\u306E\u306E\u5BA2\u89B3\u7684\u306A\u8AAC\u660E",
+    "photoCategory": "\u5199\u771F\u533A\u5206\u304B\u3089\u9078\u629E"
+  }
+]
+
+## \u6CE8\u610F
+- \u9ED2\u677F\u306E\u30C6\u30AD\u30B9\u30C8\u306F\u6B63\u78BA\u306BOCR
+- \u6570\u5024\u306F\u5358\u4F4D\u3082\u542B\u3081\u3066\u6B63\u78BA\u306B\uFF08\u4F8B: "160.4\u2103", "\u539A\u305550mm"\uFF09
+- \u540C\u3058\u5834\u6240\u30FB\u540C\u3058\u4F5C\u696D\u306E\u5199\u771F\u306F\u4E00\u8CAB\u3057\u305F\u5206\u985E\u3092
 - \u63A8\u6E2C\u305B\u305A\u3001\u898B\u3048\u308B\u3082\u306E\u3060\u3051\u3092\u8A18\u8F09
-
-\u51FA\u529B\u306FJSON\u914D\u5217\u306E\u307F\u3002\u8AAC\u660E\u4E0D\u8981\u3002
+- JSON\u914D\u5217\u306E\u307F\u51FA\u529B\u3002\u8AAC\u660E\u6587\u306F\u4E0D\u8981
 `;
-function buildStep1Prompt(photos) {
+function buildStep1Prompt(photos, yoloConfThreshold = 0.5) {
   const photoInfoList = photos.map((p) => {
     const timeInfo = p.date ? formatShootingTime(p.date) : "unknown";
-    return `- ${p.fileName} (\u64AE\u5F71: ${timeInfo})`;
+    const yoloHint = formatYoloHint(p.yoloDetections || [], yoloConfThreshold);
+    return `- ${p.fileName} (\u64AE\u5F71: ${timeInfo})${yoloHint}`;
   }).join("\n");
   return `${STEP1_PROMPT}
 
 \u5BFE\u8C61\u5199\u771F:
 ${photoInfoList}
 `.trim();
-}
-async function executeStep1(photos, onLog) {
-  const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
-  const prompt = buildStep1Prompt(photos);
-  const response = runClaudeCode(prompt, imagePaths, onLog);
-  return parseJsonResponse(response, photos.length, onLog);
 }
 function buildStep2Prompt(rawData, hierarchy) {
   const hierarchyStr = JSON.stringify(hierarchy, null, 0);
@@ -493,7 +647,7 @@ function buildStep2Prompt(rawData, hierarchy) {
 OCR\u30C6\u30AD\u30B9\u30C8: ${d.detectedText || "\u306A\u3057"}
 \u6570\u5024: ${d.measurements || "\u306A\u3057"}
 \u30B7\u30FC\u30F3: ${d.sceneDescription}
-\u63A8\u5B9A\u533A\u5206: ${d.photoCategoryGuess}
+\u5199\u771F\u533A\u5206: ${d.photoCategory}
 `).join("\n---\n");
   return `
 \u3042\u306A\u305F\u306F\u5DE5\u4E8B\u5199\u771F\u306E\u5206\u985E\u5C02\u9580\u5BB6\u3067\u3059\u3002
@@ -525,11 +679,6 @@ ${rawDataStr}
 
 \u51FA\u529B\u306FJSON\u914D\u5217\u306E\u307F\u3002\u8AAC\u660E\u4E0D\u8981\u3002
 `.trim();
-}
-async function executeStep2(rawData, hierarchy, onLog) {
-  const prompt = buildStep2Prompt(rawData, hierarchy);
-  const response = runClaudeCode(prompt, void 0, onLog);
-  return parseJsonResponse(response, rawData.length, onLog);
 }
 function parseJsonResponse(text, expectedCount, onLog) {
   onLog?.(`Raw response (${text.length} chars): ${text.substring(0, 500)}...`, "info");
@@ -581,9 +730,9 @@ function mergeResults(rawData, classified) {
 }
 async function saveToTempFile(photo) {
   const projectRoot2 = process.cwd();
-  const tempDir = path3.join(projectRoot2, "temp-images");
+  const tempDir = path4.join(projectRoot2, "temp-images");
   await fs3.mkdir(tempDir, { recursive: true });
-  const tempPath = path3.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
+  const tempPath = path4.join(tempDir, `gaspm_${Date.now()}_${photo.fileName}`);
   let base64Data = photo.base64;
   if (base64Data.includes(",")) {
     base64Data = base64Data.split(",")[1];
@@ -603,22 +752,77 @@ async function analyzePhotos(photos, options) {
   const {
     mode = "construction",
     batchSize = 5,
+    parallelBatches = 3,
+    // Step1を並列実行する数
     onLog,
     onProgress,
+    onMetrics,
     shouldAbort,
-    hierarchy
+    hierarchy,
+    useYolo = false,
+    yoloConfThreshold = 0.5
   } = options;
-  const startTime = Date.now();
-  const allResults = [];
-  onLog?.(`\u89E3\u6790\u958B\u59CB: ${photos.length}\u679A (2\u6BB5\u968E\u51E6\u7406)`, "info");
-  const batches = [];
-  for (let i = 0; i < photos.length; i += batchSize) {
-    batches.push(photos.slice(i, i + batchSize));
+  const analysisStart = Date.now();
+  const batchMetrics = [];
+  const imageMetrics = [];
+  const rawResponses = [];
+  if (useYolo) {
+    if (!isYoloAvailable()) {
+      onLog?.("YOLO: \u30E2\u30C7\u30EB\u307E\u305F\u306F\u30B9\u30AF\u30EA\u30D7\u30C8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3002YOLO\u524D\u51E6\u7406\u3092\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3059\u3002", "info");
+    } else {
+      const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
+      if (imagePaths.length > 0) {
+        onLog?.(`YOLO\u524D\u51E6\u7406\u958B\u59CB: ${imagePaths.length}\u679A`, "info");
+        const yoloStart = Date.now();
+        try {
+          const yoloResults = await runYoloDetection(imagePaths, {
+            confThreshold: yoloConfThreshold
+          });
+          let detectCount = 0;
+          for (const photo of photos) {
+            if (photo.filePath && yoloResults.has(photo.filePath)) {
+              photo.yoloDetections = yoloResults.get(photo.filePath);
+              if (photo.yoloDetections && photo.yoloDetections.length > 0) {
+                detectCount++;
+              }
+            }
+          }
+          const yoloDuration = Date.now() - yoloStart;
+          onLog?.(`YOLO\u524D\u51E6\u7406\u5B8C\u4E86: ${formatDuration(yoloDuration)} (\u691C\u51FA\u3042\u308A: ${detectCount}\u679A)`, "success");
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : "Unknown error";
+          onLog?.(`YOLO\u524D\u51E6\u7406\u30A8\u30E9\u30FC: ${errMsg}\uFF08\u7D9A\u884C\u3057\u307E\u3059\uFF09`, "error");
+        }
+      }
+    }
   }
-  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-    checkAbort(shouldAbort, `\u30D0\u30C3\u30C1 ${batchIndex + 1}/${batches.length}`);
-    const batch = batches[batchIndex];
-    onLog?.(`\u30D0\u30C3\u30C1 ${batchIndex + 1}/${batches.length} (${batch.length}\u679A)`, "info");
+  onLog?.(`\u89E3\u6790\u958B\u59CB: ${photos.length}\u679A (${parallelBatches}\u4E26\u5217Step1 + \u7D71\u5408Step2)`, "info");
+  onMetrics?.({ type: "analysis_start", totalImages: photos.length, mode });
+  const batches = [];
+  const numBatches = Math.min(parallelBatches, photos.length);
+  const baseSize = Math.floor(photos.length / numBatches);
+  const remainder = photos.length % numBatches;
+  let offset = 0;
+  for (let i = 0; i < numBatches; i++) {
+    const size = baseSize + (i < remainder ? 1 : 0);
+    batches.push(photos.slice(offset, offset + size));
+    offset += size;
+  }
+  onLog?.(`Step1\u958B\u59CB: ${batches.length}\u30D0\u30C3\u30C1\u3092${parallelBatches}\u4E26\u5217\u3067\u5B9F\u884C`, "info");
+  const step1Start = Date.now();
+  const allTempPaths = [];
+  const step1Tasks = batches.map(async (batch, batchIndex) => {
+    checkAbort(shouldAbort, `Step1 \u30D0\u30C3\u30C1 ${batchIndex + 1}`);
+    const batchStart = Date.now();
+    const imageNames = batch.map((p) => p.fileName);
+    onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1}/${batches.length} \u958B\u59CB (${batch.length}\u679A)`, "info");
+    onMetrics?.({
+      type: "batch_start",
+      batchIndex,
+      totalBatches: batches.length,
+      imageCount: batch.length,
+      images: imageNames
+    });
     const tempPaths = [];
     for (const photo of batch) {
       if (photo.filePath) {
@@ -629,56 +833,148 @@ async function analyzePhotos(photos, options) {
         photo.filePath = tempPath;
       }
     }
-    try {
-      const step1Start = Date.now();
-      const rawData = await executeStep1(batch, onLog);
-      onLog?.(`Step1\u5B8C\u4E86: ${formatDuration(Date.now() - step1Start)}`, "info");
-      let batchResults;
-      if (mode === "construction" && hierarchy) {
-        const step2Start = Date.now();
-        const classified = await executeStep2(rawData, hierarchy, onLog);
-        onLog?.(`Step2\u5B8C\u4E86: ${formatDuration(Date.now() - step2Start)}`, "info");
-        batchResults = mergeResults(rawData, classified);
-      } else {
-        batchResults = rawData.map((raw) => ({
-          fileName: raw.fileName,
-          workType: "",
-          variety: "",
-          detail: "",
-          station: "",
-          remarks: raw.photoCategoryGuess,
-          remarksCategory: raw.photoCategoryGuess,
-          remarksValue: "",
-          description: raw.sceneDescription,
-          measurements: raw.measurements,
-          hasBoard: raw.hasBoard,
-          detectedText: raw.detectedText,
-          reasoning: ""
-        }));
-      }
-      for (const result of batchResults) {
-        onProgress?.(
-          allResults.length + 1,
-          photos.length,
-          result.fileName,
-          result
-        );
-      }
-      allResults.push(...batchResults);
-    } finally {
-      const toCleanup = tempPaths.filter((p, i) => {
-        const original = batch[i];
-        return p !== original.filePath || p.includes("gaspm_");
-      });
-      await cleanupTempFiles(toCleanup);
-    }
+    allTempPaths[batchIndex] = tempPaths;
+    onMetrics?.({ type: "step_start", step: 1, batchIndex });
+    const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
+    const duration = Date.now() - batchStart;
+    onLog?.(`Step1 \u30D0\u30C3\u30C1${batchIndex + 1} \u5B8C\u4E86: ${formatDuration(duration)}`, "info");
+    onMetrics?.({ type: "step_complete", step: 1, batchIndex, duration });
+    return { batchIndex, rawData, duration, imageNames, batch };
+  });
+  const step1Results = await Promise.all(step1Tasks);
+  step1Results.sort((a, b) => a.batchIndex - b.batchIndex);
+  const step1TotalTime = Date.now() - step1Start;
+  onLog?.(`Step1\u5168\u5B8C\u4E86: ${formatDuration(step1TotalTime)} (${batches.length}\u30D0\u30C3\u30C1)`, "success");
+  let allResults = [];
+  let step2TotalTime = 0;
+  const allRawData = step1Results.flatMap((r) => r.rawData);
+  if (mode === "construction" && hierarchy) {
+    onLog?.(`Step2\u958B\u59CB: ${allRawData.length}\u4EF6\u3092\u4E00\u62EC\u7167\u5408`, "info");
+    onMetrics?.({ type: "step_start", step: 2, batchIndex: 0 });
+    const step2Start = Date.now();
+    const classified = await executeStep2WithMetrics(allRawData, hierarchy, 0, rawResponses, onLog, onMetrics);
+    step2TotalTime = Date.now() - step2Start;
+    onLog?.(`Step2\u5B8C\u4E86: ${formatDuration(step2TotalTime)}`, "success");
+    onMetrics?.({ type: "step_complete", step: 2, batchIndex: 0, duration: step2TotalTime });
+    allResults = mergeResults(allRawData, classified);
+  } else {
+    allResults = allRawData.map((raw) => ({
+      fileName: raw.fileName,
+      workType: "",
+      variety: "",
+      detail: "",
+      station: "",
+      remarks: raw.photoCategory,
+      remarksCategory: raw.photoCategory,
+      remarksValue: "",
+      description: raw.sceneDescription,
+      measurements: raw.measurements,
+      hasBoard: raw.hasBoard,
+      detectedText: raw.detectedText,
+      reasoning: ""
+    }));
   }
-  const totalTime = Date.now() - startTime;
-  onLog?.(
-    `\u89E3\u6790\u5B8C\u4E86: ${allResults.length}\u679A, \u5408\u8A08\u6642\u9593=${formatDuration(totalTime)}`,
-    "success"
-  );
+  const analysisEnd = Date.now();
+  const totalTime = analysisEnd - analysisStart;
+  for (const r of step1Results) {
+    const step2PerBatch = step2TotalTime / step1Results.length;
+    batchMetrics.push({
+      index: r.batchIndex,
+      imageCount: r.batch.length,
+      startTime: analysisStart,
+      endTime: analysisEnd,
+      step1Duration: r.duration,
+      step2Duration: step2PerBatch,
+      images: r.imageNames
+    });
+    const perImageStep1 = r.duration / r.batch.length;
+    const perImageStep2 = step2PerBatch / r.batch.length;
+    for (const photo of r.batch) {
+      const result = allResults.find((res) => res.fileName === photo.fileName);
+      imageMetrics.push({
+        fileName: photo.fileName,
+        step1Time: perImageStep1,
+        step2Time: perImageStep2,
+        totalTime: perImageStep1 + perImageStep2,
+        status: "success"
+      });
+      if (result) {
+        onMetrics?.({ type: "image_complete", fileName: photo.fileName, result });
+        onProgress?.(imageMetrics.length, photos.length, photo.fileName, result);
+      }
+    }
+    onMetrics?.({
+      type: "batch_complete",
+      batchIndex: r.batchIndex,
+      duration: r.duration + step2PerBatch,
+      step1Duration: r.duration,
+      step2Duration: step2PerBatch
+    });
+  }
+  for (let i = 0; i < allTempPaths.length; i++) {
+    const tempPaths = allTempPaths[i];
+    const batch = batches[i];
+    const toCleanup = tempPaths.filter((p, j) => {
+      const original = batch[j];
+      return p !== original.filePath || p.includes("gaspm_");
+    });
+    await cleanupTempFiles(toCleanup);
+  }
+  const metrics = {
+    mode,
+    totalImages: photos.length,
+    timestamps: { analysisStart, analysisEnd },
+    batches: batchMetrics,
+    perImage: imageMetrics,
+    summary: {
+      totalTime,
+      avgTimePerImage: totalTime / photos.length,
+      imagesPerSecond: photos.length / (totalTime / 1e3),
+      successCount: imageMetrics.filter((m) => m.status === "success").length,
+      errorCount: imageMetrics.filter((m) => m.status === "error").length,
+      step1TotalTime,
+      step2TotalTime
+    },
+    rawResponses
+  };
+  onLog?.(`\u89E3\u6790\u5B8C\u4E86: ${allResults.length}\u679A, \u5408\u8A08=${formatDuration(totalTime)} (Step1=${formatDuration(step1TotalTime)}, Step2=${formatDuration(step2TotalTime)})`, "success");
+  onMetrics?.({ type: "analysis_complete", metrics });
   return allResults;
+}
+async function executeStep1WithMetrics(photos, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold = 0.5) {
+  const imagePaths = photos.map((p) => p.filePath).filter(Boolean);
+  const prompt = buildStep1Prompt(photos, yoloConfThreshold);
+  const start = Date.now();
+  const response = runClaudeCode(prompt, imagePaths, onLog);
+  const duration = Date.now() - start;
+  let parseSuccess = true;
+  let result;
+  try {
+    result = parseJsonResponse(response, photos.length, onLog);
+  } catch {
+    parseSuccess = false;
+    throw new Error("Step1 JSON parse failed");
+  }
+  rawResponses.push({ step: "step1", batchIndex, response, parseSuccess, duration });
+  onMetrics?.({ type: "raw_response", step: 1, batchIndex, response, duration });
+  return result;
+}
+async function executeStep2WithMetrics(rawData, hierarchy, batchIndex, rawResponses, onLog, onMetrics) {
+  const prompt = buildStep2Prompt(rawData, hierarchy);
+  const start = Date.now();
+  const response = runClaudeCode(prompt, void 0, onLog);
+  const duration = Date.now() - start;
+  let parseSuccess = true;
+  let result;
+  try {
+    result = parseJsonResponse(response, rawData.length, onLog);
+  } catch {
+    parseSuccess = false;
+    throw new Error("Step2 JSON parse failed");
+  }
+  rawResponses.push({ step: "step2", batchIndex, response, parseSuccess, duration });
+  onMetrics?.({ type: "raw_response", step: 2, batchIndex, response, duration });
+  return result;
 }
 
 // cli/server.ts
@@ -687,8 +983,8 @@ var app = express();
 var PORT = 3001;
 app.use(cors());
 app.use(express.json({ limit: "100mb" }));
-var __dirname = path4.dirname(fileURLToPath(import.meta.url));
-var projectRoot = path4.resolve(__dirname, "..");
+var __dirname = path5.dirname(fileURLToPath(import.meta.url));
+var projectRoot = path5.resolve(__dirname, "..");
 app.use(express.static(projectRoot));
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
@@ -825,7 +1121,7 @@ app.get("/api/folder", async (req, res) => {
     const items = entries.map((entry) => ({
       name: entry.name,
       isDirectory: entry.isDirectory(),
-      path: path4.join(folderPath, entry.name)
+      path: path5.join(folderPath, entry.name)
     }));
     res.json({ items });
   } catch (error) {
