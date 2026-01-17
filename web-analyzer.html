@@ -93,6 +93,48 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .hidden { display: none !important; }
+
+    /* Idle state panel */
+    .idle-panel {
+      text-align: center;
+      padding: 60px 20px;
+      background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
+      border: 2px dashed #30363d;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .idle-panel h2 {
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      color: #58a6ff;
+    }
+    .idle-panel p {
+      color: #8b949e;
+      margin-bottom: 12px;
+    }
+    .idle-panel code {
+      display: inline-block;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px 24px;
+      font-family: 'Consolas', monospace;
+      font-size: 0.9rem;
+      color: #f0883e;
+    }
+    .idle-panel .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      background: #238636;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
   </style>
 </head>
 <body>
@@ -104,7 +146,7 @@
       </div>
     </header>
 
-    <div class="info-bar">
+    <div class="info-bar" id="infoBar">
       <div class="info-item">
         <span class="info-label">フォルダ</span>
         <span class="info-value" id="folderPath">-</span>
@@ -117,6 +159,14 @@
         <span class="info-label">画像数</span>
         <span class="info-value" id="imageCount">-</span>
       </div>
+    </div>
+
+    <!-- Idle state panel -->
+    <div id="idleState" class="idle-panel">
+      <h2><span class="status-indicator"></span>解析待機中</h2>
+      <p>常駐サーバーが起動しています。以下のコマンドで解析を開始してください:</p>
+      <code>gaspm analyze ./photos --server</code>
+      <p style="margin-top: 16px; font-size: 0.8rem;">オプション: --mode construction --yolo</p>
     </div>
 
     <!-- Summary -->
@@ -244,7 +294,27 @@
       exportJson: document.getElementById('exportJson'),
       exportCsv: document.getElementById('exportCsv'),
       shutdown: document.getElementById('shutdown'),
+      idleState: document.getElementById('idleState'),
+      infoBar: document.getElementById('infoBar'),
     };
+
+    // Show idle or running state
+    function showIdleState() {
+      els.idleState.classList.remove('hidden');
+      els.spinner.style.display = 'none';
+      els.statusBadge.textContent = '待機中';
+      els.statusBadge.className = 'status-badge';
+      els.statusBadge.style.background = '#238636';
+      document.title = '待機中 - ダッシュボード';
+    }
+
+    function showRunningState() {
+      els.idleState.classList.add('hidden');
+      els.spinner.style.display = 'inline-block';
+      els.statusBadge.textContent = '解析中';
+      els.statusBadge.className = 'status-badge running';
+      document.title = '解析中 - ダッシュボード';
+    }
 
     // Helpers
     const formatDuration = (ms) => {
@@ -343,6 +413,7 @@
           analysisStartTime = Date.now();
           els.imageCount.textContent = event.totalImages;
           els.mode.textContent = event.mode;
+          showRunningState();
           addLog(`解析開始: ${event.totalImages}枚 (${event.mode}モード)`, 'info');
           break;
 
@@ -469,6 +540,17 @@
             handleMetricsEvent(data.event);
           } else if (data.type === 'complete') {
             onComplete();
+          } else if (data.type === 'status') {
+            // Status update from server
+            els.folderPath.textContent = data.folderPath || '-';
+            els.mode.textContent = data.mode || '-';
+            if (data.status === 'idle') {
+              showIdleState();
+            } else if (data.status === 'running') {
+              showRunningState();
+            } else if (data.status === 'complete') {
+              // Will be handled by onComplete
+            }
           } else if (data.message) {
             addLog(data.message, data.type);
           }
@@ -487,7 +569,12 @@
         els.folderPath.textContent = data.folderPath || '-';
         els.mode.textContent = data.mode || '-';
 
-        if (data.complete && data.metrics) {
+        // Handle different states
+        if (data.status === 'idle' || (!data.folderPath && !data.complete)) {
+          showIdleState();
+        } else if (data.status === 'running') {
+          showRunningState();
+        } else if (data.complete && data.metrics) {
           currentResults = data.results;
           currentMetrics = data.metrics;
           updateSummary(data.metrics);
@@ -495,9 +582,20 @@
           batchData = data.metrics.batches || [];
           updateTimeline();
           onComplete();
+        } else if (data.status === 'complete') {
+          currentResults = data.results;
+          currentMetrics = data.metrics;
+          if (data.metrics) {
+            updateSummary(data.metrics);
+            updateImageTable(data.metrics.perImage);
+            batchData = data.metrics.batches || [];
+            updateTimeline();
+          }
+          onComplete();
         }
       } catch (err) {
         addLog('サーバー接続エラー', 'error');
+        showIdleState();
       }
 
       connectSSE();

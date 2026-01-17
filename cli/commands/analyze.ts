@@ -29,12 +29,19 @@ interface AnalyzeOptions {
   recursive: boolean;
   yolo: boolean;
   yoloConf: string;
+  server: boolean;
 }
 
 export async function analyzeCommand(
   folder: string,
   options: AnalyzeOptions
 ): Promise<void> {
+  // サーバーモード: 常駐サーバーに解析を依頼
+  if (options.server) {
+    await analyzeViaServer(folder, options);
+    return;
+  }
+
   console.log(chalk.blue('\n📸 GASPhotoAIManager CLI - 写真解析\n'));
 
   // フォルダ存在確認
@@ -191,4 +198,61 @@ export async function analyzeCommand(
 
   console.log(chalk.gray(`\n出力ファイル: ${outputPath}`));
   console.log(chalk.gray(`次のステップ: gaspm export ${options.output} -f both\n`));
+}
+
+/**
+ * 常駐サーバー経由で解析を実行
+ */
+async function analyzeViaServer(folder: string, options: AnalyzeOptions): Promise<void> {
+  const SERVER_URL = 'http://localhost:3001';
+  const folderPath = path.resolve(folder);
+
+  console.log(chalk.blue('\n📸 GASPhotoAIManager CLI - サーバー経由解析\n'));
+
+  // サーバー稼働確認
+  try {
+    const healthRes = await fetch(`${SERVER_URL}/api/health`);
+    if (!healthRes.ok) {
+      throw new Error('Server not responding');
+    }
+  } catch {
+    console.error(chalk.red('エラー: サーバーが起動していません'));
+    console.error(chalk.yellow('先に `gaspm server start` を実行してください\n'));
+    process.exit(1);
+  }
+
+  // 解析リクエスト送信
+  const spinner = ora('サーバーに解析リクエストを送信中...').start();
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folderPath,
+        options: {
+          mode: options.mode,
+          output: options.output,
+          useYolo: options.yolo,
+          yoloConfThreshold: parseFloat(options.yoloConf || '0.5'),
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'リクエスト失敗');
+    }
+
+    spinner.succeed('解析開始');
+    console.log(chalk.green('\n✅ 解析がサーバーで開始されました'));
+    console.log(chalk.gray(`   フォルダ: ${folderPath}`));
+    console.log(chalk.gray(`   ダッシュボードで進捗を確認: http://localhost:3001/web-analyzer.html\n`));
+
+  } catch (error) {
+    spinner.fail('解析リクエスト失敗');
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(chalk.red(`エラー: ${errMsg}\n`));
+    process.exit(1);
+  }
 }

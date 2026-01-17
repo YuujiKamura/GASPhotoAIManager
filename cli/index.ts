@@ -10,6 +10,7 @@ import { analyzeCommand } from './commands/analyze';
 import { exportCommand } from './commands/export';
 import { configCommand } from './commands/config';
 import { runAnalyzeWeb } from './commands/analyzeWeb';
+import { serverCommand } from './commands/server';
 
 const program = new Command();
 
@@ -30,6 +31,7 @@ program
   .option('-r, --recursive', 'サブフォルダも含める', false)
   .option('--yolo', 'YOLO前処理を有効化（29%高速化）', false)
   .option('--yolo-conf <threshold>', 'YOLO信頼度閾値', '0.5')
+  .option('--server', '常駐サーバー経由で解析', false)
   .action(analyzeCommand);
 
 // export コマンド
@@ -69,5 +71,12 @@ program
       yoloConfThreshold: parseFloat(options.yoloConf || '0.5'),
     });
   });
+
+// server コマンド（常駐ダッシュボードサーバー）
+program
+  .command('server')
+  .description('常駐ダッシュボードサーバー管理')
+  .argument('[action]', 'start/stop/status', 'status')
+  .action(serverCommand);
 
 program.parse();
