@@ -56,3 +56,6 @@ dist-cli/
 
 # Merged codebase snapshot
 merged_codebase.txt
+
+# Business data
+src/data/unit-price/
