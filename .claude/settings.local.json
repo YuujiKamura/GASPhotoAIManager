@@ -87,7 +87,13 @@
       "Bash(gh issue create:*)",
       "Bash(claude --version)",
       "Bash(npm.cmd run:*)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(taskkill //F //PID 14128)",
+      "Bash(xargs:*)",
+      "Bash(npm i:*)",
+      "Bash(git restore:*)",
+      "Bash(claude)",
+      "Bash(claude --print-system-prompt:*)"
     ]
   }
 }

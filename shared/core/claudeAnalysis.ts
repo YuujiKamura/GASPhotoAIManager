@@ -33,7 +33,7 @@ interface RawImageData {
   detectedText: string;
   measurements: string;
   sceneDescription: string;
-  photoCategoryGuess: string;  // 品質管理/施工状況/出来形/安全管理/着手前完成/使用材料
+  photoCategory: string;  // 写真区分（転圧状況、到着温度、着手前等）
 }
 
 export interface AnalysisResult {
@@ -232,40 +232,42 @@ function runClaudeCode(
 // Step1: 画像認識 (Vision)
 // ============================================
 
-// 備考カテゴリ（Gemini版と同じ）
-const REMARKS_CATEGORIES = [
+// 写真区分（フォトカテゴリ）- 詳細分類
+// Gemini版のREMARKS_CATEGORIESと互換
+const PHOTO_CATEGORIES = [
+  // 品質管理 - 温度測定
   "到着温度", "敷均し温度", "初期締固め前温度", "開放温度",
-  "アスファルト混合物温度測定", "現場密度測定",
+  "アスファルト混合物温度測定",
+  // 品質管理 - 密度測定
+  "現場密度測定",
+  // 施工状況
   "転圧状況", "敷均し状況", "舗設状況", "初期転圧状況", "2次転圧状況",
   "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
   "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
+  // 着手前・完成
   "着手前", "完了", "竣工", "施工完了", "既済部分",
+  // 出来形管理
   "不陸整正出来形", "路盤厚出来形", "表層厚出来形", "幅員出来形",
+  // 安全管理
   "朝礼実施状況", "朝礼・KYミーティング実施状況", "朝礼状況",
   "KY活動状況", "危険予知活動状況", "KYミーティング実施状況",
   "新規入場者教育状況", "新規入場者教育実施状況",
   "保安施設設置状況", "点灯確認状況", "安全巡視状況",
   "安全訓練実施状況", "避難訓練実施状況",
+  // 災害・事故
   "災害発生状況", "事故発生状況", "被害状況",
+  // 環境対策
   "環境対策状況", "騒音対策状況", "粉塵対策状況",
+  // その他
   "その他"
 ];
 
 const STEP1_PROMPT = `
 あなたは工事写真帳を作成する現場監督です。複数の写真を同時に解析し、一貫性のある分類を行ってください。
 
-## 写真区分
-1. 着手前及び完成写真 - 工事前後の状態
-2. 施工状況写真 - 作業中の様子
-3. 安全管理写真 - 朝礼、KY活動
-4. 使用材料写真 - 材料の搬入・検収
-5. 品質管理写真 - 温度測定、密度測定
-6. 出来形管理写真 - 完成寸法の測定
-7. 災害写真・事故写真 - 異常事態
-8. その他
-
-## 備考カテゴリ（以下から選択）
-${REMARKS_CATEGORIES.join(', ')}
+## 写真区分（フォトカテゴリ）
+以下から最も適切なものを選択：
+${PHOTO_CATEGORIES.join(', ')}
 
 ## 出力形式（厳密にこのJSON配列形式で出力）
 [
@@ -275,7 +277,7 @@ ${REMARKS_CATEGORIES.join(', ')}
     "detectedText": "黒板・看板から読み取った全テキスト",
     "measurements": "数値データ（温度、寸法、密度等）単位付き",
     "sceneDescription": "写真に写っているものの客観的な説明",
-    "photoCategoryGuess": "備考カテゴリから選択"
+    "photoCategory": "写真区分から選択"
   }
 ]
 
@@ -328,7 +330,7 @@ function buildStep2Prompt(
 OCRテキスト: ${d.detectedText || 'なし'}
 数値: ${d.measurements || 'なし'}
 シーン: ${d.sceneDescription}
-推定区分: ${d.photoCategoryGuess}
+写真区分: ${d.photoCategory}
 `).join('\n---\n');
 
   return `
@@ -602,8 +604,8 @@ export async function analyzePhotos(
       variety: '',
       detail: '',
       station: '',
-      remarks: raw.photoCategoryGuess,
-      remarksCategory: raw.photoCategoryGuess,
+      remarks: raw.photoCategory,
+      remarksCategory: raw.photoCategory,
       remarksValue: '',
       description: raw.sceneDescription,
       measurements: raw.measurements,
