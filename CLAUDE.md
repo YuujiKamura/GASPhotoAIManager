@@ -18,6 +18,9 @@
 ## 許可されたコマンド
 
 ```
+Write(*)
+Edit(*)
+Read(*)
 Bash(mkdir:*)
 Bash(rm:*)
 Bash(mv:*)
