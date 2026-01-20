@@ -114,6 +114,8 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
     setIsGeneratingPdf(true);
     const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
     const previewElement = document.getElementById('album-content');
+    const originalInlineStyles = new Map<HTMLElement, string | null>();
+    const removedStyleNodes: Array<{ node: Node; parent: Node; nextSibling: ChildNode | null }> = [];
 
     try {
       if (photosPerPage === 2) {
@@ -125,6 +127,44 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
         }
 
         previewElement.classList.add('pdf-mode');
+        const targetElements = new Set<HTMLElement>();
+        const sheets = previewElement.querySelectorAll<HTMLElement>('.sheet-preview');
+        if (sheets.length > 0) {
+          sheets.forEach((sheet) => {
+            targetElements.add(sheet);
+            sheet.querySelectorAll<HTMLElement>('*').forEach((el) => targetElements.add(el));
+          });
+        } else {
+          targetElements.add(previewElement);
+          previewElement.querySelectorAll<HTMLElement>('*').forEach((el) => targetElements.add(el));
+        }
+        targetElements.forEach((el) => {
+          originalInlineStyles.set(el, el.getAttribute('style'));
+          const computed = window.getComputedStyle(el);
+          let cssText = '';
+          const sanitizeValue = (prop: string, value: string) => {
+            if (!value) return value;
+            if (!value.includes('oklch') && !value.includes('oklab')) return value;
+            if (prop.includes('background')) return '#ffffff';
+            if (prop.includes('border') || prop.includes('outline') || prop.includes('column-rule')) return '#b3b3b3';
+            if (prop.includes('color') || prop === 'fill' || prop === 'stroke') return '#111111';
+            if (prop.includes('shadow') || prop.includes('filter')) return 'none';
+            return '#111111';
+          };
+          for (let i = 0; i < computed.length; i += 1) {
+            const prop = computed[i];
+            const value = sanitizeValue(prop, computed.getPropertyValue(prop));
+            if (value) {
+              cssText += `${prop}:${value};`;
+            }
+          }
+          el.setAttribute('style', cssText);
+        });
+
+        document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
+          removedStyleNodes.push({ node, parent: node.parentNode as Node, nextSibling: node.nextSibling });
+          node.remove();
+        });
         const opt = {
           margin: 0,
           filename,
@@ -132,64 +172,7 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
           html2canvas: {
             scale: 3,
             useCORS: true,
-            logging: false,
-            onclone: (doc: Document) => {
-              // First, replace oklch colors in all stylesheets (before html2canvas parses CSS)
-              doc.querySelectorAll('style').forEach((styleTag) => {
-                if (styleTag.textContent) {
-                  styleTag.textContent = styleTag.textContent.replace(/oklch\([^)]*\)/g, '#111111');
-                }
-              });
-
-              const root = doc.getElementById('album-content');
-              const win = doc.defaultView;
-              if (!root || !win) return;
-
-              root.classList.add('pdf-mode');
-
-              const props = [
-                'display', 'position', 'box-sizing',
-                'flex', 'flex-basis', 'flex-direction', 'flex-grow', 'flex-shrink', 'flex-wrap',
-                'justify-content', 'align-items', 'align-content', 'gap', 'row-gap', 'column-gap',
-                'grid-template-columns', 'grid-template-rows', 'grid-column', 'grid-row',
-                'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-                'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-                'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-                'font', 'font-size', 'font-weight', 'font-family', 'line-height', 'letter-spacing',
-                'text-align', 'white-space',
-                'border', 'border-width', 'border-style', 'border-color', 'border-radius',
-                'background-color', 'color', 'text-decoration', 'text-decoration-color',
-                'outline-color', 'outline-width', 'outline-style',
-                'box-shadow', 'text-shadow',
-                'overflow', 'overflow-x', 'overflow-y',
-                'object-fit'
-              ];
-
-              const sanitizeValue = (prop: string, value: string) => {
-                if (!value) return value;
-                if (!value.includes('oklch')) return value;
-                if (prop.includes('background')) return '#ffffff';
-                if (prop.includes('border') || prop.includes('outline')) return '#b3b3b3';
-                if (prop.includes('color') || prop === 'fill' || prop === 'stroke') return '#111111';
-                if (prop.includes('shadow')) return 'none';
-                return 'initial';
-              };
-
-              const elements = root.querySelectorAll<HTMLElement>('*');
-              elements.forEach((el) => {
-                const style = win.getComputedStyle(el);
-                props.forEach((prop) => {
-                  const value = style.getPropertyValue(prop);
-                  const safe = sanitizeValue(prop, value.trim());
-                  if (safe) el.style.setProperty(prop, safe, 'important');
-                });
-                el.style.setProperty('background-image', 'none', 'important');
-                el.style.setProperty('fill', '#111111', 'important');
-                el.style.setProperty('stroke', '#111111', 'important');
-              });
-
-              doc.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => node.remove());
-            }
+            logging: false
           },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: 'css', after: '.sheet-preview' }
@@ -211,6 +194,17 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
       alert(txt.pdfError);
     } finally {
       previewElement?.classList.remove('pdf-mode');
+      originalInlineStyles.forEach((style, el) => {
+        if (style === null) {
+          el.removeAttribute('style');
+        } else {
+          el.setAttribute('style', style);
+        }
+      });
+      for (let i = removedStyleNodes.length - 1; i >= 0; i -= 1) {
+        const { node, parent, nextSibling } = removedStyleNodes[i];
+        parent.insertBefore(node, nextSibling);
+      }
       setIsGeneratingPdf(false);
     }
   }, [photosPerPage]);

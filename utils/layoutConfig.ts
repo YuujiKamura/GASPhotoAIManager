@@ -195,7 +195,7 @@ export const getPdfLayout = (): PdfLayout => ({
   pageWidth: PDF_LAYOUT.PAGE_WIDTH,
   pageHeight: PDF_LAYOUT.PAGE_HEIGHT,
   margin: MARGIN_MM * MM_TO_PT,  // 28.35pt
-  headerHeight: 40,               // ヘッダー高さ (pt)
+  headerHeight: 0,                // ヘッダーなし
   gap: 5,                         // 写真間ギャップ (pt)
   imageRatio: IMAGE_RATIO,        // 0.65
   infoRatio: INFO_RATIO,          // 0.35

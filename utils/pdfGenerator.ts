@@ -126,11 +126,7 @@ export const generatePdfWithImages = async (
     const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
     const pagePhotos = photos.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
 
-    // ヘッダー（3枚モードのみ）
-    if (!isTwoUp) {
-      page.drawText(title, { x: MARGIN, y: A4_HEIGHT - MARGIN - 20, size: 14, font: japaneseFont, color: rgb(0.2, 0.2, 0.2) });
-      page.drawText(`Page ${pageNum + 1}`, { x: A4_WIDTH - MARGIN - 50, y: A4_HEIGHT - MARGIN - 20, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
-    }
+    // ヘッダーなし（写真領域を最大化）
 
     for (let i = 0; i < pagePhotos.length; i++) {
       const photo = pagePhotos[i];
