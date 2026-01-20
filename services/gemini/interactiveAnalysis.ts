@@ -158,12 +158,24 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
     try {
       parsed = JSON.parse(fullText);
     } catch {
-      // JSONパース失敗: 生のレスポンスをそのまま会話として返す
-      // これによりユーザーは何が返ってきたか確認でき、追加指示を出せる
-      return {
-        response: `AIからの応答:\n\n${fullText}\n\n---\n⚠️ 解析結果のパースに失敗したよ。上の内容を見て、「工種は○○にして」のように指示してね。`,
-        analysis: null,
-      };
+      // JSONパース失敗: テキストからJSON部分を抽出して再試行
+      const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          // それでも失敗したら生レスポンスを返す
+          return {
+            response: fullText || '解析を実行中...',
+            analysis: null,
+          };
+        }
+      } else {
+        return {
+          response: fullText || '解析を実行中...',
+          analysis: null,
+        };
+      }
     }
 
     const analysis: AIAnalysisResult | null = parsed.analysis
@@ -187,9 +199,11 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
     // responseが空の場合はデフォルトメッセージを生成
     let responseText = parsed.response || '';
     if (!responseText && analysis) {
-      responseText = `解析完了！\n\n📋 **工種**: ${analysis.workType}${analysis.variety ? `\n📂 **種別**: ${analysis.variety}` : ''}${analysis.detail ? `\n📄 **細別**: ${analysis.detail}` : ''}\n📍 **測点**: ${analysis.station || '不明'}\n📝 **備考**: ${analysis.remarks || 'なし'}\n\n左側の解析結果を確認して、問題なければ「確定」を押してね。修正があれば教えて！`;
+      // 解析成功時: 結果を簡潔に表示
+      responseText = `工種: ${analysis.workType}${analysis.variety ? ` > ${analysis.variety}` : ''}${analysis.detail ? ` > ${analysis.detail}` : ''}\n測点: ${analysis.station || '-'}\n\n内容を確認して、OKなら確定を押してね。`;
     } else if (!responseText) {
-      responseText = '⚠️ 解析結果が取得できなかったよ。写真をもう一度確認するか、「再解析して」と指示してね。';
+      // 何も返ってこなかった場合（稀）
+      responseText = '写真を確認中...';
     }
 
     return {

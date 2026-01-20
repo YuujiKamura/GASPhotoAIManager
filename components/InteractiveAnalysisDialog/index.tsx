@@ -114,7 +114,12 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                 <Brain className="w-3 h-3" />
                 解析結果
               </div>
-              {analysis ? (
+              {state.isProcessing ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  解析中...
+                </div>
+              ) : analysis ? (
                 <div className="space-y-1 text-sm">
                   <InfoField label={txt.workType} value={analysis.workType} />
                   <InfoField label={txt.variety} value={analysis.variety || ''} />
@@ -132,10 +137,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                   )}
                 </div>
               ) : (
-                <div className="text-amber-400 text-sm p-2 bg-amber-900/20 rounded">
-                  ⚠️ 解析結果なし<br/>
-                  <span className="text-gray-400 text-xs">右側のチャットで「再解析して」と指示できます</span>
-                </div>
+                <div className="text-gray-500 text-sm">{txt.noAnalysis}</div>
               )}
             </div>
           </div>
