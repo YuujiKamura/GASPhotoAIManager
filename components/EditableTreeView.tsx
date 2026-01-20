@@ -165,7 +165,7 @@ const EditableTreeViewCore: React.FC<EditableTreeViewProps> = ({ data, path, cus
   const { state, setters, actions } = useTreeEditing(
     path,
     customization,
-    (p, newName) => handlers.onRename(p, state.editingKey || '', newName),
+    handlers.onRename,
     (p, name) => handlers.onAdd(p, name, null)
   );
 

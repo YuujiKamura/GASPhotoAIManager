@@ -4,7 +4,7 @@ import { CustomizationData } from '../utils/masterEditorStorage';
 export function useTreeEditing(
   path: string,
   customization: CustomizationData,
-  onRename: (path: string, newName: string) => void,
+  onRename: (path: string, oldKey: string, newKey: string) => void,
   onAdd: (parentPath: string, name: string) => void
 ) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -21,7 +21,8 @@ export function useTreeEditing(
 
   const saveEdit = useCallback((originalKey: string) => {
     if (editValue.trim() && editValue !== originalKey) {
-      onRename(path ? `${path}/${originalKey}` : originalKey, editValue.trim());
+      const fullPath = path ? `${path}/${originalKey}` : originalKey;
+      onRename(fullPath, originalKey, editValue.trim());
     }
     setEditingKey(null);
     setEditValue('');

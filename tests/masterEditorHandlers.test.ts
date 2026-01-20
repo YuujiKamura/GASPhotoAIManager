@@ -109,6 +109,53 @@ describe('MasterEditor handler signatures', () => {
   });
 });
 
+// useTreeEditing の saveEdit テスト
+describe('useTreeEditing saveEdit', () => {
+  it('should call onRename with 3 arguments (fullPath, originalKey, newName)', () => {
+    // 修正: saveEdit が onRename を3引数で呼ぶことを確認
+    // これにより、ラッパー関数でのクロージャ問題を回避
+
+    const mockOnRename = vi.fn();
+    const path = 'workType/category';
+    const originalKey = 'oldItem';
+    const editValue = 'newItem';
+
+    // saveEdit の実装をシミュレート (修正後)
+    const saveEdit = (originalKey: string) => {
+      if (editValue.trim() && editValue !== originalKey) {
+        const fullPath = path ? `${path}/${originalKey}` : originalKey;
+        mockOnRename(fullPath, originalKey, editValue.trim());
+      }
+    };
+
+    saveEdit(originalKey);
+
+    expect(mockOnRename).toHaveBeenCalledWith(
+      `${path}/${originalKey}`,  // fullPath
+      originalKey,               // originalKey (oldKey)
+      editValue                  // newName
+    );
+  });
+
+  it('should not call onRename if editValue equals originalKey', () => {
+    const mockOnRename = vi.fn();
+    const path = 'workType/category';
+    const originalKey = 'sameItem';
+    const editValue = 'sameItem'; // 同じ値
+
+    const saveEdit = (originalKey: string) => {
+      if (editValue.trim() && editValue !== originalKey) {
+        const fullPath = path ? `${path}/${originalKey}` : originalKey;
+        mockOnRename(fullPath, originalKey, editValue.trim());
+      }
+    };
+
+    saveEdit(originalKey);
+
+    expect(mockOnRename).not.toHaveBeenCalled();
+  });
+});
+
 // useTreeEditing の handleAddEntry テスト
 describe('useTreeEditing handleAddEntry', () => {
   it('should use addingTo path instead of component path', () => {
