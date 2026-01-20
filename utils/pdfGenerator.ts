@@ -126,21 +126,24 @@ export const generatePdfWithImages = async (
     const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
     const pagePhotos = photos.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
 
-    // ヘッダー
-    page.drawText(title, { x: MARGIN, y: A4_HEIGHT - MARGIN - 20, size: 14, font: japaneseFont, color: rgb(0.2, 0.2, 0.2) });
-    page.drawText(`Page ${pageNum + 1}`, { x: A4_WIDTH - MARGIN - 50, y: A4_HEIGHT - MARGIN - 20, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
+    // ヘッダー（3枚モードのみ）
+    if (!isTwoUp) {
+      page.drawText(title, { x: MARGIN, y: A4_HEIGHT - MARGIN - 20, size: 14, font: japaneseFont, color: rgb(0.2, 0.2, 0.2) });
+      page.drawText(`Page ${pageNum + 1}`, { x: A4_WIDTH - MARGIN - 50, y: A4_HEIGHT - MARGIN - 20, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
+    }
 
     for (let i = 0; i < pagePhotos.length; i++) {
       const photo = pagePhotos[i];
       const analysis = photo.analysis;
 
       if (isTwoUp) {
-        // ========== 2枚モード: 写真フル幅 + キャプション下 ==========
+        // ========== 2枚モード: 写真フル幅 + キャプション下（ヘッダーなし） ==========
         const captionHeight = 50; // キャプション領域の高さ
-        const photoRowHeight = usableHeight / 2;
+        const twoUpUsableHeight = A4_HEIGHT - MARGIN * 2; // ヘッダーなしで全高使用
+        const photoRowHeight = twoUpUsableHeight / 2;
         const photoHeight = photoRowHeight - captionHeight - PHOTO_INFO_GAP;
         const photoWidth = usableWidth;
-        const rowY = A4_HEIGHT - MARGIN - HEADER_HEIGHT - i * photoRowHeight;
+        const rowY = A4_HEIGHT - MARGIN - i * photoRowHeight;
         const photoY = rowY - photoHeight;
         const captionY = photoY - captionHeight;
 
@@ -175,26 +178,26 @@ export const generatePdfWithImages = async (
         // キャプション欄（写真の下、中央寄せ）
         page.drawRectangle({ x: MARGIN, y: captionY, width: photoWidth, height: captionHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
 
-        // 1行目: 備考（着手前/竣工など）
+        // 1行目: 備考（着手前/竣工など）- 中央配置
         const remarks = analysis?.remarks || '';
         if (remarks) {
           const remarksWidth = japaneseFont.widthOfTextAtSize(remarks, 12);
           page.drawText(remarks, {
             x: MARGIN + (photoWidth - remarksWidth) / 2,
-            y: captionY + captionHeight - 18,
+            y: captionY + captionHeight / 2 + 5,
             size: 12,
             font: japaneseFont,
             color: rgb(0.1, 0.1, 0.1)
           });
         }
 
-        // 2行目: 測点/場所情報
+        // 2行目: 測点/場所情報 - 中央配置
         const location = analysis?.station || analysis?.description || '';
         if (location) {
           const locationWidth = japaneseFont.widthOfTextAtSize(location, 11);
           page.drawText(location, {
             x: MARGIN + (photoWidth - locationWidth) / 2,
-            y: captionY + 12,
+            y: captionY + captionHeight / 2 - 15,
             size: 11,
             font: japaneseFont,
             color: rgb(0.2, 0.2, 0.2)
