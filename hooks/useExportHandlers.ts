@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
-import { exportDataToJson, importDataFromJson } from '../utils/storage';
+import { exportDataToJson, importDataFromJson, saveProjectData } from '../utils/storage';
 
 declare const saveAs: any;
 
@@ -29,12 +29,14 @@ export function useExportHandlers({
   const handleImportJson = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const imported = importDataFromJson(ev.target?.result as string);
         setPhotos(imported);
         setStats({ total: imported.length, processed: imported.length, success: imported.length, failed: 0, cached: 0 });
         setShowPreview(true);
+        // 即座に保存（auto-saveの500ms遅延を待たない）
+        await saveProjectData(imported);
       } catch { alert("Failed to import JSON"); }
     };
     reader.readAsText(e.target.files[0]);
