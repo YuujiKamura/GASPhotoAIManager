@@ -5,6 +5,9 @@ import { PhotoRecord } from '../types';
 import {
   getPdfLayout,
   getTemplateLayout,
+  getTemplateById,
+  getDefaultTemplateId,
+  BUILT_IN_TEMPLATES,
   getVisibleFields,
   calculateBlockDimensions,
   FIELD_LABELS,
@@ -107,7 +110,7 @@ const isFullPageImage = (width: number, height: number): boolean =>
 /** pdf-libを使ってPDFを生成 */
 export const generatePdfWithImages = async (
   photos: PhotoRecord[],
-  photosPerPage: 2 | 3 = 3,
+  templateIdOrPhotosPerPage: string | 2 | 3 = 'standard-3up',
   title = '工事写真帳'
 ): Promise<Blob> => {
   const pdfDoc = await PDFDocument.create();
@@ -121,8 +124,11 @@ export const generatePdfWithImages = async (
   }
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // テンプレートを取得
-  const template = getTemplateLayout(photosPerPage);
+  // テンプレートを取得（後方互換: 数値の場合は変換）
+  const templateId = typeof templateIdOrPhotosPerPage === 'number'
+    ? (templateIdOrPhotosPerPage === 2 ? 'simple-2up' : 'standard-3up')
+    : templateIdOrPhotosPerPage;
+  const template = getTemplateById(templateId) || BUILT_IN_TEMPLATES[getDefaultTemplateId()];
   const blocksPerPage = template.blocksPerPage;
   const visibleFields = getVisibleFields(template);
 

@@ -6,7 +6,6 @@ import { getTemplateById, getDefaultTemplateId, BUILT_IN_TEMPLATES } from '../ut
 const A4_WIDTH_PX = 794;
 
 declare const saveAs: any;
-declare const html2pdf: any;
 
 interface PreviewLayoutState {
   scale: number;
@@ -133,101 +132,20 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
   const handleDownloadPDF = useCallback(async (photos: PhotoRecord[], txt: { pdfError: string }) => {
     setIsGeneratingPdf(true);
     const filename = `construction_album_${new Date().toISOString().slice(0, 10)}.pdf`;
-    const previewElement = document.getElementById('album-content');
-    const originalInlineStyles = new Map<HTMLElement, string | null>();
-    const removedStyleNodes: Array<{ node: Node; parent: Node; nextSibling: ChildNode | null }> = [];
 
     try {
-      if (photosPerPage === 2) {
-        if (typeof html2pdf === 'undefined') {
-          throw new Error('html2pdf is not loaded.');
-        }
-        if (!previewElement) {
-          throw new Error('Preview element not found.');
-        }
-
-        previewElement.classList.add('pdf-mode');
-        const targetElements = new Set<HTMLElement>();
-        const sheets = previewElement.querySelectorAll<HTMLElement>('.sheet-preview');
-        if (sheets.length > 0) {
-          sheets.forEach((sheet) => {
-            targetElements.add(sheet);
-            sheet.querySelectorAll<HTMLElement>('*').forEach((el) => targetElements.add(el));
-          });
-        } else {
-          targetElements.add(previewElement);
-          previewElement.querySelectorAll<HTMLElement>('*').forEach((el) => targetElements.add(el));
-        }
-        targetElements.forEach((el) => {
-          originalInlineStyles.set(el, el.getAttribute('style'));
-          const computed = window.getComputedStyle(el);
-          let cssText = '';
-          const sanitizeValue = (prop: string, value: string) => {
-            if (!value) return value;
-            if (!value.includes('oklch') && !value.includes('oklab')) return value;
-            if (prop.includes('background')) return '#ffffff';
-            if (prop.includes('border') || prop.includes('outline') || prop.includes('column-rule')) return '#b3b3b3';
-            if (prop.includes('color') || prop === 'fill' || prop === 'stroke') return '#111111';
-            if (prop.includes('shadow') || prop.includes('filter')) return 'none';
-            return '#111111';
-          };
-          for (let i = 0; i < computed.length; i += 1) {
-            const prop = computed[i];
-            const value = sanitizeValue(prop, computed.getPropertyValue(prop));
-            if (value) {
-              cssText += `${prop}:${value};`;
-            }
-          }
-          el.setAttribute('style', cssText);
-        });
-
-        document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
-          removedStyleNodes.push({ node, parent: node.parentNode as Node, nextSibling: node.nextSibling });
-          node.remove();
-        });
-        const opt = {
-          margin: 0,
-          filename,
-          image: { type: 'jpeg', quality: 1.0 },
-          html2canvas: {
-            scale: 3,
-            useCORS: true,
-            logging: false
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: 'css', after: '.sheet-preview' }
-        };
-
-        const blob = await html2pdf().set(opt).from(previewElement).output('blob');
-        const { embedSessionInPdf } = await import('../utils/pdfGenerator');
-        const pdfBlob = await embedSessionInPdf(blob, photos);
-        saveAs(pdfBlob, filename);
-        window.open(URL.createObjectURL(pdfBlob), '_blank');
-      } else {
-        const { generatePdfWithImages } = await import('../utils/pdfGenerator');
-        const pdfBlob = await generatePdfWithImages(photos, photosPerPage, '工事写真帳');
-        saveAs(pdfBlob, filename);
-        window.open(URL.createObjectURL(pdfBlob), '_blank');
-      }
+      // 全テンプレートで統一されたPDF生成を使用
+      const { generatePdfWithImages } = await import('../utils/pdfGenerator');
+      const pdfBlob = await generatePdfWithImages(photos, templateId, '工事写真帳');
+      saveAs(pdfBlob, filename);
+      window.open(URL.createObjectURL(pdfBlob), '_blank');
     } catch (err) {
       console.error('PDF generation error:', err);
       alert(txt.pdfError);
     } finally {
-      previewElement?.classList.remove('pdf-mode');
-      originalInlineStyles.forEach((style, el) => {
-        if (style === null) {
-          el.removeAttribute('style');
-        } else {
-          el.setAttribute('style', style);
-        }
-      });
-      for (let i = removedStyleNodes.length - 1; i >= 0; i -= 1) {
-        const { node, parent, nextSibling } = removedStyleNodes[i];
-        parent.insertBefore(node, nextSibling);
-      }
       setIsGeneratingPdf(false);
     }
-  }, [photosPerPage]);
+  }, [templateId]);
 
   const handleDownloadZip = useCallback(async (photos: PhotoRecord[]) => {
     if (photos.length === 0) return;

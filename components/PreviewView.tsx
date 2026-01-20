@@ -48,7 +48,7 @@ interface ActionHandlers {
   onClearLogs: () => void;
   onGoHome: () => void;
   onRefine: () => void;
-  onExportExcel: (photosPerPage: 2 | 3) => void;
+  onExportExcel: (templateIdOrPhotosPerPage: string | 2 | 3) => void;
   onAutoPair: () => void;
   onManualPair: () => void;
   onSendInstruction?: (instruction: string) => void;
@@ -261,7 +261,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               />
 
               <div className="flex gap-1">
-                <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing || isEmpty} className="p-2 md:px-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-1" title={txt.exportExcel}>
+                <button onClick={() => onExportExcel(templateId)} disabled={isProcessing || isEmpty} className="p-2 md:px-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-1" title={txt.exportExcel}>
                   <Download className="w-4 h-4" /> <span className="hidden lg:inline">{txt.exportExcel}</span>
                 </button>
                 {appMode === 'construction' && (

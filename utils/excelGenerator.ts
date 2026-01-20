@@ -5,6 +5,9 @@ import {
   LAYOUT_FIELDS,
   getLayoutConfig,
   getTemplateLayout,
+  getTemplateById,
+  getDefaultTemplateId,
+  BUILT_IN_TEMPLATES,
   getVisibleFields,
   PDF_LAYOUT,
   CONVERSION
@@ -50,9 +53,14 @@ const createSheetOptions = () => ({
 export const generateExcel = async (
   records: PhotoRecord[],
   appMode: AppMode = 'construction',
-  photosPerPage: 2 | 3 = 3
+  templateIdOrPhotosPerPage: string | 2 | 3 = 'standard-3up'
 ) => {
-  console.log('[ExcelExport] Starting export...', { recordCount: records.length, appMode, photosPerPage });
+  // 後方互換: 数値の場合はテンプレートIDに変換
+  const templateId = typeof templateIdOrPhotosPerPage === 'number'
+    ? (templateIdOrPhotosPerPage === 2 ? 'simple-2up' : 'standard-3up')
+    : templateIdOrPhotosPerPage;
+
+  console.log('[ExcelExport] Starting export...', { recordCount: records.length, appMode, templateId });
 
   // Check libraries
   if (typeof ExcelJS === 'undefined') {
@@ -74,11 +82,12 @@ export const generateExcel = async (
   console.log('[ExcelExport] Libraries loaded, creating workbook...');
 
   // テンプレートを取得
-  const template = getTemplateLayout(photosPerPage);
+  const template = getTemplateById(templateId) || BUILT_IN_TEMPLATES[getDefaultTemplateId()];
   const blocksPerPage = template.blocksPerPage;
   const layoutMode = getBlockLayoutMode(template.captionPosition);
 
   // レイアウト設定（PDF基準から導出）
+  const photosPerPage = blocksPerPage as 2 | 3;  // 後方互換用
   const layout = getLayoutConfig(photosPerPage);
   const isTwoUp = blocksPerPage === 2;
 
