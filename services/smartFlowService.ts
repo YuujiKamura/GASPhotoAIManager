@@ -215,7 +215,8 @@ export const processPhotosWithSmartFlow = async (
   apiKey: string,
   instruction: string = "",
   onLog?: (msg: string, type: 'info' | 'success' | 'error') => void,
-  shouldAbort?: AbortChecker
+  shouldAbort?: AbortChecker,
+  workType?: string
 ): Promise<{
   type: 'paired' | 'analyzed',
   pairs?: Array<{ before: PhotoRecord, after: PhotoRecord, sceneId: string }>,

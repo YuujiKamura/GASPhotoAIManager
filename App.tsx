@@ -25,6 +25,7 @@ import {
 
 // Core components (PreviewViewは主要ビュー)
 import PreviewView from './components/PreviewView';
+import { PreAnalysisInfo } from './components/AnalysisSetupModal';
 
 // Lazy-loaded components
 const LimitModal = lazy(() => import('./components/LimitModal'));
@@ -167,9 +168,9 @@ export default function App() {
   }, [processing]);
 
   // 簡素化した解析開始ハンドラ
-  const handleStartAnalysis = useCallback((files: File[], sortPolicy: SortPolicy, useCache: boolean) => {
+  const handleStartAnalysis = useCallback((files: File[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => {
     setCurrentSortPolicy(sortPolicy);
-    analysisHandlers.startAnalysisPipeline(files, '', useCache);
+    analysisHandlers.startAnalysisPipeline(files, '', useCache, preInfo);
   }, [setCurrentSortPolicy, analysisHandlers]);
 
   // 手動ペアリングモード（2枚ペアを選択するUI）

@@ -2,12 +2,12 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { SortPolicy } from '../../types';
 import { setSelectedModel } from '../../services/geminiService';
-import { PhotoGrid, SettingsSection, ActionButtons } from './SubComponents';
-import { useAnalysisSetupState } from './useAnalysisSetupState';
+import { PhotoGrid, SettingsSection, ActionButtons, PreAnalysisInfoSection } from './SubComponents';
+import { useAnalysisSetupState, PreAnalysisInfo } from './useAnalysisSetupState';
 
 interface AnalysisActions {
   onCancel: () => void;
-  onStartAnalysis: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
+  onStartAnalysis: (files: File[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => void;
   onManualPairing?: (files: File[]) => void;
   onInteractiveTest: (file: File) => void;
   onOpenMasterEditor: () => void;
@@ -39,6 +39,10 @@ const getTexts = (lang: 'ja' | 'en') => ({
   clickToTest: lang === 'ja' ? 'クリックで対話型テスト' : 'Click for interactive test',
   noWorkTypes: lang === 'ja' ? '工種未設定' : 'No work types',
   clearCache: lang === 'ja' ? 'キャッシュ削除' : 'Clear Cache',
+  workTypeLabel: lang === 'ja' ? '工種（必須）' : 'Work Type (Required)',
+  workTypePlaceholder: lang === 'ja' ? '工種を選択...' : 'Select work type...',
+  stationLabel: lang === 'ja' ? '測点（任意）' : 'Station (Optional)',
+  stationPlaceholder: lang === 'ja' ? '例: No.5+10' : 'e.g. No.5+10',
 });
 
 const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions }) => {
@@ -48,12 +52,13 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
 
   const handleStart = () => {
     if (state.selectedFiles.length === 0) return;
+    if (!state.workType) return;
     if (!apiKey) {
       onOpenSettings?.();
       return;
     }
     setSelectedModel(state.model);
-    onStartAnalysis(state.selectedFiles, state.sortPolicy, state.useCache);
+    onStartAnalysis(state.selectedFiles, state.sortPolicy, state.useCache, state.preInfo);
   };
 
   const handleInteractive = (file: File) => {
@@ -100,12 +105,26 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
             noWorkTypes: txt.noWorkTypes,
           }}
         />
+        <PreAnalysisInfoSection
+          workType={state.workType}
+          setWorkType={state.setWorkType}
+          station={state.station}
+          setStation={state.setStation}
+          enabledWorkTypes={state.enabledWorkTypes}
+          txt={{
+            workTypeLabel: txt.workTypeLabel,
+            workTypePlaceholder: txt.workTypePlaceholder,
+            stationLabel: txt.stationLabel,
+            stationPlaceholder: txt.stationPlaceholder,
+          }}
+        />
         <ActionButtons
           onCancel={onCancel}
           onManualPairing={onManualPairing}
           onStart={handleStart}
           selectedFiles={state.selectedFiles}
           enabledWorkTypes={state.enabledWorkTypes}
+          workType={state.workType}
           txt={{ cancel: txt.cancel, manual: txt.manual, start: txt.start }}
         />
       </div>
@@ -126,3 +145,4 @@ const AnalysisSetupModal: React.FC<AnalysisSetupModalProps> = ({
 );
 
 export default AnalysisSetupModal;
+export { PreAnalysisInfo } from './useAnalysisSetupState';

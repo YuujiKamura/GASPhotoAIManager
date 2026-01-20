@@ -1,0 +1,50 @@
+[package]
+name = "photo_album_cli"
+version = "0.1.0"
+edition = "2021"
+description = "Construction Photo Album Generator with AI Analysis"
+authors = ["GASPhotoAIManager"]
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+
+# JSON
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# PDF generation
+printpdf = "0.8"
+
+# Excel generation
+rust_xlsxwriter = "0.80"
+
+# Image processing
+image = "0.25"
+
+# Base64
+base64 = "0.22"
+
+# File handling
+walkdir = "2"
+glob = "0.3"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Environment variables
+dotenvy = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = true

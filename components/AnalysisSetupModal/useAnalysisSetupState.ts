@@ -8,12 +8,19 @@ import { FileEntry } from './SubComponents';
 
 const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
 
+export interface PreAnalysisInfo {
+  workType: string;
+  station: string;
+}
+
 export function useAnalysisSetupState(files: File[]) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [model, setModel] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
   const [useCache, setUseCache] = useState(true);
   const [enabledWorkTypes, setEnabledWorkTypes] = useState<string[]>([]);
+  const [workType, setWorkType] = useState<string>('');
+  const [station, setStation] = useState<string>('');
 
   // Load thumbnails and check cache status
   useEffect(() => {
@@ -71,6 +78,11 @@ export function useAnalysisSetupState(files: File[]) {
     }));
   }, [entries]);
 
+  const preInfo: PreAnalysisInfo = useMemo(() => ({
+    workType,
+    station,
+  }), [workType, station]);
+
   return {
     entries,
     model,
@@ -87,5 +99,10 @@ export function useAnalysisSetupState(files: File[]) {
     selectAll,
     selectNone,
     clearSelectedCache,
+    workType,
+    setWorkType,
+    station,
+    setStation,
+    preInfo,
   };
 }

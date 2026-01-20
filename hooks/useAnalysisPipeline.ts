@@ -10,6 +10,7 @@ import { extractLocationName } from '../utils/locationUtils';
 import { sortPhotosLogical } from '../utils/sortingUtils';
 import { OriginalData } from '../components/NormalizationPreviewModal';
 import { checkServerHealth, analyzePhotos as localAnalyzePhotos } from '../services/localApiService';
+import { PreAnalysisInfo } from '../components/AnalysisSetupModal';
 
 const BATCH_SIZE = 6, PARALLEL = 2;
 
@@ -57,15 +58,19 @@ export function useAnalysisPipeline(p: Props) {
     addLog([`📸 ${fn}`, r.workType && `工種: ${r.workType}`, r.variety && `種別: ${r.variety}`, r.detail && `細別: ${r.detail}`, r.station && `測点: ${r.station}`, r.remarks && `備考: ${r.remarks}`].filter(Boolean).join(' | '), 'success', r);
   }, [addLog]);
 
-  const startAnalysisPipeline = useCallback(async (files: File[], inst: string, useCache: boolean) => {
+  const startAnalysisPipeline = useCallback(async (files: File[], inst: string, useCache: boolean, preInfo?: PreAnalysisInfo) => {
     setIsProcessing(true); abortRef.current = false; setErrorMsg(null); setSuccessMsg(null); setInitialInstruction(inst); setActiveInstruction(inst);
+    // preInfoから測点情報を抽出（指定があればそちらを優先）
+    const stationFromPreInfo = preInfo?.station || extractLocationName(inst);
+    const workTypeFromPreInfo = preInfo?.workType;
+    if (workTypeFromPreInfo) addLog(`📋 事前入力: 工種=${workTypeFromPreInfo}${stationFromPreInfo ? `, 測点=${stationFromPreInfo}` : ''}`, 'info');
     try {
       setCurrentStep(lang === 'ja' ? "画像準備中..." : "Preparing...");
       const recs: PhotoRecord[] = []; let cached = 0;
       for (const f of files) {
         const [date, { base64, mimeType }] = await Promise.all([getPhotoDate(f), processImageForAI(f)]);
         const ca = useCache ? await getCachedAnalysis(f) : null;
-        if (ca) { recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, analysis: { ...ca, station: extractLocationName(inst) }, status: 'done', date, fromCache: true }); cached++; }
+        if (ca) { recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, analysis: { ...ca, station: stationFromPreInfo }, status: 'done', date, fromCache: true }); cached++; }
         else recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, status: 'pending', date, fromCache: false });
       }
       const sorted = sortPhotosLogical(recs, currentSortPolicy);
@@ -87,15 +92,15 @@ export function useAnalysisPipeline(p: Props) {
               mimeType: p.mimeType,
               date: p.date,
             }));
-            const response = await localAnalyzePhotos(photos, { mode: appMode, instruction: inst });
+            const response = await localAnalyzePhotos(photos, { mode: appMode, instruction: inst, workType: workTypeFromPreInfo });
             if (response.success && response.results) {
-              const loc = extractLocationName(inst);
               const analyzed = pending.map(p => {
                 const result = response.results?.find(r => r.fileName === p.fileName);
                 if (result?.analysis) {
                   const analysis: AIAnalysisResult = {
                     ...result.analysis,
-                    station: result.analysis.station || loc,
+                    workType: workTypeFromPreInfo || result.analysis.workType,
+                    station: result.analysis.station || stationFromPreInfo,
                   };
                   logResult(p.fileName, analysis);
                   cacheAnalysis(p, analysis).catch(() => {});
@@ -114,12 +119,11 @@ export function useAnalysisPipeline(p: Props) {
           }
         } else if (apiKey) {
           // 従来のGemini API経由で解析
-          const res = await processPhotosWithSmartFlow(pending, apiKey, inst, addLog, () => abortRef.current);
+          const res = await processPhotosWithSmartFlow(pending, apiKey, inst, addLog, () => abortRef.current, workTypeFromPreInfo);
           if (res.type === 'paired') {
-            const loc = extractLocationName(inst);
             const up = res.pairs?.flatMap(pr => [
-              { ...pr.before, analysis: { ...(pr.before.analysis || emptyAnalysis(pr.before.fileName)), sceneId: pr.sceneId, phase: 'before' as const, station: loc, remarks: '着手前' }, status: 'done' as const },
-              { ...pr.after, analysis: { ...(pr.after.analysis || emptyAnalysis(pr.after.fileName)), sceneId: pr.sceneId, phase: 'after' as const, station: loc, remarks: '竣工' }, status: 'done' as const }
+              { ...pr.before, analysis: { ...(pr.before.analysis || emptyAnalysis(pr.before.fileName)), sceneId: pr.sceneId, phase: 'before' as const, workType: workTypeFromPreInfo || pr.before.analysis?.workType || '', station: stationFromPreInfo, remarks: '着手前' }, status: 'done' as const },
+              { ...pr.after, analysis: { ...(pr.after.analysis || emptyAnalysis(pr.after.fileName)), sceneId: pr.sceneId, phase: 'after' as const, workType: workTypeFromPreInfo || pr.after.analysis?.workType || '', station: stationFromPreInfo, remarks: '竣工' }, status: 'done' as const }
             ]) || [];
             setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
           } else {

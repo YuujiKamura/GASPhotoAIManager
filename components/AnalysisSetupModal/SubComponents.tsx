@@ -136,6 +136,56 @@ export const SortSelectorRow: React.FC<SortSelectorProps> = ({ sortPolicy, setSo
   </select>
 );
 
+// --- Pre-Analysis Info Section ---
+
+interface PreAnalysisInfoSectionProps {
+  workType: string;
+  setWorkType: (v: string) => void;
+  station: string;
+  setStation: (v: string) => void;
+  enabledWorkTypes: string[];
+  txt: {
+    workTypeLabel: string;
+    workTypePlaceholder: string;
+    stationLabel: string;
+    stationPlaceholder: string;
+  };
+}
+
+export const PreAnalysisInfoSection: React.FC<PreAnalysisInfoSectionProps> = ({
+  workType, setWorkType, station, setStation, enabledWorkTypes, txt
+}) => (
+  <div className="px-4 py-3 border-t bg-amber-50 space-y-2">
+    <div className="flex gap-3">
+      <div className="flex-1">
+        <div className="text-[10px] text-gray-500 mb-1">{txt.workTypeLabel} <span className="text-red-500">*</span></div>
+        <select
+          value={workType}
+          onChange={e => setWorkType(e.target.value)}
+          className={`w-full py-1.5 px-2 text-xs border rounded bg-white ${
+            !workType ? 'border-red-300' : 'border-gray-300'
+          }`}
+        >
+          <option value="">{txt.workTypePlaceholder}</option>
+          {enabledWorkTypes.map(wt => (
+            <option key={wt} value={wt}>{wt}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex-1">
+        <div className="text-[10px] text-gray-500 mb-1">{txt.stationLabel}</div>
+        <input
+          type="text"
+          value={station}
+          onChange={e => setStation(e.target.value)}
+          placeholder={txt.stationPlaceholder}
+          className="w-full py-1.5 px-2 text-xs border border-gray-300 rounded bg-white"
+        />
+      </div>
+    </div>
+  </div>
+);
+
 // --- Settings Section ---
 
 interface CacheAndWorkTypesRowProps {
@@ -233,11 +283,12 @@ interface ActionButtonsProps {
   onStart: () => void;
   selectedFiles: File[];
   enabledWorkTypes: string[];
+  workType: string;
   txt: { cancel: string; manual: string; start: string };
 }
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
-  onCancel, onManualPairing, onStart, selectedFiles, enabledWorkTypes, txt
+  onCancel, onManualPairing, onStart, selectedFiles, enabledWorkTypes, workType, txt
 }) => (
   <div className="flex gap-2 px-4 py-3 border-t">
     <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">
@@ -254,7 +305,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
     )}
     <button
       onClick={onStart}
-      disabled={selectedFiles.length === 0 || enabledWorkTypes.length === 0}
+      disabled={selectedFiles.length === 0 || enabledWorkTypes.length === 0 || !workType}
       className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded font-bold flex items-center gap-1"
     >
       <Play className="w-4 h-4" /> {txt.start}

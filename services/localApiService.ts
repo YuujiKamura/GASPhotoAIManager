@@ -94,6 +94,7 @@ export async function analyzePhotos(
     mode?: 'construction' | 'general';
     instruction?: string;
     batchSize?: number;
+    workType?: string;
   }
 ): Promise<AnalyzeResponse> {
   const res = await fetch(`${API_BASE}/api/analyze`, {
@@ -104,6 +105,7 @@ export async function analyzePhotos(
       mode: options?.mode || 'construction',
       instruction: options?.instruction,
       batchSize: options?.batchSize || 5,
+      workType: options?.workType,
     }),
   });
 

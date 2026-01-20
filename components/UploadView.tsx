@@ -5,7 +5,7 @@ import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTre
 import { getSelectedModel } from '../services/geminiService';
 import { useUploadViewState } from '../hooks/useUploadViewState';
 import ConsolePanel from './ConsolePanel';
-import AnalysisSetupModal from './AnalysisSetupModal';
+import AnalysisSetupModal, { PreAnalysisInfo } from './AnalysisSetupModal';
 
 // --- Grouped interfaces ---
 
@@ -27,7 +27,7 @@ interface UploadState {
 /** Core action handlers */
 interface CoreHandlers {
   setAppMode: (mode: AppMode) => void;
-  onStartProcessing: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
+  onStartProcessing: (files: File[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => void;
   onResume: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -172,8 +172,8 @@ const UploadView: React.FC<UploadViewProps> = ({
             lang={lang}
             apiKey={apiKey}
             onCancel={handlers.clearPendingFiles}
-            onStartAnalysis={(files, sortPolicy, useCache) => {
-              onStartProcessing(files, sortPolicy, useCache);
+            onStartAnalysis={(files, sortPolicy, useCache, preInfo) => {
+              onStartProcessing(files, sortPolicy, useCache, preInfo);
               handlers.clearPendingFiles();
             }}
             onManualPairing={onManualPairing ? (files) => { onManualPairing(files); handlers.clearPendingFiles(); } : undefined}
