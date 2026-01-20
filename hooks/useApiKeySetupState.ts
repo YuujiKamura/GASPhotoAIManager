@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { setApiKey as saveApiKey } from '../services/geminiService';
+import { useState, useCallback, useEffect } from 'react';
+import { setApiKey as saveApiKey, hasApiKey, getMaskedApiKey, clearApiKey } from '../services/geminiService';
 
 type SetupMode = 'new';  // 常に新規設定モード（パスワードロックは廃止）
 
@@ -10,6 +10,8 @@ interface ApiKeySetupState {
   confirmPassword: string;     // 後方互換性のため残す（使用しない）
   error: string;
   loading: boolean;
+  existingKeyMasked: string | null;  // 既存キーのマスク表示
+  hasExistingKey: boolean;           // 既存キーがあるか
 }
 
 interface ApiKeySetupActions {
@@ -19,6 +21,7 @@ interface ApiKeySetupActions {
   handleUnlock: (onComplete: (key: string) => void) => Promise<void>;
   handleSubmit: (onComplete: (key: string) => void) => void;
   handleResetKey: () => void;
+  handleClearKey: () => void;  // キーをクリアする
 }
 
 interface ApiKeySetupValidation {
@@ -34,6 +37,20 @@ export function useApiKeySetupState(): ApiKeySetupState & ApiKeySetupActions & A
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading] = useState(false);
+  const [existingKeyMasked, setExistingKeyMasked] = useState<string | null>(null);
+  const [hasExistingKey, setHasExistingKey] = useState(false);
+
+  // 初期化時に既存キーの状態をチェック
+  useEffect(() => {
+    const checkExistingKey = () => {
+      const exists = hasApiKey();
+      setHasExistingKey(exists);
+      if (exists) {
+        setExistingKeyMasked(getMaskedApiKey());
+      }
+    };
+    checkExistingKey();
+  }, []);
 
   const isValidKey = apiKey.trim().startsWith('AIza') && apiKey.trim().length >= 39;
   const isValidPassword = true;   // パスワード不要
@@ -69,6 +86,21 @@ export function useApiKeySetupState(): ApiKeySetupState & ApiKeySetupActions & A
     }
   }, []);
 
+  // キーをクリア
+  const handleClearKey = useCallback(() => {
+    if (window.confirm('保存されたAPIキーを削除しますか？\n次回起動時に再入力が必要になります。')) {
+      clearApiKey();
+      localStorage.removeItem('gaspm_encrypted_api_key');
+      localStorage.removeItem('gaspm_master_hash');
+      // 生体認証データもクリア
+      localStorage.removeItem('construction_album_passkey_credential');
+      localStorage.removeItem('construction_album_protected_api_key');
+      setHasExistingKey(false);
+      setExistingKeyMasked(null);
+      setError('');
+    }
+  }, []);
+
   return {
     mode,
     apiKey,
@@ -76,6 +108,8 @@ export function useApiKeySetupState(): ApiKeySetupState & ApiKeySetupActions & A
     confirmPassword,
     error,
     loading,
+    existingKeyMasked,
+    hasExistingKey,
     isValidKey,
     isValidPassword,
     passwordsMatch,
@@ -85,5 +119,6 @@ export function useApiKeySetupState(): ApiKeySetupState & ApiKeySetupActions & A
     handleUnlock,
     handleSubmit,
     handleResetKey,
+    handleClearKey,
   };
 }

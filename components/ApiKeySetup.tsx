@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Key, Camera, ArrowLeft } from 'lucide-react';
+import { ExternalLink, Key, Camera, ArrowLeft, Shield, Trash2, CheckCircle } from 'lucide-react';
 import { useApiKeySetupState } from '../hooks/useApiKeySetupState';
 
 interface ApiKeySetupProps {
@@ -14,8 +14,11 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
     apiKey,
     error,
     isValidKey,
+    existingKeyMasked,
+    hasExistingKey,
     setApiKey,
     handleSubmit,
+    handleClearKey,
   } = useApiKeySetupState();
 
   return (
@@ -49,6 +52,34 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
 
           {/* APIキー設定 */}
           <>
+              {/* 既存キーの状態表示 */}
+              {hasExistingKey && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle size={18} className="text-green-400" />
+                    <span className="text-sm font-bold text-green-300">APIキー設定済み</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Shield size={14} className="text-slate-400" />
+                      <code className="text-xs text-slate-300 font-mono bg-slate-800 px-2 py-1 rounded">
+                        {existingKeyMasked}
+                      </code>
+                    </div>
+                    <button
+                      onClick={handleClearKey}
+                      className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      <Trash2 size={12} />
+                      削除
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-2">
+                    キーが漏洩した場合は削除して新しいキーを設定してください
+                  </p>
+                </div>
+              )}
+
               {/* PDF読み込みオプション */}
               {onImportPdf && (
                 <>
@@ -66,10 +97,19 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
 
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-slate-700"></div>
-                    <span className="text-xs text-slate-500">または新規で始める</span>
+                    <span className="text-xs text-slate-500">{hasExistingKey ? 'キーを変更する場合' : 'または新規で始める'}</span>
                     <div className="flex-1 h-px bg-slate-700"></div>
                   </div>
                 </>
+              )}
+
+              {/* 区切り線（PDF importがない場合で既存キーがある場合） */}
+              {!onImportPdf && hasExistingKey && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-slate-700"></div>
+                  <span className="text-xs text-slate-500">キーを変更する場合</span>
+                  <div className="flex-1 h-px bg-slate-700"></div>
+                </div>
               )}
 
               {/* ステップ1: キーを取得 */}

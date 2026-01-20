@@ -101,6 +101,16 @@ export const hasApiKey = (): boolean => {
   return !!key && key.startsWith('AIza');
 };
 
+/**
+ * APIキーをマスク表示用に変換
+ * 例: AIza...xyz (最初4文字 + 最後3文字)
+ */
+export const getMaskedApiKey = (): string | null => {
+  const key = getApiKey();
+  if (!key || key.length < 10) return null;
+  return `${key.slice(0, 4)}...${key.slice(-3)}`;
+};
+
 // ============================================
 // エラーメッセージのサニタイズ
 // ============================================

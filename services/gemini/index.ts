@@ -14,6 +14,7 @@ export {
   hasEncryptedApiKey,
   clearApiKey,
   hasApiKey,
+  getMaskedApiKey,
   sanitizeErrorMessage,
   // 信頼セッション
   isTrustedSession,
