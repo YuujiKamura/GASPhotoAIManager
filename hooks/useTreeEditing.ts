@@ -38,12 +38,12 @@ export function useTreeEditing(
   }, []);
 
   const handleAddEntry = useCallback(() => {
-    if (newEntryName.trim()) {
-      onAdd(path, newEntryName.trim());
+    if (newEntryName.trim() && addingTo) {
+      onAdd(addingTo, newEntryName.trim());
       setAddingTo(null);
       setNewEntryName('');
     }
-  }, [path, newEntryName, onAdd]);
+  }, [addingTo, newEntryName, onAdd]);
 
   const cancelAdding = useCallback(() => {
     setAddingTo(null);

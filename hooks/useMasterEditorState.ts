@@ -68,7 +68,7 @@ export function useMasterEditorState() {
     setViewMode('detail');
   }, []);
 
-  const handleDelete = useCallback((path: string) => {
+  const handleDelete = useCallback((path: string, _key: string, _deletedValue: unknown) => {
     setCustomization(prev => ({
       ...prev,
       deletedPaths: [...prev.deletedPaths, path]
@@ -76,15 +76,15 @@ export function useMasterEditorState() {
     setHasChanges(true);
   }, []);
 
-  const handleRename = useCallback((path: string, newName: string) => {
+  const handleRename = useCallback((path: string, _oldKey: string, newKey: string) => {
     setCustomization(prev => ({
       ...prev,
-      renamedPaths: { ...prev.renamedPaths, [path]: newName }
+      renamedPaths: { ...prev.renamedPaths, [path]: newKey }
     }));
     setHasChanges(true);
   }, []);
 
-  const handleAdd = useCallback((parentPath: string, name: string) => {
+  const handleAdd = useCallback((parentPath: string, name: string, _value: unknown) => {
     setCustomization(prev => ({
       ...prev,
       addedEntries: [...prev.addedEntries, { parentPath, name }]
