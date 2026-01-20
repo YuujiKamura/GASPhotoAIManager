@@ -178,12 +178,15 @@ export const generatePdfWithImages = async (
         // キャプション欄（写真の下、中央寄せ）
         page.drawRectangle({ x: MARGIN, y: captionY, width: photoWidth, height: captionHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
 
+        // ページ中央のX座標
+        const pageCenterX = A4_WIDTH / 2;
+
         // 1行目: 備考（着手前/竣工など）- 中央配置
         const remarks = analysis?.remarks || '';
         if (remarks) {
           const remarksWidth = japaneseFont.widthOfTextAtSize(remarks, 12);
           page.drawText(remarks, {
-            x: MARGIN + (photoWidth - remarksWidth) / 2,
+            x: pageCenterX - remarksWidth / 2,
             y: captionY + captionHeight / 2 + 5,
             size: 12,
             font: japaneseFont,
@@ -196,7 +199,7 @@ export const generatePdfWithImages = async (
         if (location) {
           const locationWidth = japaneseFont.widthOfTextAtSize(location, 11);
           page.drawText(location, {
-            x: MARGIN + (photoWidth - locationWidth) / 2,
+            x: pageCenterX - locationWidth / 2,
             y: captionY + captionHeight / 2 - 15,
             size: 11,
             font: japaneseFont,
