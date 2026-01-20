@@ -49,10 +49,10 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
 
     if (isTwoUp) {
       if (field.key === 'remarks') {
-        dynamicHeightClass = 'flex-1 min-h-[60px] border-none';
+        dynamicHeightClass = 'flex-1 min-h-[40px] border-none';
         dynamicTextClass = 'text-sm text-gray-900 font-medium text-center';
       } else {
-        dynamicHeightClass = 'h-[28px] flex-shrink-0 border-none';
+        dynamicHeightClass = 'h-[22px] flex-shrink-0 border-none';
         dynamicTextClass = 'text-sm text-gray-900 font-medium text-center';
       }
     } else {
@@ -77,23 +77,13 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
     : "border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu";
 
   const infoContainerClass = isTwoUp
-    ? "w-full h-[20%] bg-white flex flex-col justify-start py-1 px-4"
+    ? "w-full h-[14%] bg-white flex flex-col justify-start py-1 px-4"
     : "flex flex-col h-full bg-white";
 
   return (
     <div id="album-content" className="w-full">
       {Array.from({ length: totalPages }).map((_, pageIndex) => (
-        <div key={pageIndex} className="sheet-preview px-12 py-6 mb-8 relative flex flex-col box-border h-[297mm]">
-          {/* Page Header */}
-          <div className="flex justify-between items-end mb-2 w-full flex-shrink-0">
-            <h1 className="text-xl font-bold text-gray-900 border-b-2 border-gray-900 leading-none pb-1 px-1">
-              {appMode === 'construction' ? '工事写真帳' : 'Photo Album'}
-            </h1>
-            <div className="text-sm font-bold text-gray-800">
-              Page <span className="text-lg">{pageIndex + 1}</span>
-            </div>
-          </div>
-
+        <div key={pageIndex} className="sheet-preview w-[210mm] mx-auto px-12 py-6 mb-8 relative flex flex-col box-border h-[297mm]">
           {/* Main Content */}
           <div className="flex flex-col flex-1 border border-gray-400 bg-white min-h-0">
             {Array.from({ length: photosPerPage }).map((_, slotIndex) => {
