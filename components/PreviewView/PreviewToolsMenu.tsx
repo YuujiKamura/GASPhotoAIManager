@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers, Download, Upload } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2 } from 'lucide-react';
 
 // Grouped action props
 interface PairingActions {
@@ -25,6 +25,14 @@ interface DataActions {
   onImportJson?: () => void;
 }
 
+interface SystemActions {
+  onOpenSettings?: () => void;
+  onOpenHealthDashboard?: () => void;
+  onOpenAIFramework?: () => void;
+  onPdfLoad?: () => void;
+  onClearCache?: () => void;
+}
+
 // Combined props interface
 interface PreviewToolsMenuProps {
   lang: 'en' | 'ja';
@@ -33,6 +41,7 @@ interface PreviewToolsMenuProps {
   editActions: EditActions;
   settingsActions: SettingsActions;
   dataActions: DataActions;
+  systemActions: SystemActions;
 }
 
 // Legacy props interface for backwards compatibility
@@ -50,6 +59,12 @@ export interface LegacyPreviewToolsMenuProps {
   onOpenGitHubSync?: () => void;
   onExportJson?: () => void;
   onImportJson?: () => void;
+  // System actions (from UploadView)
+  onOpenSettings?: () => void;
+  onOpenHealthDashboard?: () => void;
+  onOpenAIFramework?: () => void;
+  onPdfLoad?: () => void;
+  onClearCache?: () => void;
 }
 
 interface MenuSection {
@@ -73,7 +88,8 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
   pairingActions,
   editActions,
   settingsActions,
-  dataActions
+  dataActions,
+  systemActions
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -197,6 +213,51 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
           title: { ja: 'JSONファイルから写真データを読み込み', en: 'Load photo data from JSON file' },
           onClick: () => { dataActions.onImportJson?.(); setShowMenu(false); },
           show: !!dataActions.onImportJson
+        },
+        {
+          icon: <FileText className="w-4 h-4 text-rose-400" />,
+          hoverBg: 'hover:bg-rose-600',
+          label: { ja: 'PDF読込', en: 'Load PDF' },
+          title: { ja: '既存のPDFから写真を読み込み', en: 'Load photos from existing PDF' },
+          onClick: () => { systemActions.onPdfLoad?.(); setShowMenu(false); },
+          show: !!systemActions.onPdfLoad
+        }
+      ]
+    },
+    {
+      label: { ja: 'システム', en: 'System' },
+      items: [
+        {
+          icon: <Settings className="w-4 h-4 text-gray-400" />,
+          hoverBg: 'hover:bg-gray-600',
+          label: { ja: 'API設定', en: 'API Settings' },
+          title: { ja: 'APIキーとモデルの設定', en: 'Configure API key and model' },
+          onClick: () => { systemActions.onOpenSettings?.(); setShowMenu(false); },
+          show: !!systemActions.onOpenSettings
+        },
+        {
+          icon: <Activity className="w-4 h-4 text-teal-400" />,
+          hoverBg: 'hover:bg-teal-600',
+          label: { ja: 'Health Dashboard', en: 'Health Dashboard' },
+          title: { ja: 'システムの健全性を確認', en: 'Check system health' },
+          onClick: () => { systemActions.onOpenHealthDashboard?.(); setShowMenu(false); },
+          show: !!systemActions.onOpenHealthDashboard
+        },
+        {
+          icon: <Brain className="w-4 h-4 text-indigo-400" />,
+          hoverBg: 'hover:bg-indigo-600',
+          label: { ja: 'AI Framework', en: 'AI Framework' },
+          title: { ja: 'AIフレームワークの設定', en: 'Configure AI framework' },
+          onClick: () => { systemActions.onOpenAIFramework?.(); setShowMenu(false); },
+          show: !!systemActions.onOpenAIFramework
+        },
+        {
+          icon: <Trash2 className="w-4 h-4 text-red-400" />,
+          hoverBg: 'hover:bg-red-600',
+          label: { ja: 'キャッシュクリア', en: 'Clear Cache' },
+          title: { ja: '解析キャッシュをクリア', en: 'Clear analysis cache' },
+          onClick: () => { systemActions.onClearCache?.(); setShowMenu(false); },
+          show: !!systemActions.onClearCache
         }
       ]
     }
@@ -255,7 +316,13 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
   onApplyAliases,
   onOpenGitHubSync,
   onExportJson,
-  onImportJson
+  onImportJson,
+  // System actions
+  onOpenSettings,
+  onOpenHealthDashboard,
+  onOpenAIFramework,
+  onPdfLoad,
+  onClearCache
 }) => (
   <PreviewToolsMenuInner
     lang={lang}
@@ -264,6 +331,7 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
     editActions={{ onEnterReorderMode, onRefine, onOpenBulkEditor }}
     settingsActions={{ onShowHistory, onOpenMasterEditor, onApplyAliases, onOpenGitHubSync }}
     dataActions={{ onExportJson, onImportJson }}
+    systemActions={{ onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache }}
   />
 );
 

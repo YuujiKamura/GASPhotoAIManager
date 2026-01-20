@@ -23,8 +23,7 @@ import {
   usePhotosState,
 } from './hooks';
 
-// Core components (UploadViewとPreviewViewは主要ビューなので静的インポート)
-import UploadView from './components/UploadView';
+// Core components (PreviewViewは主要ビュー)
 import PreviewView from './components/PreviewView';
 
 // Lazy-loaded components
@@ -213,35 +212,9 @@ export default function App() {
         <Suspense fallback={<LoadingFallback />}>
           <MasterEditorModal lang={lang} onClose={() => modals.setShowMasterEditor(false)} onApplyAliasesToSession={photoManagement.handleApplyAliases} />
         </Suspense>
-      ) : !showPreview ? (
-        <UploadView
-          data={{ lang, photos, appMode, apiKey: apiKeyState.apiKey || '', logs: processing.logs }}
-          state={{ isProcessing: processing.isProcessing, isAskingAI: processing.isAskingAI }}
-          coreHandlers={{
-            setAppMode,
-            onStartProcessing: handleStartAnalysis,
-            onResume: () => setShowPreview(true),
-            onExportJson: exportHandlers.handleExportJson,
-            onImportJson: exportHandlers.handleImportJson
-          }}
-          featureHandlers={{
-            onPdfButtonClick: () => modals.setShowPdfLoadDialog(true),
-            onClearCache: cacheHandlers.handleClearCache,
-            onShowPreview: () => setShowPreview(true),
-            onOpenSettings: () => modals.setShowApiKeySetup(true),
-            onManualPairing: handleManualPairing,
-            onShowHistory: () => modals.setShowHistory(true),
-            onOpenMasterEditor: () => modals.setShowMasterEditor(true),
-            onOpenHealthDashboard: () => modals.setShowHealthDashboard(true),
-            onOpenAIFramework: () => modals.setShowAIFramework(true),
-            onAskAI: analysisHandlers.handleAskAI,
-            onClearLogs: processing.clearLogs,
-            onTestOneInteractive: handleTestOneInteractive
-          }}
-        />
       ) : (
         <PreviewView
-          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout }}
+          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '' }}
           state={{ isProcessing: processing.isProcessing, currentStep: processing.currentStep, errorMsg: processing.errorMsg, successMsg: processing.successMsg }}
           photoHandlers={{
             onUpdatePhoto: updatePhoto,
@@ -251,7 +224,7 @@ export default function App() {
           }}
           actionHandlers={{
             onClearLogs: processing.clearLogs,
-            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setShowPreview(false); setInitialLayout(3); },
+            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setPhotos([]); resetStats(); setInitialLayout(3); },
             onRefine: () => modals.setShowRefineModal(true),
             onExportExcel: (layout) => generateExcel(photos, appMode, layout),
             onAutoPair: analysisHandlers.handleAutoPair,
@@ -261,12 +234,21 @@ export default function App() {
             onOpenMasterEditor: () => modals.setShowMasterEditor(true),
             onOpenBulkEditor: () => modals.setShowBulkEditor(true),
             onApplyAliases: photoManagement.handleApplyAliases,
-            onOpenGitHubSync: () => modals.setShowGitHubSync(true)
+            onOpenGitHubSync: () => modals.setShowGitHubSync(true),
+            // System handlers (from UploadView)
+            onOpenSettings: () => modals.setShowApiKeySetup(true),
+            onOpenHealthDashboard: () => modals.setShowHealthDashboard(true),
+            onOpenAIFramework: () => modals.setShowAIFramework(true),
+            onPdfLoad: () => modals.setShowPdfLoadDialog(true),
+            onClearCache: cacheHandlers.handleClearCache,
+            onStartProcessing: handleStartAnalysis,
+            onManualPairing: handleManualPairing,
+            onTestOneInteractive: handleTestOneInteractive
           }}
         />
       )}
 
-      {showPreview && (
+      {photos.length > 0 && (
         <Suspense fallback={<LoadingFallback />}>
           <UsagePanel photoCount={photos.length} totalImageSize={photos.reduce((sum, p) => sum + (p.base64?.length || 0) * 0.75, 0)} />
         </Suspense>
