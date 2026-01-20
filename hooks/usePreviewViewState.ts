@@ -36,19 +36,30 @@ interface PreviewViewActions {
   handleManualPairClick: (onManualPair: () => void) => void;
 }
 
+const STORAGE_KEY = 'gaspm_photosPerPage';
+
 export function usePreviewViewState(initialLayout: 2 | 3): PreviewViewState & PreviewViewActions {
   const [scale, setScale] = useState(1);
   const [isFitMode, setIsFitMode] = useState(true);
-  const [photosPerPage, setPhotosPerPage] = useState<2 | 3>(initialLayout);
+  const [photosPerPage, setPhotosPerPageState] = useState<2 | 3>(() => {
+    // localStorageから復元、なければinitialLayoutを使用
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === '2' || saved === '3') {
+      return parseInt(saved, 10) as 2 | 3;
+    }
+    return initialLayout;
+  });
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setPhotosPerPage(initialLayout);
-  }, [initialLayout]);
+  // 変更時にlocalStorageに保存
+  const setPhotosPerPage = useCallback((value: 2 | 3) => {
+    setPhotosPerPageState(value);
+    localStorage.setItem(STORAGE_KEY, String(value));
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
