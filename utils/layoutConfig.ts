@@ -1,4 +1,4 @@
-import { AIAnalysisResult } from "../types";
+import { AIAnalysisResult, TemplateLayout } from "../types";
 
 // ============================================
 // mm基準レイアウト（Source of Truth）
@@ -82,14 +82,18 @@ export const CONVERSION = {
 const SCALE = 1.1;
 
 // 行の設計（写真高さ242.9ptを10行 + 余白1行）
-const PHOTO_ROWS = 10;  // 写真部分の行数
-const GAP_ROWS = 1;     // 余白行数
-const ROWS_3UP = PHOTO_ROWS + GAP_ROWS;  // 11行/ブロック
-const ROWS_2UP = PHOTO_ROWS + GAP_ROWS;  // 2upも同様
+const PHOTO_ROWS_3UP = 10;  // 3枚モード: 写真部分の行数
+const GAP_ROWS = 1;         // 余白行数
+const ROWS_3UP = PHOTO_ROWS_3UP + GAP_ROWS;  // 11行/ブロック
+
+// 2枚モード: A4高さ297mm / 2 = 148.5mm/ブロック
+// 3枚モード: 297mm / 3 = 99mm/ブロック → 約1.5倍
+const ROWS_2UP = Math.round(ROWS_3UP * 1.5);  // 17行/ブロック
+const PHOTO_ROWS_2UP = ROWS_2UP - GAP_ROWS;   // 16行 (写真部分)
 
 // 行高さ (pt) = 写真高さ ÷ 写真行数 × SCALE (切り捨て)
-const ROW_HEIGHT_PT_3UP = Math.floor((PHOTO_HEIGHT_PT / PHOTO_ROWS) * SCALE);  // 26pt
-const ROW_HEIGHT_PT_2UP = Math.floor((PHOTO_HEIGHT_PT / PHOTO_ROWS) * SCALE);  // 26pt
+const ROW_HEIGHT_PT_3UP = Math.floor((PHOTO_HEIGHT_PT / PHOTO_ROWS_3UP) * SCALE);  // 26pt
+const ROW_HEIGHT_PT_2UP = Math.floor((PHOTO_HEIGHT_PT / PHOTO_ROWS_3UP) * SCALE);  // 26pt (同じ行高さ)
 
 // 列幅 (Excel単位) - 実測値で調整
 const PHOTO_COL_WIDTH = 56.1;  // アスペクト比に合わせて調整
@@ -121,11 +125,12 @@ export const DIMENSION = {
   INFO_WIDTH_PT: INFO_WIDTH_PT,
 
   // --- Excel用導出値 ---
-  ROW_HEIGHT_PT: ROW_HEIGHT_PT_3UP,           // 24pt
-  PHOTO_ROWS: PHOTO_ROWS,                     // 10行 (写真部分)
+  ROW_HEIGHT_PT: ROW_HEIGHT_PT_3UP,           // 26pt
+  PHOTO_ROWS: PHOTO_ROWS_3UP,                 // 10行 (写真部分, 3枚モード)
+  PHOTO_ROWS_2UP: PHOTO_ROWS_2UP,             // 16行 (写真部分, 2枚モード)
   GAP_ROWS: GAP_ROWS,                         // 1行 (余白部分)
   ROWS_PER_BLOCK_3UP: ROWS_3UP,               // 11行 (写真+余白)
-  ROWS_PER_BLOCK_2UP: ROWS_2UP,               // 11行
+  ROWS_PER_BLOCK_2UP: ROWS_2UP,               // 17行 (写真+余白)
   COL_A_WIDTH: PHOTO_COL_WIDTH,               // 61 (画像列)
   COL_B_WIDTH: LABEL_COL_WIDTH,               // 8 (ラベル列)
   COL_C_WIDTH: VALUE_COL_WIDTH,               // 33 (値列)
@@ -218,15 +223,18 @@ export interface LayoutConfig {
 }
 
 export const getLayoutConfig = (photosPerPage: 2 | 3): LayoutConfig => {
-  const rowsPerBlock = photosPerPage === 2 ? DIMENSION.ROWS_PER_BLOCK_2UP : DIMENSION.ROWS_PER_BLOCK_3UP;
+  // 内部でテンプレートから値を取得（後方互換性維持）
+  const isTwoUp = photosPerPage === 2;
+  const rowsPerBlock = isTwoUp ? DIMENSION.ROWS_PER_BLOCK_2UP : DIMENSION.ROWS_PER_BLOCK_3UP;
+  const photoRows = isTwoUp ? DIMENSION.PHOTO_ROWS_2UP : DIMENSION.PHOTO_ROWS;
 
   return {
     rowsPerBlock,
-    photoRows: DIMENSION.PHOTO_ROWS,    // 10 (写真部分のみ)
+    photoRows,                           // 2up: 16行, 3up: 10行
     rowHeightPt: DIMENSION.ROW_HEIGHT_PT,
-    colAWidth: DIMENSION.COL_A_WIDTH,   // 61
-    colBWidth: DIMENSION.COL_B_WIDTH,   // 8
-    colCWidth: DIMENSION.COL_C_WIDTH,   // 33
+    colAWidth: DIMENSION.COL_A_WIDTH,   // 56.1
+    colBWidth: DIMENSION.COL_B_WIDTH,   // 11
+    colCWidth: DIMENSION.COL_C_WIDTH,   // 28.6
     photoWidthPt: DIMENSION.PHOTO_WIDTH_PT,
     photoHeightPt: DIMENSION.PHOTO_HEIGHT_PT,
     infoWidthPt: DIMENSION.INFO_WIDTH_PT,
@@ -370,3 +378,107 @@ export function formatDateTime(timestamp: number | undefined): string {
     DATE_FORMAT.options
   );
 }
+
+// ============================================
+// ビルトインテンプレート定義
+// ============================================
+
+/**
+ * 標準3枚モードテンプレート
+ * 全フィールド表示、写真左・情報欄右のレイアウト
+ */
+const TEMPLATE_3UP: TemplateLayout = {
+  id: 'standard-3up',
+  name: '標準（3枚/ページ）',
+  photosPerPage: 3,
+
+  // mm基準
+  pageWidthMm: A4_WIDTH_MM,
+  pageHeightMm: A4_HEIGHT_MM,
+  marginMm: MARGIN_MM,
+  photoGapMm: PHOTO_GAP_MM,
+
+  // 比率
+  photoWidthPercent: IMAGE_RATIO * 100,
+  infoWidthPercent: INFO_RATIO * 100,
+
+  // Excel用
+  rowsPerBlock: ROWS_3UP,
+  photoRows: PHOTO_ROWS_3UP,
+  rowHeightPt: ROW_HEIGHT_PT_3UP,
+  columnWidths: {
+    imageCol: PHOTO_COL_WIDTH,
+    labelCol: LABEL_COL_WIDTH,
+    valueCol: VALUE_COL_WIDTH,
+  },
+
+  // 全フィールド表示
+  visibleFields: LAYOUT_FIELDS.map(f => f.id),
+
+  isDefault: true,
+};
+
+/**
+ * シンプル2枚モードテンプレート
+ * 測点・備考のみ表示、写真大きめ
+ */
+const TEMPLATE_2UP: TemplateLayout = {
+  id: 'simple-2up',
+  name: 'シンプル（2枚/ページ）',
+  photosPerPage: 2,
+
+  // mm基準
+  pageWidthMm: A4_WIDTH_MM,
+  pageHeightMm: A4_HEIGHT_MM,
+  marginMm: MARGIN_MM,
+  photoGapMm: PHOTO_GAP_MM,
+
+  // 比率（2枚モードは写真フル幅）
+  photoWidthPercent: 100,
+  infoWidthPercent: 0,
+
+  // Excel用
+  rowsPerBlock: ROWS_2UP,
+  photoRows: PHOTO_ROWS_2UP,
+  rowHeightPt: ROW_HEIGHT_PT_2UP,
+  columnWidths: {
+    imageCol: PHOTO_COL_WIDTH,
+    labelCol: LABEL_COL_WIDTH,
+    valueCol: VALUE_COL_WIDTH,
+  },
+
+  // 測点・備考のみ
+  visibleFields: ['f_station', 'f_remarks'],
+
+  isDefault: false,
+};
+
+/**
+ * ビルトインテンプレート一覧
+ */
+export const BUILT_IN_TEMPLATES: Record<string, TemplateLayout> = {
+  'standard-3up': TEMPLATE_3UP,
+  'simple-2up': TEMPLATE_2UP,
+};
+
+// ============================================
+// テンプレート取得関数
+// ============================================
+
+/**
+ * 写真枚数からテンプレートレイアウトを取得
+ * @param photosPerPage 1ページあたりの写真数
+ * @returns TemplateLayout
+ */
+export const getTemplateLayout = (photosPerPage: 2 | 3): TemplateLayout => {
+  return photosPerPage === 2 ? TEMPLATE_2UP : TEMPLATE_3UP;
+};
+
+/**
+ * テンプレートから表示フィールドを取得
+ * @param template テンプレート
+ * @returns フィールド定義配列
+ */
+export const getVisibleFields = (template: TemplateLayout): FieldDefinition[] => {
+  return LAYOUT_FIELDS.filter(field => template.visibleFields.includes(field.id));
+};

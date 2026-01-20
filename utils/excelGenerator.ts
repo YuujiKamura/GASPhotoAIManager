@@ -1,6 +1,6 @@
 import { PhotoRecord, AppMode, AIAnalysisResult } from "../types";
 import { extractBase64Data } from "./imageUtils";
-import { LAYOUT_FIELDS, getLayoutConfig, PDF_LAYOUT, CONVERSION } from "./layoutConfig";
+import { LAYOUT_FIELDS, getLayoutConfig, getTemplateLayout, getVisibleFields, PDF_LAYOUT, CONVERSION } from "./layoutConfig";
 import { TRANS } from "./translations";
 
 // Declare global variables for loaded scripts
@@ -220,12 +220,9 @@ export const generateExcel = async (
         return finalRowSpan;
       };
 
-      const visibleFields = LAYOUT_FIELDS.filter((field) => {
-        if (isTwoUp) {
-          return field.key === 'remarks' || field.key === 'station';
-        }
-        return true;
-      });
+      // テンプレートから表示フィールドを取得
+      const template = getTemplateLayout(photosPerPage);
+      const visibleFields = getVisibleFields(template);
 
       let currentFieldRow = startRow;
 

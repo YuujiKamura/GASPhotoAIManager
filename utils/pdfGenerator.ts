@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
-import { getPdfLayout } from './layoutConfig';
+import { getPdfLayout, getTemplateLayout, getVisibleFields, FIELD_LABELS } from './layoutConfig';
 
 // PDF.js worker setup
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -246,16 +246,24 @@ export const generatePdfWithImages = async (
           }
         }
 
-        // 情報欄
+        // 情報欄（テンプレートから表示フィールドを取得）
         const infoX = MARGIN + photoWidth + PHOTO_INFO_GAP;
-        const infoLines = [
-          { label: '工種', value: analysis?.workType || '-' },
-          { label: '種別', value: analysis?.variety || '-' },
-          { label: '細別', value: analysis?.detail || '-' },
-          { label: '測点', value: analysis?.station || '-' },
-          { label: '備考', value: analysis?.remarks || '-' },
-          { label: '撮影', value: photo.date ? new Date(photo.date).toLocaleString('ja-JP') : '-' }
-        ];
+        const template = getTemplateLayout(photosPerPage);
+        const visibleFields = getVisibleFields(template);
+
+        // フィールドをPDF用の形式に変換
+        const infoLines = visibleFields.map(field => {
+          if (field.key === 'date') {
+            return {
+              label: FIELD_LABELS.date,
+              value: photo.date ? new Date(photo.date).toLocaleString('ja-JP') : '-'
+            };
+          }
+          return {
+            label: FIELD_LABELS[field.key as keyof typeof FIELD_LABELS] || field.labelKey,
+            value: analysis?.[field.key as keyof typeof analysis] || '-'
+          };
+        });
 
         page.drawRectangle({ x: infoX, y: rowY, width: infoWidth, height: photoHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
 

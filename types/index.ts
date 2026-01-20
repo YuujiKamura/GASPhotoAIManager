@@ -43,3 +43,9 @@ export type {
   UsageSummary,
   CostEstimate,
 } from './usage';
+
+// Template types
+export type {
+  TemplateLayout,
+  BuiltInTemplateId,
+} from './template';
