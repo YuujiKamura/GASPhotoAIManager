@@ -288,6 +288,13 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               onOpenMasterEditor={onOpenMasterEditor}
               onApplyAliases={onApplyAliases}
               onOpenGitHubSync={onOpenGitHubSync}
+              // Data actions
+              onNewSession={() => {
+                if (window.confirm(lang === 'ja' ? '現在のセッションを終了して新規作成しますか？' : 'End current session and start new?')) {
+                  onGoHome();
+                }
+              }}
+              onUploadPhotos={handleUploadClick}
               onExportJson={!isEmpty ? handleExportJson : undefined}
               onImportJson={onReorderPhotos ? handleImportJson : undefined}
               // System actions

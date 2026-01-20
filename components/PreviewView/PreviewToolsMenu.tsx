@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2 } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2, Plus, ImagePlus } from 'lucide-react';
 
 // Grouped action props
 interface PairingActions {
@@ -21,6 +21,8 @@ interface SettingsActions {
 }
 
 interface DataActions {
+  onNewSession?: () => void;
+  onUploadPhotos?: () => void;
   onExportJson?: () => void;
   onImportJson?: () => void;
 }
@@ -57,6 +59,9 @@ export interface LegacyPreviewToolsMenuProps {
   onOpenMasterEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
+  // Data actions
+  onNewSession?: () => void;
+  onUploadPhotos?: () => void;
   onExportJson?: () => void;
   onImportJson?: () => void;
   // System actions (from UploadView)
@@ -119,6 +124,51 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
   };
 
   const menuSections: MenuSection[] = [
+    {
+      label: { ja: 'データ', en: 'Data' },
+      items: [
+        {
+          icon: <Plus className="w-4 h-4 text-blue-400" />,
+          hoverBg: 'hover:bg-blue-600',
+          label: { ja: '新規セッション', en: 'New Session' },
+          title: { ja: '現在のデータをクリアして新規作成', en: 'Clear current data and start new' },
+          onClick: () => { dataActions.onNewSession?.(); setShowMenu(false); },
+          show: !!dataActions.onNewSession
+        },
+        {
+          icon: <ImagePlus className="w-4 h-4 text-green-400" />,
+          hoverBg: 'hover:bg-green-600',
+          label: { ja: '写真をアップロード', en: 'Upload Photos' },
+          title: { ja: '写真をアップロードして追加', en: 'Upload and add photos' },
+          onClick: () => { dataActions.onUploadPhotos?.(); setShowMenu(false); },
+          show: !!dataActions.onUploadPhotos
+        },
+        {
+          icon: <Download className="w-4 h-4 text-emerald-400" />,
+          hoverBg: 'hover:bg-emerald-600',
+          label: { ja: 'JSON保存', en: 'Export JSON' },
+          title: { ja: '写真データをJSONファイルとして保存', en: 'Save photo data as JSON file' },
+          onClick: () => { dataActions.onExportJson?.(); setShowMenu(false); },
+          show: !!dataActions.onExportJson
+        },
+        {
+          icon: <Upload className="w-4 h-4 text-sky-400" />,
+          hoverBg: 'hover:bg-sky-600',
+          label: { ja: 'JSON読込', en: 'Import JSON' },
+          title: { ja: 'JSONファイルから写真データを読み込み', en: 'Load photo data from JSON file' },
+          onClick: () => { dataActions.onImportJson?.(); setShowMenu(false); },
+          show: !!dataActions.onImportJson
+        },
+        {
+          icon: <FileText className="w-4 h-4 text-rose-400" />,
+          hoverBg: 'hover:bg-rose-600',
+          label: { ja: 'PDF読込', en: 'Load PDF' },
+          title: { ja: '既存のPDFから写真を読み込み', en: 'Load photos from existing PDF' },
+          onClick: () => { systemActions.onPdfLoad?.(); setShowMenu(false); },
+          show: !!systemActions.onPdfLoad
+        }
+      ]
+    },
     {
       label: { ja: 'ペアリング', en: 'Pairing' },
       items: [
@@ -192,35 +242,6 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
           title: { ja: '学習データをGitHubと同期', en: 'Sync learned data with GitHub' },
           onClick: () => { settingsActions.onOpenGitHubSync?.(); setShowMenu(false); },
           show: !!settingsActions.onOpenGitHubSync
-        }
-      ]
-    },
-    {
-      label: { ja: 'データ', en: 'Data' },
-      items: [
-        {
-          icon: <Download className="w-4 h-4 text-emerald-400" />,
-          hoverBg: 'hover:bg-emerald-600',
-          label: { ja: 'JSON保存', en: 'Export JSON' },
-          title: { ja: '写真データをJSONファイルとして保存', en: 'Save photo data as JSON file' },
-          onClick: () => { dataActions.onExportJson?.(); setShowMenu(false); },
-          show: !!dataActions.onExportJson
-        },
-        {
-          icon: <Upload className="w-4 h-4 text-sky-400" />,
-          hoverBg: 'hover:bg-sky-600',
-          label: { ja: 'JSON読込', en: 'Import JSON' },
-          title: { ja: 'JSONファイルから写真データを読み込み', en: 'Load photo data from JSON file' },
-          onClick: () => { dataActions.onImportJson?.(); setShowMenu(false); },
-          show: !!dataActions.onImportJson
-        },
-        {
-          icon: <FileText className="w-4 h-4 text-rose-400" />,
-          hoverBg: 'hover:bg-rose-600',
-          label: { ja: 'PDF読込', en: 'Load PDF' },
-          title: { ja: '既存のPDFから写真を読み込み', en: 'Load photos from existing PDF' },
-          onClick: () => { systemActions.onPdfLoad?.(); setShowMenu(false); },
-          show: !!systemActions.onPdfLoad
         }
       ]
     },
@@ -315,6 +336,9 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
   onOpenMasterEditor,
   onApplyAliases,
   onOpenGitHubSync,
+  // Data actions
+  onNewSession,
+  onUploadPhotos,
   onExportJson,
   onImportJson,
   // System actions
@@ -330,7 +354,7 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
     pairingActions={{ onAutoPair, onManualPair }}
     editActions={{ onEnterReorderMode, onRefine, onOpenBulkEditor }}
     settingsActions={{ onShowHistory, onOpenMasterEditor, onApplyAliases, onOpenGitHubSync }}
-    dataActions={{ onExportJson, onImportJson }}
+    dataActions={{ onNewSession, onUploadPhotos, onExportJson, onImportJson }}
     systemActions={{ onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache }}
   />
 );
