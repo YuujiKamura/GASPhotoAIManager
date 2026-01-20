@@ -30,14 +30,14 @@ export const PhotoGridItem: React.FC<PhotoGridItemProps> = ({ entry, onToggle, o
     )}
     <button
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      className={`absolute top-1 left-1 w-5 h-5 rounded flex items-center justify-center ${
+      className={`absolute top-1 left-1 w-5 h-5 rounded flex items-center justify-center z-10 ${
         entry.selected ? 'bg-blue-500 text-white' : 'bg-white/80 border'
       }`}
     >
       {entry.selected && <Check className="w-3 h-3" />}
     </button>
     {entry.hasCache && (
-      <div className="absolute top-1 right-1 w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center" title="キャッシュあり">
+      <div className="absolute top-1 right-1 w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center z-10" title="キャッシュあり">
         <Database className="w-3 h-3" />
       </div>
     )}

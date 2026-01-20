@@ -183,8 +183,16 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
         }
       : null;
 
+    // responseが空の場合はデフォルトメッセージを生成
+    let responseText = parsed.response || '';
+    if (!responseText && analysis) {
+      responseText = `解析完了。工種: ${analysis.workType}${analysis.variety ? ` / ${analysis.variety}` : ''}${analysis.detail ? ` / ${analysis.detail}` : ''}。測点: ${analysis.station || '不明'}。内容を確認してね。`;
+    } else if (!responseText) {
+      responseText = '解析結果を確認してください。';
+    }
+
     return {
-      response: parsed.response || '',
+      response: responseText,
       analysis,
     };
   } catch (error: any) {
