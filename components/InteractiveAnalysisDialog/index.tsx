@@ -124,9 +124,18 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                   {analysis.measurements && (
                     <InfoField label={txt.measurements} value={analysis.measurements} multiline />
                   )}
+                  {analysis.detectedText && (
+                    <div className="mt-2 pt-2 border-t border-gray-600">
+                      <div className="text-gray-500 text-xs mb-1">黒板テキスト:</div>
+                      <div className="text-gray-300 text-xs whitespace-pre-wrap">{analysis.detectedText}</div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-gray-500 text-sm">{txt.noAnalysis}</div>
+                <div className="text-amber-400 text-sm p-2 bg-amber-900/20 rounded">
+                  ⚠️ 解析結果なし<br/>
+                  <span className="text-gray-400 text-xs">右側のチャットで「再解析して」と指示できます</span>
+                </div>
               )}
             </div>
           </div>
