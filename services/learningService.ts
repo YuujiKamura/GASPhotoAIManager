@@ -13,10 +13,7 @@ import {
   fetchLearnedSettings,
   createEmptySettings
 } from './githubSync';
-
-// IndexedDB設定
-const DB_NAME = 'ConstructionPhotoManagerDB';
-const STORE_LEARNED = 'learnedRules';
+import { openDB, STORE_LEARNED } from '../utils/storage/dbCore';
 
 // メモリ内キャッシュ
 let cachedSettings: LearnedSettings | null = null;
@@ -25,30 +22,6 @@ let autoPushTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 自動プッシュの遅延（ミリ秒）
 const AUTO_PUSH_DELAY = 30000; // 30秒
-
-/**
- * IndexedDBを開く
- */
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 9); // Version 9: Sync with storage.ts
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_LEARNED)) {
-        db.createObjectStore(STORE_LEARNED, { keyPath: 'id' });
-      }
-    };
-
-    request.onsuccess = (event) => {
-      resolve((event.target as IDBOpenDBRequest).result);
-    };
-
-    request.onerror = (event) => {
-      reject((event.target as IDBOpenDBRequest).error);
-    };
-  });
-};
 
 /**
  * 学習設定をローカルに保存

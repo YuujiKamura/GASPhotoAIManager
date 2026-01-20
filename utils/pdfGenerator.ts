@@ -181,31 +181,38 @@ export const generatePdfWithImages = async (
         // キャプション欄の中央X座標
         const captionCenterX = MARGIN + photoWidth / 2;
 
+        const captionPadding = 8;
+        const maxCaptionWidth = photoWidth - captionPadding * 2;
+        const drawCenteredText = (
+          text: string,
+          baseSize: number,
+          y: number,
+          color: { r: number; g: number; b: number }
+        ) => {
+          if (!text) return;
+          let size = baseSize;
+          let width = japaneseFont.widthOfTextAtSize(text, size);
+          if (width > maxCaptionWidth && width > 0) {
+            const scale = maxCaptionWidth / width;
+            size = Math.max(9, Math.floor(size * scale));
+            width = japaneseFont.widthOfTextAtSize(text, size);
+          }
+          page.drawText(text, {
+            x: captionCenterX - width / 2,
+            y,
+            size,
+            font: japaneseFont,
+            color: rgb(color.r, color.g, color.b)
+          });
+        };
+
         // 1行目: 備考（着手前/竣工など）
         const remarks = analysis?.remarks || '';
-        if (remarks) {
-          const w = japaneseFont.widthOfTextAtSize(remarks, 12);
-          page.drawText(remarks, {
-            x: captionCenterX - w / 2,
-            y: captionY + captionHeight / 2 + 5,
-            size: 12,
-            font: japaneseFont,
-            color: rgb(0.1, 0.1, 0.1)
-          });
-        }
+        drawCenteredText(remarks, 12, captionY + captionHeight / 2 + 5, { r: 0.1, g: 0.1, b: 0.1 });
 
         // 2行目: 測点/場所情報
         const location = analysis?.station || analysis?.description || '';
-        if (location) {
-          const w = japaneseFont.widthOfTextAtSize(location, 11);
-          page.drawText(location, {
-            x: captionCenterX - w / 2,
-            y: captionY + captionHeight / 2 - 15,
-            size: 11,
-            font: japaneseFont,
-            color: rgb(0.2, 0.2, 0.2)
-          });
-        }
+        drawCenteredText(location, 11, captionY + captionHeight / 2 - 15, { r: 0.2, g: 0.2, b: 0.2 });
 
       } else {
         // ========== 3枚モード: 写真左 + 情報欄右 ==========
@@ -280,7 +287,7 @@ export const generatePdfWithImages = async (
 };
 
 /** html2pdfで生成されたPDFにセッションデータを埋め込む */
-const embedSessionInPdf = async (pdfBlob: Blob, photos: PhotoRecord[]): Promise<Blob> => {
+export const embedSessionInPdf = async (pdfBlob: Blob, photos: PhotoRecord[]): Promise<Blob> => {
   try {
     const pdfDoc = await PDFDocument.load(await pdfBlob.arrayBuffer());
     pdfDoc.setSubject(SESSION_MARKER + encodeSessionData(photos));

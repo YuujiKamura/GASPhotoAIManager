@@ -7,7 +7,7 @@
     <!-- Tailwind CSS is bundled via PostCSS -->
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <!-- html2pdf removed - using pdf-lib for individual image embedding -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
@@ -65,6 +65,17 @@
       .pdf-visible { display: none; }
       .pdf-mode .pdf-visible { display: block !important; }
       .pdf-mode .pdf-hidden { display: none !important; }
+
+      /* html2canvas cannot parse oklch colors; force safe RGB colors in PDF mode */
+      .pdf-mode, .pdf-mode * {
+        color: #111111 !important;
+        background-color: #ffffff !important;
+        border-color: #b3b3b3 !important;
+        box-shadow: none !important;
+      }
+      .pdf-mode img {
+        background-color: transparent !important;
+      }
     </style>
   </head>
   <body class="bg-gray-100 text-gray-900 antialiased">

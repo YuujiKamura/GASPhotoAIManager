@@ -129,7 +129,68 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
           margin: 0,
           filename,
           image: { type: 'jpeg', quality: 1.0 },
-          html2canvas: { scale: 3, useCORS: true, logging: false },
+          html2canvas: {
+            scale: 3,
+            useCORS: true,
+            logging: false,
+            onclone: (doc: Document) => {
+              // First, replace oklch colors in all stylesheets (before html2canvas parses CSS)
+              doc.querySelectorAll('style').forEach((styleTag) => {
+                if (styleTag.textContent) {
+                  styleTag.textContent = styleTag.textContent.replace(/oklch\([^)]*\)/g, '#111111');
+                }
+              });
+
+              const root = doc.getElementById('album-content');
+              const win = doc.defaultView;
+              if (!root || !win) return;
+
+              root.classList.add('pdf-mode');
+
+              const props = [
+                'display', 'position', 'box-sizing',
+                'flex', 'flex-basis', 'flex-direction', 'flex-grow', 'flex-shrink', 'flex-wrap',
+                'justify-content', 'align-items', 'align-content', 'gap', 'row-gap', 'column-gap',
+                'grid-template-columns', 'grid-template-rows', 'grid-column', 'grid-row',
+                'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+                'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+                'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+                'font', 'font-size', 'font-weight', 'font-family', 'line-height', 'letter-spacing',
+                'text-align', 'white-space',
+                'border', 'border-width', 'border-style', 'border-color', 'border-radius',
+                'background-color', 'color', 'text-decoration', 'text-decoration-color',
+                'outline-color', 'outline-width', 'outline-style',
+                'box-shadow', 'text-shadow',
+                'overflow', 'overflow-x', 'overflow-y',
+                'object-fit'
+              ];
+
+              const sanitizeValue = (prop: string, value: string) => {
+                if (!value) return value;
+                if (!value.includes('oklch')) return value;
+                if (prop.includes('background')) return '#ffffff';
+                if (prop.includes('border') || prop.includes('outline')) return '#b3b3b3';
+                if (prop.includes('color') || prop === 'fill' || prop === 'stroke') return '#111111';
+                if (prop.includes('shadow')) return 'none';
+                return 'initial';
+              };
+
+              const elements = root.querySelectorAll<HTMLElement>('*');
+              elements.forEach((el) => {
+                const style = win.getComputedStyle(el);
+                props.forEach((prop) => {
+                  const value = style.getPropertyValue(prop);
+                  const safe = sanitizeValue(prop, value.trim());
+                  if (safe) el.style.setProperty(prop, safe, 'important');
+                });
+                el.style.setProperty('background-image', 'none', 'important');
+                el.style.setProperty('fill', '#111111', 'important');
+                el.style.setProperty('stroke', '#111111', 'important');
+              });
+
+              doc.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => node.remove());
+            }
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: 'css', after: '.sheet-preview' }
         };
