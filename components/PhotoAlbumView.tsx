@@ -50,10 +50,10 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
     if (isTwoUp) {
       if (field.key === 'remarks') {
         dynamicHeightClass = 'flex-1 min-h-[60px] border-none';
-        dynamicTextClass = 'text-sm text-gray-900 font-medium';
+        dynamicTextClass = 'text-sm text-gray-900 font-medium text-center';
       } else {
         dynamicHeightClass = 'h-[28px] flex-shrink-0 border-none';
-        dynamicTextClass = 'text-sm text-gray-900 font-medium';
+        dynamicTextClass = 'text-sm text-gray-900 font-medium text-center';
       }
     } else {
       dynamicHeightClass = field.key === 'measurements'

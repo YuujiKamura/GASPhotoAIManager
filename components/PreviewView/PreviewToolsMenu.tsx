@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers, Download, Upload } from 'lucide-react';
 
 // Grouped action props
 interface PairingActions {
@@ -20,6 +20,11 @@ interface SettingsActions {
   onOpenGitHubSync?: () => void;
 }
 
+interface DataActions {
+  onExportJson?: () => void;
+  onImportJson?: () => void;
+}
+
 // Combined props interface
 interface PreviewToolsMenuProps {
   lang: 'en' | 'ja';
@@ -27,6 +32,7 @@ interface PreviewToolsMenuProps {
   pairingActions: PairingActions;
   editActions: EditActions;
   settingsActions: SettingsActions;
+  dataActions: DataActions;
 }
 
 // Legacy props interface for backwards compatibility
@@ -42,6 +48,8 @@ export interface LegacyPreviewToolsMenuProps {
   onOpenMasterEditor?: () => void;
   onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
+  onExportJson?: () => void;
+  onImportJson?: () => void;
 }
 
 interface MenuSection {
@@ -64,7 +72,8 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
   isProcessing,
   pairingActions,
   editActions,
-  settingsActions
+  settingsActions,
+  dataActions
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -169,6 +178,27 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
           show: !!settingsActions.onOpenGitHubSync
         }
       ]
+    },
+    {
+      label: { ja: 'データ', en: 'Data' },
+      items: [
+        {
+          icon: <Download className="w-4 h-4 text-emerald-400" />,
+          hoverBg: 'hover:bg-emerald-600',
+          label: { ja: 'JSON保存', en: 'Export JSON' },
+          title: { ja: '写真データをJSONファイルとして保存', en: 'Save photo data as JSON file' },
+          onClick: () => { dataActions.onExportJson?.(); setShowMenu(false); },
+          show: !!dataActions.onExportJson
+        },
+        {
+          icon: <Upload className="w-4 h-4 text-sky-400" />,
+          hoverBg: 'hover:bg-sky-600',
+          label: { ja: 'JSON読込', en: 'Import JSON' },
+          title: { ja: 'JSONファイルから写真データを読み込み', en: 'Load photo data from JSON file' },
+          onClick: () => { dataActions.onImportJson?.(); setShowMenu(false); },
+          show: !!dataActions.onImportJson
+        }
+      ]
     }
   ];
 
@@ -223,7 +253,9 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
   onOpenBulkEditor,
   onOpenMasterEditor,
   onApplyAliases,
-  onOpenGitHubSync
+  onOpenGitHubSync,
+  onExportJson,
+  onImportJson
 }) => (
   <PreviewToolsMenuInner
     lang={lang}
@@ -231,6 +263,7 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
     pairingActions={{ onAutoPair, onManualPair }}
     editActions={{ onEnterReorderMode, onRefine, onOpenBulkEditor }}
     settingsActions={{ onShowHistory, onOpenMasterEditor, onApplyAliases, onOpenGitHubSync }}
+    dataActions={{ onExportJson, onImportJson }}
   />
 );
 

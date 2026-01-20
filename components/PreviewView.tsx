@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle, CheckCircle } from 'lucide-react';
+import { exportDataToJson, importDataFromJson } from '../utils/storage/exportImport';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
@@ -108,6 +109,50 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     handleManualPairClick,
   } = usePreviewViewState(initialLayout);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportJson = useCallback(() => {
+    if (photos.length === 0) {
+      alert(lang === 'ja' ? '保存する写真データがありません' : 'No photo data to save');
+      return;
+    }
+    const jsonStr = exportDataToJson(photos);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `photo_data_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [photos, lang]);
+
+  const handleImportJson = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const jsonStr = ev.target?.result as string;
+        const importedPhotos = importDataFromJson(jsonStr);
+        if (onReorderPhotos) {
+          onReorderPhotos(importedPhotos);
+          setLocalSuccessMsg(lang === 'ja' ? `${importedPhotos.length}件の写真データを読み込みました` : `Loaded ${importedPhotos.length} photo records`);
+        }
+      } catch (err) {
+        console.error('JSON import error:', err);
+        setLocalErrorMsg(lang === 'ja' ? 'JSONファイルの読み込みに失敗しました' : 'Failed to import JSON file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, [onReorderPhotos, lang]);
+
   return (
     <div className="fixed inset-0 z-[100] bg-gray-200 overflow-hidden flex flex-col">
       {/* Header */}
@@ -180,6 +225,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               onOpenMasterEditor={onOpenMasterEditor}
               onApplyAliases={onApplyAliases}
               onOpenGitHubSync={onOpenGitHubSync}
+              onExportJson={handleExportJson}
+              onImportJson={onReorderPhotos ? handleImportJson : undefined}
             />
           )}
         </div>
@@ -240,6 +287,14 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       </div>
 
       {showHistoryPanel && <SessionHistoryPanel onLoad={() => {}} onClose={() => setShowHistoryPanel(false)} currentPhotos={photos} />}
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".json"
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 };
