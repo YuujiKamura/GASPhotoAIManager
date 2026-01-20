@@ -207,7 +207,15 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       {/* Header */}
       <div className="sticky top-0 z-[101] bg-slate-800 text-white p-3 shadow-md flex justify-between items-center">
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-          <h1 className="text-white font-bold tracking-tight text-lg flex items-center gap-2">
+          <h1
+            className={`text-white font-bold tracking-tight text-lg flex items-center gap-2 ${!isEmpty ? 'cursor-pointer hover:text-amber-300 transition-colors' : ''}`}
+            onClick={() => {
+              if (!isEmpty && window.confirm(lang === 'ja' ? '現在のセッションを終了して新規作成しますか？' : 'End current session and start new?')) {
+                onGoHome();
+              }
+            }}
+            title={!isEmpty ? (lang === 'ja' ? 'ホームに戻る（新規セッション）' : 'Go Home (New Session)') : undefined}
+          >
             {appMode === 'construction' && <HardHat className="w-5 h-5 text-amber-500" />}
             {txt.appTitle}
           </h1>
