@@ -15,7 +15,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
-import { formatHierarchyForPrompt } from "../../utils/constructionMaster";
+import { formatHierarchyForPrompt, getHierarchySubset } from "../../utils/constructionMaster";
 import { trackUsage } from "../usageTracker";
 import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
@@ -127,7 +127,8 @@ export const analyzePhotoBatch = async (
   onIndividualResult?: (fileName: string, result: AIAnalysisResult) => void,
   shouldAbort?: AbortChecker,
   onReasoningStream?: (text: string) => void,
-  ruleSettings?: RuleSettings
+  ruleSettings?: RuleSettings,
+  workType?: string
 ): Promise<AIAnalysisResult[]> => {
   if (!apiKey || !hasApiKey()) {
     throw new Error('APIキーが設定されていません。設定画面からAPIキーを入力してください。');
@@ -142,14 +143,23 @@ export const analyzePhotoBatch = async (
 
   // Use selector to determine work types (only for construction mode)
   let filteredHierarchy: object | undefined;
-  if (appMode === 'construction' && records.length >= 3) {
-    const selectorStart = performance.now();
-    const selectedWorkTypes = await selectWorkTypes(records, apiKey, onLog);
-    filteredHierarchy = getFilteredHierarchy(selectedWorkTypes);
-    const selectorTime = performance.now() - selectorStart;
+  if (appMode === 'construction') {
     const fullSize = JSON.stringify(formatHierarchyForPrompt()).length;
-    const filteredSize = JSON.stringify(filteredHierarchy).length;
-    onLog?.(`[PROFILER] Selector: ${formatDuration(selectorTime)}, hierarchy ${fullSize} -> ${filteredSize} chars (${((1 - filteredSize/fullSize) * 100).toFixed(1)}% reduction)`, "info");
+
+    if (workType) {
+      // 工種指定あり → selectWorkTypes()スキップ（API呼び出し削減）
+      filteredHierarchy = getHierarchySubset([workType]);
+      const filteredSize = JSON.stringify(filteredHierarchy).length;
+      onLog?.(`[PROFILER] 工種指定済み: ${workType} - selector skip, hierarchy ${fullSize} -> ${filteredSize} chars (${((1 - filteredSize/fullSize) * 100).toFixed(1)}% reduction)`, "info");
+    } else if (records.length >= 3) {
+      // 工種指定なし → 従来通りAIが推定
+      const selectorStart = performance.now();
+      const selectedWorkTypes = await selectWorkTypes(records, apiKey, onLog);
+      filteredHierarchy = getFilteredHierarchy(selectedWorkTypes);
+      const selectorTime = performance.now() - selectorStart;
+      const filteredSize = JSON.stringify(filteredHierarchy).length;
+      onLog?.(`[PROFILER] Selector: ${formatDuration(selectorTime)}, hierarchy ${fullSize} -> ${filteredSize} chars (${((1 - filteredSize/fullSize) * 100).toFixed(1)}% reduction)`, "info");
+    }
   }
 
   const { inputs, examplesPrompt, systemPrompt } = await prepareAnalysisInputs(records, appMode, instruction, filteredHierarchy, ruleSettings, onLog);

@@ -128,7 +128,7 @@ export function useAnalysisPipeline(p: Props) {
             setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
           } else {
             const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
-              try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings()); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
+              try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings(), workTypeFromPreInfo); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
               catch { return b.map(r => ({ ...r, status: 'error' as const })); }
             }, (n, t) => setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`), () => abortRef.current);
             setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
