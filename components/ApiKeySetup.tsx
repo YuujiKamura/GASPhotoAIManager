@@ -74,9 +74,20 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                       削除
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-2">
-                    キーが漏洩した場合は削除して新しいキーを設定してください
-                  </p>
+                  <div className="mt-3 pt-3 border-t border-green-500/20">
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      <ExternalLink size={10} />
+                      使用状況・キー管理を確認（Google AI Studio）
+                    </a>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      身に覚えのない使用があれば漏洩の可能性。キーを削除して再発行してください
+                    </p>
+                  </div>
                 </div>
               )}
 
