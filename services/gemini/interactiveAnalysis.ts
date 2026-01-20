@@ -2,6 +2,7 @@
  * Gemini API - Interactive Analysis Module
  *
  * 対話型写真解析: 1枚の写真に対してAIと対話しながら解析結果を調整する
+ * 通常解析と同じシステムプロンプト（階層マスタ、ルール設定、学習済みルール）を使用
  */
 
 import { GoogleGenAI } from "@google/genai";
@@ -10,6 +11,8 @@ import { extractBase64Data } from "../../utils/imageUtils";
 import { sanitizeErrorMessage } from './apiKey';
 import { getSelectedModel } from './models';
 import { getSystemInstruction } from './systemPrompts';
+import { getLearnedSettings, learnedRulesToPromptText } from '../learnedDataService';
+import { getRelevantExamples, formatExamplesForPrompt } from './exampleMatcher';
 
 // ============================================
 // 型定義
@@ -96,24 +99,40 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
   }
 
   try {
-    // 階層マスタを含むシステム指示を使用（通常解析と同じ知識を持たせる）
-    const systemInstruction = getSystemInstruction('construction') + `
+    // === 通常解析と同じシステムプロンプトを構築 ===
+    // 1. ベースのシステム指示（階層マスタ含む）
+    const baseSystemPrompt = getSystemInstruction('construction');
 
+    // 2. お手本（例示）を取得
+    let examplesPrompt = '';
+    try {
+      const examples = await getRelevantExamples(undefined, undefined, 3);
+      if (examples.length > 0) {
+        examplesPrompt = formatExamplesForPrompt(examples);
+      }
+    } catch (e) {
+      console.warn('Failed to load examples for interactive:', e);
+    }
+
+    // 3. 学習済みルールを取得
+    let learnedRulesPrompt = '';
+    try {
+      const learnedSettings = await getLearnedSettings();
+      if (learnedSettings.rules.length > 0 || learnedSettings.aliases.length > 0) {
+        learnedRulesPrompt = learnedRulesToPromptText(learnedSettings);
+      }
+    } catch (e) {
+      console.warn('Failed to load learned settings for interactive:', e);
+    }
+
+    // 4. 対話モード固有の追加ルール
+    const interactiveRules = `
 ## 対話モード追加ルール
 - 敬語は使わず、フランクに話す（「～だね」「～しよう」）
 - 写真を解析したら所見を述べ、結果確認を促す
-- **全ての項目を省略せず完全に記入すること**
-- 要約・省略は禁止。黒板に書いてある文字は全て転記する
-- 工種・種別・細別は階層マスタから正確に選択する
-- **解析の透明性ルール（対話型の核心）**:
+- **解析の透明性ルール**:
   - 「黒板から読み取った内容」と「写真から解釈した内容」を分けて述べる
-  - 両者に食い違いがある場合は明示し、どちらを採用したか理由を述べる
-  - AIの視覚解釈が間違っている可能性があることを認識し、ユーザーの修正を受け入れる
-  - 具体例: 乳剤散布時にベニヤ板を立てている写真
-    - 黒板:「乳剤散布状況」→ 散布カテゴリを選ぶべき
-    - 写真: 板を使っている → AIは「端部塗布」と誤解しがち
-    - 実際: 板は飛散防止用の養生板であり、散布範囲を制御しているだけ
-    - このような解釈の違いがあり得ることを認識し、ユーザーに確認を促す
+  - 食い違いがある場合は明示し、どちらを採用したか理由を述べる
 
 ## 出力形式（JSON必須）
 {
@@ -132,6 +151,11 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
     "reasoning": "この判定を行った理由"
   }
 }`;
+
+    // システム指示を結合（通常解析と同じ構造）
+    const systemInstruction = [baseSystemPrompt, examplesPrompt, learnedRulesPrompt, interactiveRules]
+      .filter(Boolean)
+      .join('\n\n');
 
     const result = await genAI.models.generateContentStream({
       model: modelToUse,
