@@ -12,7 +12,8 @@ import { sanitizeErrorMessage } from './apiKey';
 import { getSelectedModel } from './models';
 import { getSystemInstruction } from './systemPrompts';
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from '../learningService';
-import { getRelevantExamples, formatExamplesForPrompt } from './exampleMatcher';
+import { getRelevantExamples } from '../../utils/storage';
+import { formatExamplesForPrompt } from './helpers';
 
 // ============================================
 // 型定義
