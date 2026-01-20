@@ -342,6 +342,7 @@ export const LAYOUT_FIELDS: FieldDefinition[] = [
 export const FIELD_LABELS = {
   date: '日時',
   category: '区分',
+  photoCategory: '区分',  // LAYOUT_FIELDSのkey参照用
   workType: '工種',
   variety: '種別',
   detail: '細別',

@@ -33,11 +33,12 @@ export const TRANS = {
     modeConstruction: "Construction",
     modeGeneral: "General",
     // Labels (Dynamic)
-    labelWorkType: "Category",
-    labelVariety: "Sub-Category",
+    labelPhotoCategory: "Category",
+    labelWorkType: "Work Type",
+    labelVariety: "Sub-Type",
     labelDetail: "Detail",
     labelCategory: "Category",
-    labelStation: "Location",
+    labelStation: "Station",
     labelLocation: "Location",
     labelDate: "Date",
     labelRemarks: "Title",
@@ -137,6 +138,7 @@ export const TRANS = {
     modeConstruction: "工事写真",
     modeGeneral: "一般写真",
     // Labels (Dynamic)
+    labelPhotoCategory: "区分",
     labelWorkType: "工種",
     labelVariety: "種別",
     labelDetail: "細別",
