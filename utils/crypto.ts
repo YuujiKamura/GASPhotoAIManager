@@ -146,3 +146,39 @@ const decryptObject = async <T>(
   const json = await decrypt(encrypted, password, iv, salt);
   return JSON.parse(json) as T;
 };
+
+// ============================================
+// アプリ固定キー暗号化（生体認証用）
+// ============================================
+
+/**
+ * アプリ固定キー
+ * 生体認証でAPIキーを保護する際に使用
+ * 注: これ自体は秘密ではない（コード内に埋め込み）
+ * セキュリティは生体認証の成功に依存
+ */
+const APP_ENCRYPTION_KEY = 'GASPhotoAI2024!SecureKey#Protect';
+
+/**
+ * アプリ固定キーで暗号化
+ * @param plaintext 暗号化する文字列
+ * @returns JSON文字列（encrypted, iv, saltを含む）
+ */
+export const encryptWithAppKey = async (plaintext: string): Promise<string> => {
+  const { encrypted, iv, salt } = await encrypt(plaintext, APP_ENCRYPTION_KEY);
+  return JSON.stringify({ encrypted, iv, salt });
+};
+
+/**
+ * アプリ固定キーで復号
+ * @param ciphertext JSON文字列（encrypted, iv, saltを含む）
+ * @returns 復号された文字列、失敗時はnull
+ */
+export const decryptWithAppKey = async (ciphertext: string): Promise<string | null> => {
+  try {
+    const { encrypted, iv, salt } = JSON.parse(ciphertext);
+    return await decrypt(encrypted, APP_ENCRYPTION_KEY, iv, salt);
+  } catch {
+    return null;
+  }
+};

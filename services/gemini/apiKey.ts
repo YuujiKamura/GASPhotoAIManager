@@ -33,21 +33,16 @@ export const getApiKey = (): string | null => {
     cachedApiKey = sessionKey;
     return sessionKey;
   }
-  // localStorageから取得（ブラウザ再起動後も維持）
-  const localKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if (localKey) {
-    cachedApiKey = localKey;
-    sessionStorage.setItem(API_KEY_STORAGE_KEY, localKey);
-    return localKey;
-  }
+  // localStorageからの自動復元は無効化（セキュリティ向上）
+  // 永続化されたAPIキーは生体認証経由でのみ復元可能
   return null;
 };
 
 export const setApiKey = (key: string): void => {
   cachedApiKey = key;
   sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
-  // localStorageにも保存（起動時に自動復元するため）
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  // localStorageには保存しない（セキュリティ向上）
+  // 永続化が必要な場合は生体認証経由で暗号化保存する
 };
 
 // 暗号化してAPIキーを保存
