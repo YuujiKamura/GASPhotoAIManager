@@ -3,7 +3,8 @@ import { X } from 'lucide-react';
 import { SortPolicy } from '../../types';
 import { setSelectedModel } from '../../services/geminiService';
 import { PhotoGrid, SettingsSection, ActionButtons, PreAnalysisInfoSection } from './SubComponents';
-import { useAnalysisSetupState, PreAnalysisInfo } from './useAnalysisSetupState';
+import { useAnalysisSetupState } from './useAnalysisSetupState';
+import type { PreAnalysisInfo } from './useAnalysisSetupState';
 
 interface AnalysisActions {
   onCancel: () => void;
@@ -145,4 +146,4 @@ const AnalysisSetupModal: React.FC<AnalysisSetupModalProps> = ({
 );
 
 export default AnalysisSetupModal;
-export { PreAnalysisInfo } from './useAnalysisSetupState';
+export type { PreAnalysisInfo } from './useAnalysisSetupState';
