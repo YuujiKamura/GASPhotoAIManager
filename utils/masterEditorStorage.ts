@@ -132,6 +132,26 @@ export const getFilteredMaster = (): any => {
     }
   }
 
+  // 追加エントリーを適用
+  for (const { parentPath, name } of customization.addedEntries) {
+    const parts = parentPath.split('/');
+    for (const categoryKey in root) {
+      let current = root[categoryKey];
+      let found = true;
+      for (let i = 0; i < parts.length; i++) {
+        if (current && current[parts[i]]) {
+          current = current[parts[i]];
+        } else {
+          found = false;
+          break;
+        }
+      }
+      if (found && current && typeof current === 'object') {
+        current[name] = {};  // 空オブジェクトとして追加
+      }
+    }
+  }
+
   return { "直接工事費": root };
 };
 

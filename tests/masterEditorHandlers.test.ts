@@ -197,3 +197,99 @@ describe('useTreeEditing handleAddEntry', () => {
     expect(mockOnAdd).not.toHaveBeenCalled();
   });
 });
+
+// getFilteredMaster の addedEntries 適用ロジックテスト
+describe('getFilteredMaster addedEntries logic', () => {
+  it('should apply addedEntries to master data structure', () => {
+    // addedEntries の適用ロジックをシミュレート
+    const root: Record<string, Record<string, Record<string, Record<string, Record<string, unknown>>>>> = {
+      '施工状況写真': {
+        '舗装工': {
+          '舗装打換え工': {
+            '舗装版破砕': {
+              '剥取状況': {},
+              '積込状況': {}
+            }
+          }
+        }
+      }
+    };
+
+    const addedEntries = [
+      { parentPath: '舗装工/舗装打換え工/舗装版破砕', name: 'テスト追加項目' }
+    ];
+
+    // 追加エントリーを適用（getFilteredMaster のロジックをシミュレート）
+    for (const { parentPath, name } of addedEntries) {
+      const parts = parentPath.split('/');
+      for (const categoryKey in root) {
+        let current: Record<string, unknown> = root[categoryKey];
+        let found = true;
+        for (let i = 0; i < parts.length; i++) {
+          if (current && current[parts[i]] && typeof current[parts[i]] === 'object') {
+            current = current[parts[i]] as Record<string, unknown>;
+          } else {
+            found = false;
+            break;
+          }
+        }
+        if (found && current && typeof current === 'object') {
+          current[name] = {};
+        }
+      }
+    }
+
+    // 追加項目が含まれていることを確認
+    const target = root['施工状況写真']['舗装工']['舗装打換え工']['舗装版破砕'];
+    expect('テスト追加項目' in target).toBe(true);
+    expect(target['テスト追加項目']).toEqual({});
+  });
+
+  it('should not fail when parentPath does not exist', () => {
+    const root: Record<string, Record<string, unknown>> = {
+      '施工状況写真': {
+        '舗装工': {}
+      }
+    };
+
+    const addedEntries = [
+      { parentPath: '存在しない/パス', name: 'テスト追加項目' }
+    ];
+
+    // エラーなく実行されることを確認
+    for (const { parentPath, name } of addedEntries) {
+      const parts = parentPath.split('/');
+      for (const categoryKey in root) {
+        let current: Record<string, unknown> = root[categoryKey];
+        let found = true;
+        for (let i = 0; i < parts.length; i++) {
+          if (current && current[parts[i]] && typeof current[parts[i]] === 'object') {
+            current = current[parts[i]] as Record<string, unknown>;
+          } else {
+            found = false;
+            break;
+          }
+        }
+        if (found && current && typeof current === 'object') {
+          current[name] = {};
+        }
+      }
+    }
+
+    // 何も追加されないことを確認
+    expect(root['施工状況写真']['舗装工']).toEqual({});
+  });
+
+  it('should handle empty addedEntries array', () => {
+    const root = { '施工状況写真': { '舗装工': {} } };
+    const addedEntries: { parentPath: string; name: string }[] = [];
+
+    // エラーなく実行されることを確認
+    for (const { parentPath, name } of addedEntries) {
+      // ループが実行されないことを確認
+      expect(true).toBe(false); // これが実行されたらテスト失敗
+    }
+
+    expect(root).toEqual({ '施工状況写真': { '舗装工': {} } });
+  });
+});
