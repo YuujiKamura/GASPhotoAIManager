@@ -173,9 +173,9 @@ export default function App() {
     analysisHandlers.startAnalysisPipeline(files, '', useCache);
   }, [setCurrentSortPolicy, analysisHandlers]);
 
-  // 簡素化した手動入力ハンドラ（ペアリングUIをスキップして直接プレビューへ）
+  // 手動ペアリングモード（2枚ペアを選択するUI）
   const handleManualPairing = useCallback((files: File[]) => {
-    analysisHandlers.handleStartManualPairing(files, '', true); // skipPairingUI = true
+    analysisHandlers.handleStartManualPairing(files, '', false); // 2枚ペアリングUIを表示
   }, [analysisHandlers]);
 
   // Render
