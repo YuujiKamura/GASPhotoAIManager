@@ -34,7 +34,7 @@ const getTexts = (lang: 'ja' | 'en') => ({
   all: lang === 'ja' ? '全選択' : 'All',
   none: lang === 'ja' ? '解除' : 'None',
   cancel: lang === 'ja' ? 'キャンセル' : 'Cancel',
-  manual: lang === 'ja' ? '手動' : 'Manual',
+  manual: lang === 'ja' ? '手動ペアリング' : 'Manual Pairing',
   start: lang === 'ja' ? '解析開始' : 'Start',
   clickToTest: lang === 'ja' ? 'クリックで対話型テスト' : 'Click for interactive test',
   noWorkTypes: lang === 'ja' ? '工種未設定' : 'No work types',
