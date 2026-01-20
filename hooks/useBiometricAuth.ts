@@ -67,14 +67,21 @@ export function useBiometricAuth(): BiometricAuthState & BiometricAuthActions {
     }
   }, []);
 
-  // パスキーを登録
+  // パスキーを登録（または既存のキーを更新）
   const handleRegisterPasskey = useCallback(async (apiKey: string) => {
-    if (biometricSupported && registerBiometric && !hasPasskey) {
-      const result = await registerPasskey(apiKey);
-      if (result.success) {
-        setHasPasskey(true);
+    if (biometricSupported && registerBiometric) {
+      if (hasPasskey) {
+        // 既存のパスキーがある場合はキーだけ更新（再登録は不要）
+        localStorage.setItem('construction_album_protected_api_key', apiKey);
+        console.log('Passkey API key updated');
       } else {
-        console.warn('Passkey registration failed:', result.error);
+        // 新規登録
+        const result = await registerPasskey(apiKey);
+        if (result.success) {
+          setHasPasskey(true);
+        } else {
+          console.warn('Passkey registration failed:', result.error);
+        }
       }
     }
   }, [biometricSupported, registerBiometric, hasPasskey]);

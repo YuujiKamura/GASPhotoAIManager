@@ -191,34 +191,17 @@ const ModelValidation: React.FC<ModelValidationProps> = ({ apiKey, onComplete, o
                 </div>
               </label>
 
-              {/* 生体認証 - 登録済みの場合はログインボタン */}
+              {/* 生体認証 - 登録済みの場合は更新を促す（新しいキーを入力中なので古いキーでのログインは表示しない） */}
               {biometricSupported && hasPasskey && (
                 <>
                   <div className="h-px bg-slate-700"></div>
                   <div className="space-y-2">
-                    <button
-                      onClick={() => handleBiometricLogin(onComplete)}
-                      disabled={isAuthenticating}
-                      className="w-full bg-purple-500 hover:bg-purple-400 disabled:bg-purple-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-                    >
-                      {isAuthenticating ? (
-                        <>
-                          <Loader2 size={20} className="animate-spin" />
-                          認証中...
-                        </>
-                      ) : (
-                        <>
-                          <Fingerprint size={20} />
-                          指紋/顔認証でログイン
-                        </>
-                      )}
-                    </button>
-                    {biometricError && (
-                      <div className="flex items-center gap-2 text-red-400 text-xs justify-center">
-                        <XCircle size={14} />
-                        <span>{biometricError}</span>
+                    <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                      <div className="flex items-center gap-2 text-purple-300 text-xs">
+                        <Fingerprint size={14} />
+                        <span>生体認証が登録済みです。「開始」を押すと新しいキーで更新されます。</span>
                       </div>
-                    )}
+                    </div>
                     <button
                       onClick={handleRemovePasskey}
                       className="w-full text-xs text-slate-500 hover:text-slate-400"
