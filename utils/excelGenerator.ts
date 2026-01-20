@@ -1,6 +1,14 @@
 import { PhotoRecord, AppMode, AIAnalysisResult } from "../types";
+import { getBlockLayoutMode } from "../types";
 import { extractBase64Data } from "./imageUtils";
-import { LAYOUT_FIELDS, getLayoutConfig, getTemplateLayout, getVisibleFields, PDF_LAYOUT, CONVERSION } from "./layoutConfig";
+import {
+  LAYOUT_FIELDS,
+  getLayoutConfig,
+  getTemplateLayout,
+  getVisibleFields,
+  PDF_LAYOUT,
+  CONVERSION
+} from "./layoutConfig";
 import { TRANS } from "./translations";
 
 // Declare global variables for loaded scripts
@@ -65,9 +73,14 @@ export const generateExcel = async (
 
   console.log('[ExcelExport] Libraries loaded, creating workbook...');
 
+  // テンプレートを取得
+  const template = getTemplateLayout(photosPerPage);
+  const blocksPerPage = template.blocksPerPage;
+  const layoutMode = getBlockLayoutMode(template.captionPosition);
+
   // レイアウト設定（PDF基準から導出）
   const layout = getLayoutConfig(photosPerPage);
-  const isTwoUp = photosPerPage === 2;
+  const isTwoUp = blocksPerPage === 2;
 
   const COL_A_WIDTH = layout.colAWidth;
   const COL_B_WIDTH = layout.colBWidth;
@@ -76,7 +89,9 @@ export const generateExcel = async (
   const ROW_HEIGHT_PT = layout.rowHeightPt;
 
   console.log('[ExcelExport] Layout config:', {
-    photosPerPage,
+    blocksPerPage,
+    captionPosition: template.captionPosition,
+    layoutMode,
     colWidths: [COL_A_WIDTH, COL_B_WIDTH, COL_C_WIDTH],
     rowsPerBlock,
     rowHeightPt: ROW_HEIGHT_PT
@@ -86,12 +101,12 @@ export const generateExcel = async (
   const workbook = new ExcelJS.Workbook();
 
   // ページ数を計算
-  const totalPages = Math.ceil(records.length / photosPerPage);
-  console.log(`[ExcelExport] Creating ${totalPages} sheets (${photosPerPage} photos per page)`);
+  const totalPages = Math.ceil(records.length / blocksPerPage);
+  console.log(`[ExcelExport] Creating ${totalPages} sheets (${blocksPerPage} blocks per page, ${template.captionPosition} layout)`);
 
   // ページごとにシートを作成
   for (let pageNum = 0; pageNum < totalPages; pageNum++) {
-    const pageRecords = records.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
+    const pageRecords = records.slice(pageNum * blocksPerPage, (pageNum + 1) * blocksPerPage);
     const sheetName = `${pageNum + 1}`;
 
     console.log(`[ExcelExport] Creating sheet "${sheetName}" with ${pageRecords.length} photos`);
@@ -221,7 +236,6 @@ export const generateExcel = async (
       };
 
       // テンプレートから表示フィールドを取得
-      const template = getTemplateLayout(photosPerPage);
       const visibleFields = getVisibleFields(template);
 
       let currentFieldRow = startRow;

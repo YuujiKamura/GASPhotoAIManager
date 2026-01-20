@@ -1,4 +1,11 @@
-import { AIAnalysisResult, TemplateLayout } from "../types";
+import {
+  AIAnalysisResult,
+  TemplateLayout,
+  CaptionPosition,
+  BlockLayoutMode,
+  getBlockLayoutMode,
+  isCaptionFirst
+} from "../types";
 
 // ============================================
 // mm基準レイアウト（Source of Truth）
@@ -385,22 +392,23 @@ export function formatDateTime(timestamp: number | undefined): string {
 
 /**
  * 標準3枚モードテンプレート
- * 全フィールド表示、写真左・情報欄右のレイアウト
+ * 全フィールド表示、写真左・キャプション右のレイアウト
  */
-const TEMPLATE_3UP: TemplateLayout = {
+const TEMPLATE_3UP_RIGHT: TemplateLayout = {
   id: 'standard-3up',
   name: '標準（3枚/ページ）',
-  photosPerPage: 3,
+  blocksPerPage: 3,
+  captionPosition: 'right',
 
   // mm基準
   pageWidthMm: A4_WIDTH_MM,
   pageHeightMm: A4_HEIGHT_MM,
   marginMm: MARGIN_MM,
-  photoGapMm: PHOTO_GAP_MM,
+  blockGapMm: PHOTO_GAP_MM,
 
-  // 比率
-  photoWidthPercent: IMAGE_RATIO * 100,
-  infoWidthPercent: INFO_RATIO * 100,
+  // 比率 (horizontal: 幅の比率)
+  photoRatio: 65,
+  captionRatio: 35,
 
   // Excel用
   rowsPerBlock: ROWS_3UP,
@@ -416,26 +424,33 @@ const TEMPLATE_3UP: TemplateLayout = {
   visibleFields: LAYOUT_FIELDS.map(f => f.id),
 
   isDefault: true,
+
+  // 後方互換性
+  photosPerPage: 3,
+  photoWidthPercent: 65,
+  infoWidthPercent: 35,
+  photoGapMm: PHOTO_GAP_MM,
 };
 
 /**
  * シンプル2枚モードテンプレート
- * 測点・備考のみ表示、写真大きめ
+ * 測点・備考のみ表示、キャプション下
  */
-const TEMPLATE_2UP: TemplateLayout = {
+const TEMPLATE_2UP_BOTTOM: TemplateLayout = {
   id: 'simple-2up',
   name: 'シンプル（2枚/ページ）',
-  photosPerPage: 2,
+  blocksPerPage: 2,
+  captionPosition: 'bottom',
 
   // mm基準
   pageWidthMm: A4_WIDTH_MM,
   pageHeightMm: A4_HEIGHT_MM,
   marginMm: MARGIN_MM,
-  photoGapMm: PHOTO_GAP_MM,
+  blockGapMm: PHOTO_GAP_MM,
 
-  // 比率（2枚モードは写真フル幅）
-  photoWidthPercent: 100,
-  infoWidthPercent: 0,
+  // 比率 (vertical: 高さの比率)
+  photoRatio: 85,
+  captionRatio: 15,
 
   // Excel用
   rowsPerBlock: ROWS_2UP,
@@ -451,14 +466,201 @@ const TEMPLATE_2UP: TemplateLayout = {
   visibleFields: ['f_station', 'f_remarks'],
 
   isDefault: false,
+
+  // 後方互換性
+  photosPerPage: 2,
+  photoWidthPercent: 100,
+  infoWidthPercent: 0,
+  photoGapMm: PHOTO_GAP_MM,
+};
+
+/**
+ * 詳細3枚モードテンプレート（キャプション左）
+ * 全フィールド表示、キャプション左・写真右
+ */
+const TEMPLATE_3UP_LEFT: TemplateLayout = {
+  id: 'detail-3up-left',
+  name: '詳細（3枚/ページ・情報左）',
+  blocksPerPage: 3,
+  captionPosition: 'left',
+
+  // mm基準
+  pageWidthMm: A4_WIDTH_MM,
+  pageHeightMm: A4_HEIGHT_MM,
+  marginMm: MARGIN_MM,
+  blockGapMm: PHOTO_GAP_MM,
+
+  // 比率 (horizontal: 幅の比率)
+  photoRatio: 60,
+  captionRatio: 40,
+
+  // Excel用
+  rowsPerBlock: ROWS_3UP,
+  photoRows: PHOTO_ROWS_3UP,
+  rowHeightPt: ROW_HEIGHT_PT_3UP,
+  columnWidths: {
+    imageCol: PHOTO_COL_WIDTH,
+    labelCol: LABEL_COL_WIDTH,
+    valueCol: VALUE_COL_WIDTH,
+  },
+
+  // 全フィールド表示
+  visibleFields: LAYOUT_FIELDS.map(f => f.id),
+
+  isDefault: false,
+
+  // 後方互換性
+  photosPerPage: 3,
+  photoWidthPercent: 60,
+  infoWidthPercent: 40,
+  photoGapMm: PHOTO_GAP_MM,
+};
+
+/**
+ * キャプション上2枚モードテンプレート
+ */
+const TEMPLATE_2UP_TOP: TemplateLayout = {
+  id: 'caption-top-2up',
+  name: 'キャプション上（2枚/ページ）',
+  blocksPerPage: 2,
+  captionPosition: 'top',
+
+  // mm基準
+  pageWidthMm: A4_WIDTH_MM,
+  pageHeightMm: A4_HEIGHT_MM,
+  marginMm: MARGIN_MM,
+  blockGapMm: PHOTO_GAP_MM,
+
+  // 比率 (vertical: 高さの比率)
+  photoRatio: 85,
+  captionRatio: 15,
+
+  // Excel用
+  rowsPerBlock: ROWS_2UP,
+  photoRows: PHOTO_ROWS_2UP,
+  rowHeightPt: ROW_HEIGHT_PT_2UP,
+  columnWidths: {
+    imageCol: PHOTO_COL_WIDTH,
+    labelCol: LABEL_COL_WIDTH,
+    valueCol: VALUE_COL_WIDTH,
+  },
+
+  // 測点・備考のみ
+  visibleFields: ['f_station', 'f_remarks'],
+
+  isDefault: false,
+
+  // 後方互換性
+  photosPerPage: 2,
+  photoWidthPercent: 100,
+  infoWidthPercent: 0,
+  photoGapMm: PHOTO_GAP_MM,
 };
 
 /**
  * ビルトインテンプレート一覧
  */
 export const BUILT_IN_TEMPLATES: Record<string, TemplateLayout> = {
-  'standard-3up': TEMPLATE_3UP,
-  'simple-2up': TEMPLATE_2UP,
+  'standard-3up': TEMPLATE_3UP_RIGHT,
+  'simple-2up': TEMPLATE_2UP_BOTTOM,
+  'detail-3up-left': TEMPLATE_3UP_LEFT,
+  'caption-top-2up': TEMPLATE_2UP_TOP,
+};
+
+// ============================================
+// ブロック寸法計算
+// ============================================
+
+/**
+ * ブロック内の寸法情報
+ */
+export interface BlockDimensions {
+  // 写真寸法 (pt)
+  photoWidthPt: number;
+  photoHeightPt: number;
+
+  // キャプション寸法 (pt)
+  captionWidthPt: number;
+  captionHeightPt: number;
+
+  // レイアウトモード
+  mode: BlockLayoutMode;
+  captionFirst: boolean;
+
+  // オフセット (ブロック左上からの相対位置, pt)
+  photoOffset: { x: number; y: number };
+  captionOffset: { x: number; y: number };
+}
+
+/**
+ * テンプレートとブロックサイズからブロック内寸法を計算
+ * @param template テンプレート
+ * @param blockWidthPt ブロック幅 (pt)
+ * @param blockHeightPt ブロック高さ (pt)
+ * @param gapPt 写真とキャプション間のギャップ (pt)
+ */
+export const calculateBlockDimensions = (
+  template: TemplateLayout,
+  blockWidthPt: number,
+  blockHeightPt: number,
+  gapPt: number = 5
+): BlockDimensions => {
+  const mode = getBlockLayoutMode(template.captionPosition);
+  const captionFirst = isCaptionFirst(template.captionPosition);
+
+  let photoWidthPt: number;
+  let photoHeightPt: number;
+  let captionWidthPt: number;
+  let captionHeightPt: number;
+  let photoOffset: { x: number; y: number };
+  let captionOffset: { x: number; y: number };
+
+  if (mode === 'horizontal') {
+    // 横並び: 幅を比率で分割
+    const availableWidth = blockWidthPt - gapPt;
+    photoWidthPt = availableWidth * (template.photoRatio / 100);
+    captionWidthPt = availableWidth * (template.captionRatio / 100);
+    photoHeightPt = blockHeightPt;
+    captionHeightPt = blockHeightPt;
+
+    if (captionFirst) {
+      // left: キャプション左、写真右
+      captionOffset = { x: 0, y: 0 };
+      photoOffset = { x: captionWidthPt + gapPt, y: 0 };
+    } else {
+      // right: 写真左、キャプション右
+      photoOffset = { x: 0, y: 0 };
+      captionOffset = { x: photoWidthPt + gapPt, y: 0 };
+    }
+  } else {
+    // 縦並び: 高さを比率で分割
+    const availableHeight = blockHeightPt - gapPt;
+    photoWidthPt = blockWidthPt;
+    captionWidthPt = blockWidthPt;
+    photoHeightPt = availableHeight * (template.photoRatio / 100);
+    captionHeightPt = availableHeight * (template.captionRatio / 100);
+
+    if (captionFirst) {
+      // top: キャプション上、写真下
+      captionOffset = { x: 0, y: 0 };
+      photoOffset = { x: 0, y: captionHeightPt + gapPt };
+    } else {
+      // bottom: 写真上、キャプション下
+      photoOffset = { x: 0, y: 0 };
+      captionOffset = { x: 0, y: photoHeightPt + gapPt };
+    }
+  }
+
+  return {
+    photoWidthPt,
+    photoHeightPt,
+    captionWidthPt,
+    captionHeightPt,
+    mode,
+    captionFirst,
+    photoOffset,
+    captionOffset,
+  };
 };
 
 // ============================================
@@ -471,7 +673,16 @@ export const BUILT_IN_TEMPLATES: Record<string, TemplateLayout> = {
  * @returns TemplateLayout
  */
 export const getTemplateLayout = (photosPerPage: 2 | 3): TemplateLayout => {
-  return photosPerPage === 2 ? TEMPLATE_2UP : TEMPLATE_3UP;
+  return photosPerPage === 2 ? TEMPLATE_2UP_BOTTOM : TEMPLATE_3UP_RIGHT;
+};
+
+/**
+ * テンプレートIDからテンプレートを取得
+ * @param templateId テンプレートID
+ * @returns TemplateLayout or undefined
+ */
+export const getTemplateById = (templateId: string): TemplateLayout | undefined => {
+  return BUILT_IN_TEMPLATES[templateId];
 };
 
 /**
@@ -482,3 +693,6 @@ export const getTemplateLayout = (photosPerPage: 2 | 3): TemplateLayout => {
 export const getVisibleFields = (template: TemplateLayout): FieldDefinition[] => {
   return LAYOUT_FIELDS.filter(field => template.visibleFields.includes(field.id));
 };
+
+// Re-export for convenience
+export { getBlockLayoutMode, isCaptionFirst };

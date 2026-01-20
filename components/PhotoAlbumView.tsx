@@ -1,7 +1,7 @@
 import React from 'react';
-import { PhotoRecord, AppMode, AIAnalysisResult } from '../types';
+import { PhotoRecord, AppMode, AIAnalysisResult, getBlockLayoutMode } from '../types';
 import { TRANS } from '../utils/translations';
-import { LAYOUT_FIELDS, getPreviewLayout } from '../utils/layoutConfig';
+import { LAYOUT_FIELDS, getPreviewLayout, getTemplateLayout, getVisibleFields as getTemplateVisibleFields } from '../utils/layoutConfig';
 import { InfoRow } from './shared/EditableField';
 import { ContextMenu } from './PhotoAlbumView/ContextMenu';
 import { ReasoningModal } from './PhotoAlbumView/ReasoningModal';
@@ -23,8 +23,15 @@ interface Props {
 
 const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
-  const totalPages = Math.ceil(records.length / photosPerPage);
-  const isTwoUp = photosPerPage === 2;
+
+  // テンプレートシステムから設定を取得
+  const template = getTemplateLayout(photosPerPage);
+  const blocksPerPage = template.blocksPerPage;
+  const layoutMode = getBlockLayoutMode(template.captionPosition);
+  const isVerticalLayout = layoutMode === 'vertical';
+
+  const totalPages = Math.ceil(records.length / blocksPerPage);
+  const isTwoUp = blocksPerPage === 2;
 
   const {
     contextMenu, handleContextMenu, closeContextMenu, executeDelete, executeReanalyze,
@@ -33,21 +40,17 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
     issueDescription, setIssueDescription, issueType, setIssueType, isSavingIssue, handleSaveIssue,
   } = usePhotoContextMenu({ records, lang, onDeletePhoto, onReanalyzePhoto, txt });
 
+  // テンプレートから表示フィールドを取得
   const getVisibleFields = () => {
-    if (isTwoUp) {
-      return [
-        LAYOUT_FIELDS.find(f => f.key === 'remarks')!,
-        LAYOUT_FIELDS.find(f => f.key === 'station')!
-      ].filter(Boolean);
-    }
-    return LAYOUT_FIELDS;
+    return getTemplateVisibleFields(template);
   };
 
   const getDynamicClasses = (field: { key: string; heightClass: string }) => {
     let dynamicHeightClass = field.heightClass;
     let dynamicTextClass: string | undefined;
 
-    if (isTwoUp) {
+    if (isVerticalLayout) {
+      // vertical レイアウト（top/bottom）: キャプションは中央寄せで簡潔に
       if (field.key === 'remarks') {
         dynamicHeightClass = 'flex-1 min-h-[40px] border-none';
         dynamicTextClass = 'text-sm text-gray-900 font-medium text-center';
@@ -56,6 +59,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
         dynamicTextClass = 'text-sm text-gray-900 font-medium text-center';
       }
     } else {
+      // horizontal レイアウト（left/right）: 詳細な情報表示
       dynamicHeightClass = field.key === 'measurements'
         ? 'min-h-0 border-b-0 flex-1'
         : `${field.heightClass} flex-shrink-0`;
@@ -63,20 +67,23 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
     return { dynamicHeightClass, dynamicTextClass };
   };
 
-  // Layout classes
-  const slotClass = isTwoUp
-    ? "flex-1 border-b border-gray-300 last:border-b-0 flex flex-col box-border min-h-0 hover:bg-gray-50 transition-colors h-[50%]"
-    : "flex-1 border-b border-gray-300 last:border-b-0 flex flex-row box-border min-h-0 hover:bg-gray-50 transition-colors h-[33.33%]";
+  // ブロック高さ計算
+  const blockHeightPercent = 100 / blocksPerPage;
+
+  // Layout classes - layoutModeに基づいて決定
+  const slotClass = isVerticalLayout
+    ? `flex-1 border-b border-gray-300 last:border-b-0 flex flex-col box-border min-h-0 hover:bg-gray-50 transition-colors h-[${blockHeightPercent}%]`
+    : `flex-1 border-b border-gray-300 last:border-b-0 flex flex-row box-border min-h-0 hover:bg-gray-50 transition-colors h-[${blockHeightPercent}%]`;
 
   // layoutConfigから取得した比率を使用
   const imageWidthStyle = { width: `${previewLayout.imageWidthPercent}%` };
   const infoWidthStyle = { width: `${previewLayout.infoWidthPercent}%` };
 
-  const imageContainerClass = isTwoUp
+  const imageContainerClass = isVerticalLayout
     ? "w-full flex-1 border-r-0 border-b border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu p-0.5"
     : "border-r border-gray-300 flex items-center justify-center bg-white relative overflow-hidden group cursor-context-menu";
 
-  const infoContainerClass = isTwoUp
+  const infoContainerClass = isVerticalLayout
     ? "w-full h-[14%] bg-white flex flex-col justify-start py-1 px-4"
     : "flex flex-col h-full bg-white";
 
@@ -86,8 +93,8 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
         <div key={pageIndex} className="sheet-preview w-[210mm] mx-auto px-12 py-6 mb-8 relative flex flex-col box-border h-[297mm]">
           {/* Main Content */}
           <div className="flex flex-col flex-1 border border-gray-400 bg-white min-h-0">
-            {Array.from({ length: photosPerPage }).map((_, slotIndex) => {
-              const photoIndex = pageIndex * photosPerPage + slotIndex;
+            {Array.from({ length: blocksPerPage }).map((_, slotIndex) => {
+              const photoIndex = pageIndex * blocksPerPage + slotIndex;
               const record = records[photoIndex];
 
               if (!record) {
@@ -96,10 +103,10 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
 
               return (
                 <div key={record.fileName} className={slotClass} onContextMenu={(e) => handleContextMenu(e, record.fileName)}>
-                  <div className={imageContainerClass} style={isTwoUp ? undefined : imageWidthStyle}>
+                  <div className={imageContainerClass} style={isVerticalLayout ? undefined : imageWidthStyle}>
                     <img src={record.base64} alt={record.fileName} className="max-w-full max-h-full object-contain" />
                   </div>
-                  <div className={infoContainerClass} style={isTwoUp ? undefined : infoWidthStyle}>
+                  <div className={infoContainerClass} style={isVerticalLayout ? undefined : infoWidthStyle}>
                     {getVisibleFields().map((field) => {
                       let val = "";
                       if (field.key === 'date') {
@@ -120,8 +127,8 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage
                           onChange={(v) => field.key !== 'date' && onUpdatePhoto(record.fileName, field.key as keyof AIAnalysisResult, v)}
                           readOnly={field.readOnly}
                           multiline={field.multiline}
-                          hideLabel={isTwoUp}
-                          align={isTwoUp ? 'center' : 'left'}
+                          hideLabel={isVerticalLayout}
+                          align={isVerticalLayout ? 'center' : 'left'}
                           textClass={dynamicTextClass}
                         />
                       );

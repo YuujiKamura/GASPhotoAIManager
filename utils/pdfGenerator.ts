@@ -2,7 +2,14 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PhotoRecord } from '../types';
-import { getPdfLayout, getTemplateLayout, getVisibleFields, FIELD_LABELS } from './layoutConfig';
+import {
+  getPdfLayout,
+  getTemplateLayout,
+  getVisibleFields,
+  calculateBlockDimensions,
+  FIELD_LABELS,
+  BlockDimensions
+} from './layoutConfig';
 
 // PDF.js worker setup
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -114,71 +121,106 @@ export const generatePdfWithImages = async (
   }
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+  // テンプレートを取得
+  const template = getTemplateLayout(photosPerPage);
+  const blocksPerPage = template.blocksPerPage;
+  const visibleFields = getVisibleFields(template);
+
   const usableWidth = A4_WIDTH - MARGIN * 2;
   const usableHeight = A4_HEIGHT - MARGIN * 2 - HEADER_HEIGHT;
-  const totalPages = Math.ceil(photos.length / photosPerPage);
+  const totalPages = Math.ceil(photos.length / blocksPerPage);
 
-  // 2枚モード: 写真フル幅 + キャプション下
-  // 3枚モード: 写真左 + 情報欄右
-  const isTwoUp = photosPerPage === 2;
+  // ブロック高さを計算
+  const blockHeightPt = usableHeight / blocksPerPage;
+
+  // ブロック寸法を計算
+  const dimensions = calculateBlockDimensions(template, usableWidth, blockHeightPt - PHOTO_INFO_GAP, PHOTO_INFO_GAP);
 
   for (let pageNum = 0; pageNum < totalPages; pageNum++) {
     const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
-    const pagePhotos = photos.slice(pageNum * photosPerPage, (pageNum + 1) * photosPerPage);
-
-    // ヘッダーなし（写真領域を最大化）
+    const pagePhotos = photos.slice(pageNum * blocksPerPage, (pageNum + 1) * blocksPerPage);
 
     for (let i = 0; i < pagePhotos.length; i++) {
       const photo = pagePhotos[i];
       const analysis = photo.analysis;
 
-      if (isTwoUp) {
-        // ========== 2枚モード: 写真フル幅 + キャプション下（ヘッダーなし） ==========
-        const captionHeight = 50; // キャプション領域の高さ
-        const twoUpUsableHeight = A4_HEIGHT - MARGIN * 2; // ヘッダーなしで全高使用
-        const photoRowHeight = twoUpUsableHeight / 2;
-        const photoHeight = photoRowHeight - captionHeight - PHOTO_INFO_GAP;
-        const photoWidth = usableWidth;
-        const rowY = A4_HEIGHT - MARGIN - i * photoRowHeight;
-        const photoY = rowY - photoHeight;
-        const captionY = photoY - captionHeight;
+      // ブロックの左上座標を計算 (PDF座標系: Y軸は下から上)
+      const blockX = MARGIN;
+      const blockTopY = A4_HEIGHT - MARGIN - HEADER_HEIGHT - i * blockHeightPt;
 
-        // 写真を埋め込み
-        if (photo.base64) {
-          try {
-            const base64Data = photo.base64.includes(',') ? photo.base64.split(',')[1] : photo.base64;
-            const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-            const embeddedImage = (photo.mimeType || 'image/jpeg').includes('png')
-              ? await pdfDoc.embedPng(imageBytes)
-              : await pdfDoc.embedJpg(imageBytes);
+      // 写真の位置を計算
+      const photoX = blockX + dimensions.photoOffset.x;
+      const photoY = blockTopY - dimensions.photoOffset.y - dimensions.photoHeightPt;
 
-            const imgAspect = embeddedImage.width / embeddedImage.height;
-            const boxAspect = photoWidth / photoHeight;
-            const [drawWidth, drawHeight] = imgAspect > boxAspect
-              ? [photoWidth, photoWidth / imgAspect]
-              : [photoHeight * imgAspect, photoHeight];
+      // キャプションの位置を計算
+      const captionX = blockX + dimensions.captionOffset.x;
+      const captionY = blockTopY - dimensions.captionOffset.y - dimensions.captionHeightPt;
 
-            page.drawImage(embeddedImage, {
-              x: MARGIN + (photoWidth - drawWidth) / 2,
-              y: photoY + (photoHeight - drawHeight) / 2,
-              width: drawWidth,
-              height: drawHeight
-            });
-            page.drawRectangle({ x: MARGIN, y: photoY, width: photoWidth, height: photoHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
-          } catch {
-            page.drawRectangle({ x: MARGIN, y: photoY, width: photoWidth, height: photoHeight, color: rgb(0.95, 0.95, 0.95), borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
-            page.drawText('Image Error', { x: MARGIN + photoWidth / 2 - 30, y: photoY + photoHeight / 2, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
-          }
+      // ========== 写真を描画 ==========
+      if (photo.base64) {
+        try {
+          const base64Data = photo.base64.includes(',') ? photo.base64.split(',')[1] : photo.base64;
+          const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+          const embeddedImage = (photo.mimeType || 'image/jpeg').includes('png')
+            ? await pdfDoc.embedPng(imageBytes)
+            : await pdfDoc.embedJpg(imageBytes);
+
+          const imgAspect = embeddedImage.width / embeddedImage.height;
+          const boxAspect = dimensions.photoWidthPt / dimensions.photoHeightPt;
+          const [drawWidth, drawHeight] = imgAspect > boxAspect
+            ? [dimensions.photoWidthPt, dimensions.photoWidthPt / imgAspect]
+            : [dimensions.photoHeightPt * imgAspect, dimensions.photoHeightPt];
+
+          page.drawImage(embeddedImage, {
+            x: photoX + (dimensions.photoWidthPt - drawWidth) / 2,
+            y: photoY + (dimensions.photoHeightPt - drawHeight) / 2,
+            width: drawWidth,
+            height: drawHeight
+          });
+          page.drawRectangle({
+            x: photoX,
+            y: photoY,
+            width: dimensions.photoWidthPt,
+            height: dimensions.photoHeightPt,
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 0.5
+          });
+        } catch {
+          page.drawRectangle({
+            x: photoX,
+            y: photoY,
+            width: dimensions.photoWidthPt,
+            height: dimensions.photoHeightPt,
+            color: rgb(0.95, 0.95, 0.95),
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 0.5
+          });
+          page.drawText('Image Error', {
+            x: photoX + dimensions.photoWidthPt / 2 - 30,
+            y: photoY + dimensions.photoHeightPt / 2,
+            size: 10,
+            font: helvetica,
+            color: rgb(0.5, 0.5, 0.5)
+          });
         }
+      }
 
-        // キャプション欄（写真の下）
-        page.drawRectangle({ x: MARGIN, y: captionY, width: photoWidth, height: captionHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
+      // ========== キャプションを描画 ==========
+      page.drawRectangle({
+        x: captionX,
+        y: captionY,
+        width: dimensions.captionWidthPt,
+        height: dimensions.captionHeightPt,
+        borderColor: rgb(0.7, 0.7, 0.7),
+        borderWidth: 0.5
+      });
 
-        // キャプション欄の中央X座標
-        const captionCenterX = MARGIN + photoWidth / 2;
-
+      if (dimensions.mode === 'vertical') {
+        // 縦並び (top/bottom): 中央揃えテキスト
+        const captionCenterX = captionX + dimensions.captionWidthPt / 2;
         const captionPadding = 8;
-        const maxCaptionWidth = photoWidth - captionPadding * 2;
+        const maxCaptionWidth = dimensions.captionWidthPt - captionPadding * 2;
+
         const drawCenteredText = (
           text: string,
           baseSize: number,
@@ -202,56 +244,14 @@ export const generatePdfWithImages = async (
           });
         };
 
-        // 1行目: 備考（着手前/竣工など）
+        // 備考と測点を表示
         const remarks = analysis?.remarks || '';
-        drawCenteredText(remarks, 12, captionY + captionHeight / 2 + 5, { r: 0.1, g: 0.1, b: 0.1 });
-
-        // 2行目: 測点/場所情報
         const location = analysis?.station || analysis?.description || '';
-        drawCenteredText(location, 11, captionY + captionHeight / 2 - 15, { r: 0.2, g: 0.2, b: 0.2 });
+        drawCenteredText(remarks, 12, captionY + dimensions.captionHeightPt / 2 + 5, { r: 0.1, g: 0.1, b: 0.1 });
+        drawCenteredText(location, 11, captionY + dimensions.captionHeightPt / 2 - 15, { r: 0.2, g: 0.2, b: 0.2 });
 
       } else {
-        // ========== 3枚モード: 写真左 + 情報欄右 ==========
-        const photoRowHeight = usableHeight / photosPerPage;
-        const photoHeight = photoRowHeight - PHOTO_INFO_GAP * 2;
-        const photoWidth = usableWidth * pdfLayout.imageRatio;
-        const infoWidth = usableWidth * pdfLayout.infoRatio;
-        const rowY = A4_HEIGHT - MARGIN - HEADER_HEIGHT - (i + 1) * photoRowHeight + PHOTO_INFO_GAP;
-
-        // 写真を埋め込み
-        if (photo.base64) {
-          try {
-            const base64Data = photo.base64.includes(',') ? photo.base64.split(',')[1] : photo.base64;
-            const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-            const embeddedImage = (photo.mimeType || 'image/jpeg').includes('png')
-              ? await pdfDoc.embedPng(imageBytes)
-              : await pdfDoc.embedJpg(imageBytes);
-
-            const imgAspect = embeddedImage.width / embeddedImage.height;
-            const boxAspect = photoWidth / photoHeight;
-            const [drawWidth, drawHeight] = imgAspect > boxAspect
-              ? [photoWidth, photoWidth / imgAspect]
-              : [photoHeight * imgAspect, photoHeight];
-
-            page.drawImage(embeddedImage, {
-              x: MARGIN + (photoWidth - drawWidth) / 2,
-              y: rowY + (photoHeight - drawHeight) / 2,
-              width: drawWidth,
-              height: drawHeight
-            });
-            page.drawRectangle({ x: MARGIN, y: rowY, width: photoWidth, height: photoHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
-          } catch {
-            page.drawRectangle({ x: MARGIN, y: rowY, width: photoWidth, height: photoHeight, color: rgb(0.95, 0.95, 0.95), borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
-            page.drawText('Image Error', { x: MARGIN + photoWidth / 2 - 30, y: rowY + photoHeight / 2, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
-          }
-        }
-
-        // 情報欄（テンプレートから表示フィールドを取得）
-        const infoX = MARGIN + photoWidth + PHOTO_INFO_GAP;
-        const template = getTemplateLayout(photosPerPage);
-        const visibleFields = getVisibleFields(template);
-
-        // フィールドをPDF用の形式に変換
+        // 横並び (left/right): リスト形式
         const infoLines = visibleFields.map(field => {
           if (field.key === 'date') {
             return {
@@ -265,17 +265,35 @@ export const generatePdfWithImages = async (
           };
         });
 
-        page.drawRectangle({ x: infoX, y: rowY, width: infoWidth, height: photoHeight, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
-
         infoLines.forEach((line, idx) => {
-          const y = rowY + photoHeight - 15 - idx * 18;
-          if (y > rowY + 5) {
-            page.drawText(line.label + ':', { x: infoX + 5, y, size: 8, font: japaneseFont, color: rgb(0.4, 0.4, 0.4) });
-            page.drawText(line.value.length > 20 ? line.value.substring(0, 20) + '...' : line.value, { x: infoX + 45, y, size: 9, font: japaneseFont, color: rgb(0.1, 0.1, 0.1) });
+          const y = captionY + dimensions.captionHeightPt - 15 - idx * 18;
+          if (y > captionY + 5) {
+            page.drawText(line.label + ':', {
+              x: captionX + 5,
+              y,
+              size: 8,
+              font: japaneseFont,
+              color: rgb(0.4, 0.4, 0.4)
+            });
+            const valueText = String(line.value || '-');
+            page.drawText(valueText.length > 20 ? valueText.substring(0, 20) + '...' : valueText, {
+              x: captionX + 45,
+              y,
+              size: 9,
+              font: japaneseFont,
+              color: rgb(0.1, 0.1, 0.1)
+            });
           }
         });
 
-        page.drawText(photo.fileName || `photo_${pageNum * photosPerPage + i + 1}.jpg`, { x: infoX + 5, y: rowY + 5, size: 7, font: helvetica, color: rgb(0.6, 0.6, 0.6) });
+        // ファイル名
+        page.drawText(photo.fileName || `photo_${pageNum * blocksPerPage + i + 1}.jpg`, {
+          x: captionX + 5,
+          y: captionY + 5,
+          size: 7,
+          font: helvetica,
+          color: rgb(0.6, 0.6, 0.6)
+        });
       }
     }
   }

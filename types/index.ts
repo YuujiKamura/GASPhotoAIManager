@@ -48,4 +48,11 @@ export type {
 export type {
   TemplateLayout,
   BuiltInTemplateId,
+  CaptionPosition,
+  BlockLayoutMode,
+} from './template';
+
+export {
+  getBlockLayoutMode,
+  isCaptionFirst,
 } from './template';
