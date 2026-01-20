@@ -249,11 +249,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             </div>
           )}
 
-          {/* Add photos button (always visible) */}
-          <button onClick={handleUploadClick} disabled={isProcessing} className="p-2 bg-blue-600 hover:bg-blue-500 rounded text-white transition-colors" title={lang === 'ja' ? '写真を追加' : 'Add Photos'}>
-            <Plus className="w-4 h-4" />
-          </button>
-
           {!isEmpty && (
             <>
               <div className="flex items-center gap-1 bg-slate-700 rounded-lg px-1">
