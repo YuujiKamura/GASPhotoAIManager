@@ -1,5 +1,5 @@
 import React from 'react';
-import { PhotoRecord, AppMode, AIAnalysisResult, getBlockLayoutMode } from '../types';
+import { PhotoRecord, AppMode, AIAnalysisResult, getBlockLayoutMode, isCaptionFirst } from '../types';
 import { TRANS } from '../utils/translations';
 import { LAYOUT_FIELDS, getPreviewLayout, getTemplateById, getDefaultTemplateId, BUILT_IN_TEMPLATES, getVisibleFields as getTemplateVisibleFields } from '../utils/layoutConfig';
 import { InfoRow } from './shared/EditableField';
@@ -29,6 +29,7 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, templateId, o
   const blocksPerPage = template.blocksPerPage;
   const layoutMode = getBlockLayoutMode(template.captionPosition);
   const isVerticalLayout = layoutMode === 'vertical';
+  const captionFirst = isCaptionFirst(template.captionPosition);
 
   const totalPages = Math.ceil(records.length / blocksPerPage);
   const isTwoUp = blocksPerPage === 2;
@@ -70,10 +71,15 @@ const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, templateId, o
   // ブロック高さ計算
   const blockHeightPercent = 100 / blocksPerPage;
 
-  // Layout classes - layoutModeに基づいて決定
-  const slotClass = isVerticalLayout
-    ? `flex-1 border-b border-gray-300 last:border-b-0 flex flex-col box-border min-h-0 hover:bg-gray-50 transition-colors h-[${blockHeightPercent}%]`
-    : `flex-1 border-b border-gray-300 last:border-b-0 flex flex-row box-border min-h-0 hover:bg-gray-50 transition-colors h-[${blockHeightPercent}%]`;
+  // Layout classes - layoutModeとcaptionFirstに基づいて決定
+  const getFlexDirection = () => {
+    if (isVerticalLayout) {
+      return captionFirst ? 'flex-col-reverse' : 'flex-col';  // top: reverse, bottom: normal
+    } else {
+      return captionFirst ? 'flex-row-reverse' : 'flex-row';  // left: reverse, right: normal
+    }
+  };
+  const slotClass = `flex-1 border-b border-gray-300 last:border-b-0 flex ${getFlexDirection()} box-border min-h-0 hover:bg-gray-50 transition-colors h-[${blockHeightPercent}%]`;
 
   // layoutConfigから取得した比率を使用
   const imageWidthStyle = { width: `${previewLayout.imageWidthPercent}%` };
