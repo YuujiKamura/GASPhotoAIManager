@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Settings, MousePointer, Play, MessageCircle } from 'lucide-react';
+import { Check, Settings, MousePointer, Play, MessageCircle, Database, Trash2 } from 'lucide-react';
 import { SortPolicy, SORT_POLICIES } from '../../types';
 import { AVAILABLE_MODELS, ModelType } from '../../services/geminiService';
 import { formatCostJPY } from '../../services/usageTracker';
@@ -8,6 +8,7 @@ export interface FileEntry {
   file: File;
   selected: boolean;
   thumbnail: string | null;
+  hasCache?: boolean;
 }
 
 // --- Photo Grid ---
@@ -35,6 +36,11 @@ export const PhotoGridItem: React.FC<PhotoGridItemProps> = ({ entry, onToggle, o
     >
       {entry.selected && <Check className="w-3 h-3" />}
     </button>
+    {entry.hasCache && (
+      <div className="absolute top-1 right-1 w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center" title="キャッシュあり">
+        <Database className="w-3 h-3" />
+      </div>
+    )}
     <button
       onClick={onInteractive}
       className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -53,16 +59,28 @@ interface PhotoGridProps {
   onInteractive: (file: File) => void;
   onSelectAll: () => void;
   onSelectNone: () => void;
-  txt: { clickToTest: string; all: string; none: string };
+  onClearSelectedCache?: () => void;
+  selectedCachedCount: number;
+  txt: { clickToTest: string; all: string; none: string; clearCache: string };
 }
 
-export const PhotoGrid: React.FC<PhotoGridProps> = ({ entries, onToggle, onInteractive, onSelectAll, onSelectNone, txt }) => (
+export const PhotoGrid: React.FC<PhotoGridProps> = ({ entries, onToggle, onInteractive, onSelectAll, onSelectNone, onClearSelectedCache, selectedCachedCount, txt }) => (
   <div className="flex-1 overflow-auto p-3">
     <div className="flex items-center justify-between mb-2">
       <span className="text-xs text-gray-500">{txt.clickToTest}</span>
       <div className="flex gap-1">
         <button onClick={onSelectAll} className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">{txt.all}</button>
         <button onClick={onSelectNone} className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">{txt.none}</button>
+        {selectedCachedCount > 0 && onClearSelectedCache && (
+          <button
+            onClick={onClearSelectedCache}
+            className="px-2 py-0.5 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded flex items-center gap-1"
+            title={`選択中の${selectedCachedCount}件のキャッシュを削除`}
+          >
+            <Trash2 className="w-3 h-3" />
+            {txt.clearCache} ({selectedCachedCount})
+          </button>
+        )}
       </div>
     </div>
     <div className="grid grid-cols-5 gap-2">

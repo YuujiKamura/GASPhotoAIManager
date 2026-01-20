@@ -38,6 +38,7 @@ const getTexts = (lang: 'ja' | 'en') => ({
   start: lang === 'ja' ? '解析開始' : 'Start',
   clickToTest: lang === 'ja' ? 'クリックで対話型テスト' : 'Click for interactive test',
   noWorkTypes: lang === 'ja' ? '工種未設定' : 'No work types',
+  clearCache: lang === 'ja' ? 'キャッシュ削除' : 'Clear Cache',
 });
 
 const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions }) => {
@@ -73,7 +74,9 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           onInteractive={handleInteractive}
           onSelectAll={state.selectAll}
           onSelectNone={state.selectNone}
-          txt={{ clickToTest: txt.clickToTest, all: txt.all, none: txt.none }}
+          onClearSelectedCache={state.clearSelectedCache}
+          selectedCachedCount={state.selectedCachedCount}
+          txt={{ clickToTest: txt.clickToTest, all: txt.all, none: txt.none, clearCache: txt.clearCache }}
         />
         <SettingsSection
           selectedCount={state.selectedFiles.length}

@@ -7,7 +7,7 @@ export { openDB } from './dbCore';
 export { saveProjectData, loadProjectData, clearProjectData } from './projectData';
 
 // Analysis Cache
-export { getFileKey, generateSessionKey, getCachedAnalysis, getCachedAnalysisByKey, cacheAnalysis, clearAnalysisCache } from './analysisCache';
+export { getFileKey, generateSessionKey, getCachedAnalysis, getCachedAnalysisByKey, cacheAnalysis, clearAnalysisCache, hasCachedAnalysis, deleteCacheByFiles } from './analysisCache';
 
 // Rules
 export { saveRule, getRules, deleteRule } from './rules';

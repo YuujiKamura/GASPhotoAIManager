@@ -102,6 +102,59 @@ export const clearAnalysisCache = async (): Promise<void> => {
 };
 
 /**
+ * Check if a file has cached analysis result
+ */
+export const hasCachedAnalysis = async (file: File): Promise<boolean> => {
+  const db = await openDB();
+  return new Promise((resolve) => {
+    const transaction = db.transaction(STORE_CACHE, 'readonly');
+    const store = transaction.objectStore(STORE_CACHE);
+    const key = getFileKey(file);
+    const request = store.get(key);
+
+    request.onsuccess = () => {
+      resolve(request.result !== undefined);
+    };
+    request.onerror = () => {
+      resolve(false);
+    };
+  });
+};
+
+/**
+ * Delete cache for specific files
+ */
+export const deleteCacheByFiles = async (files: File[]): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_CACHE, 'readwrite');
+    const store = transaction.objectStore(STORE_CACHE);
+
+    let completed = 0;
+    const total = files.length;
+
+    if (total === 0) {
+      resolve();
+      return;
+    }
+
+    files.forEach(file => {
+      const key = getFileKey(file);
+      const request = store.delete(key);
+
+      request.onsuccess = () => {
+        completed++;
+        if (completed === total) resolve();
+      };
+      request.onerror = () => {
+        completed++;
+        if (completed === total) resolve();
+      };
+    });
+  });
+};
+
+/**
  * Get cached analysis by key directly
  */
 export const getCachedAnalysisByKey = async (key: string): Promise<AIAnalysisResult | null> => {
