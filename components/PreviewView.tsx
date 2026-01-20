@@ -108,8 +108,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     handleManualPairClick,
   } = usePreviewViewState(initialLayout);
 
-  const hasPhotosWithBoard = photos.some(p => p.analysis?.hasBoard);
-
   return (
     <div className="fixed inset-0 z-[100] bg-gray-200 overflow-hidden flex flex-col">
       {/* Header */}
@@ -148,7 +146,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
           </button>
 
           <div className="flex items-center gap-1 bg-slate-700 rounded-lg px-1">
-            {hasPhotosWithBoard && ([2, 3] as const).map(n => (
+            {([2, 3] as const).map(n => (
               <button key={n} onClick={() => setPhotosPerPage(n)} className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${photosPerPage === n ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"}`} title={`${n}枚/ページ`}>
                 {n}枚
               </button>
