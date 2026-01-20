@@ -235,6 +235,8 @@ Rule:
     - Output filename as station (e.g., "RIMG0151.JPG" is WRONG)
     - Include decimal points or "+XX" suffixes
     - Use "不明", "unknown", "null" - use empty string "" instead
+    - Output vague location terms: "現場", "工事現場", "施工箇所", "作業箇所" → use "" instead
+    - Output generic descriptions that don't identify a specific location → use "" instead
 
 **OUTPUT FORMAT**:
 JSON only.
