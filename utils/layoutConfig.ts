@@ -475,96 +475,11 @@ const TEMPLATE_2UP_BOTTOM: TemplateLayout = {
 };
 
 /**
- * 詳細3枚モードテンプレート（キャプション左）
- * 全フィールド表示、キャプション左・写真右
- */
-const TEMPLATE_3UP_LEFT: TemplateLayout = {
-  id: 'detail-3up-left',
-  name: '詳細（3枚/ページ・情報左）',
-  blocksPerPage: 3,
-  captionPosition: 'left',
-
-  // mm基準
-  pageWidthMm: A4_WIDTH_MM,
-  pageHeightMm: A4_HEIGHT_MM,
-  marginMm: MARGIN_MM,
-  blockGapMm: PHOTO_GAP_MM,
-
-  // 比率 (horizontal: 幅の比率)
-  photoRatio: 60,
-  captionRatio: 40,
-
-  // Excel用
-  rowsPerBlock: ROWS_3UP,
-  photoRows: PHOTO_ROWS_3UP,
-  rowHeightPt: ROW_HEIGHT_PT_3UP,
-  columnWidths: {
-    imageCol: PHOTO_COL_WIDTH,
-    labelCol: LABEL_COL_WIDTH,
-    valueCol: VALUE_COL_WIDTH,
-  },
-
-  // 全フィールド表示
-  visibleFields: LAYOUT_FIELDS.map(f => f.id),
-
-  isDefault: false,
-
-  // 後方互換性
-  photosPerPage: 3,
-  photoWidthPercent: 60,
-  infoWidthPercent: 40,
-  photoGapMm: PHOTO_GAP_MM,
-};
-
-/**
- * キャプション上2枚モードテンプレート
- */
-const TEMPLATE_2UP_TOP: TemplateLayout = {
-  id: 'caption-top-2up',
-  name: 'キャプション上（2枚/ページ）',
-  blocksPerPage: 2,
-  captionPosition: 'top',
-
-  // mm基準
-  pageWidthMm: A4_WIDTH_MM,
-  pageHeightMm: A4_HEIGHT_MM,
-  marginMm: MARGIN_MM,
-  blockGapMm: PHOTO_GAP_MM,
-
-  // 比率 (vertical: 高さの比率)
-  photoRatio: 85,
-  captionRatio: 15,
-
-  // Excel用
-  rowsPerBlock: ROWS_2UP,
-  photoRows: PHOTO_ROWS_2UP,
-  rowHeightPt: ROW_HEIGHT_PT_2UP,
-  columnWidths: {
-    imageCol: PHOTO_COL_WIDTH,
-    labelCol: LABEL_COL_WIDTH,
-    valueCol: VALUE_COL_WIDTH,
-  },
-
-  // 測点・備考のみ
-  visibleFields: ['f_station', 'f_remarks'],
-
-  isDefault: false,
-
-  // 後方互換性
-  photosPerPage: 2,
-  photoWidthPercent: 100,
-  infoWidthPercent: 0,
-  photoGapMm: PHOTO_GAP_MM,
-};
-
-/**
  * ビルトインテンプレート一覧
  */
 export const BUILT_IN_TEMPLATES: Record<string, TemplateLayout> = {
   'standard-3up': TEMPLATE_3UP_RIGHT,
   'simple-2up': TEMPLATE_2UP_BOTTOM,
-  'detail-3up-left': TEMPLATE_3UP_LEFT,
-  'caption-top-2up': TEMPLATE_2UP_TOP,
 };
 
 // ============================================
