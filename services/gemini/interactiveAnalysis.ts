@@ -11,7 +11,7 @@ import { extractBase64Data } from "../../utils/imageUtils";
 import { sanitizeErrorMessage } from './apiKey';
 import { getSelectedModel } from './models';
 import { getSystemInstruction } from './systemPrompts';
-import { getLearnedSettings, learnedRulesToPromptText } from '../learnedDataService';
+import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from '../learningService';
 import { getRelevantExamples, formatExamplesForPrompt } from './exampleMatcher';
 
 // ============================================
