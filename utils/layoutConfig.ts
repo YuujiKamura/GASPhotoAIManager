@@ -686,6 +686,21 @@ export const getTemplateById = (templateId: string): TemplateLayout | undefined 
 };
 
 /**
+ * 全ビルトインテンプレートを配列で取得（UI選択用）
+ * @returns テンプレート配列
+ */
+export const getAllTemplates = (): TemplateLayout[] => {
+  return Object.values(BUILT_IN_TEMPLATES);
+};
+
+/**
+ * デフォルトテンプレートIDを取得
+ */
+export const getDefaultTemplateId = (): string => {
+  return 'standard-3up';
+};
+
+/**
  * テンプレートから表示フィールドを取得
  * @param template テンプレート
  * @returns フィールド定義配列

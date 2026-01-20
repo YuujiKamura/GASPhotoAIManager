@@ -1,7 +1,7 @@
 import React from 'react';
 import { PhotoRecord, AppMode, AIAnalysisResult, getBlockLayoutMode } from '../types';
 import { TRANS } from '../utils/translations';
-import { LAYOUT_FIELDS, getPreviewLayout, getTemplateLayout, getVisibleFields as getTemplateVisibleFields } from '../utils/layoutConfig';
+import { LAYOUT_FIELDS, getPreviewLayout, getTemplateById, getDefaultTemplateId, BUILT_IN_TEMPLATES, getVisibleFields as getTemplateVisibleFields } from '../utils/layoutConfig';
 import { InfoRow } from './shared/EditableField';
 import { ContextMenu } from './PhotoAlbumView/ContextMenu';
 import { ReasoningModal } from './PhotoAlbumView/ReasoningModal';
@@ -15,17 +15,17 @@ interface Props {
   records: PhotoRecord[];
   appMode: AppMode;
   lang: 'en' | 'ja';
-  photosPerPage: 2 | 3;
+  templateId: string;
   onUpdatePhoto: (fileName: string, field: keyof AIAnalysisResult, value: string) => void;
   onDeletePhoto?: (fileName: string) => void;
   onReanalyzePhoto?: (fileName: string) => void;
 }
 
-const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, photosPerPage, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
+const PhotoAlbumView: React.FC<Props> = ({ records, appMode, lang, templateId, onUpdatePhoto, onDeletePhoto, onReanalyzePhoto }) => {
   const txt = TRANS[lang];
 
-  // テンプレートシステムから設定を取得
-  const template = getTemplateLayout(photosPerPage);
+  // テンプレートIDから設定を取得
+  const template = getTemplateById(templateId) || BUILT_IN_TEMPLATES[getDefaultTemplateId()];
   const blocksPerPage = template.blocksPerPage;
   const layoutMode = getBlockLayoutMode(template.captionPosition);
   const isVerticalLayout = layoutMode === 'vertical';

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PhotoRecord } from '../types';
+import { PhotoRecord, TemplateLayout } from '../types';
 import { generateZip } from '../utils/zipGenerator';
+import { getTemplateById, getDefaultTemplateId, BUILT_IN_TEMPLATES } from '../utils/layoutConfig';
 
 const A4_WIDTH_PX = 794;
 
@@ -11,6 +12,8 @@ interface PreviewLayoutState {
   scale: number;
   isFitMode: boolean;
   photosPerPage: 2 | 3;
+  templateId: string;
+  template: TemplateLayout;
 }
 
 interface ExportState {
@@ -49,6 +52,7 @@ interface UploadActions {
 
 interface PreviewViewActions extends UploadActions {
   setPhotosPerPage: (value: 2 | 3) => void;
+  setTemplateId: (templateId: string) => void;
   setShowConsole: (value: boolean) => void;
   setShowHistoryPanel: (value: boolean) => void;
   handleDownloadPDF: (photos: PhotoRecord[], txt: { pdfError: string }) => Promise<void>;
@@ -57,19 +61,27 @@ interface PreviewViewActions extends UploadActions {
   handleManualPairClick: (onManualPair: () => void) => void;
 }
 
-const STORAGE_KEY = 'gaspm_photosPerPage';
+const STORAGE_KEY_TEMPLATE = 'gaspm_templateId';
 
 export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean = false): PreviewViewState & PreviewViewActions {
   const [scale, setScale] = useState(1);
   const [isFitMode, setIsFitMode] = useState(true);
-  const [photosPerPage, setPhotosPerPageState] = useState<2 | 3>(() => {
-    // localStorageから復元、なければinitialLayoutを使用
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === '2' || saved === '3') {
-      return parseInt(saved, 10) as 2 | 3;
+
+  // テンプレートID状態（localStorageから復元）
+  const [templateId, setTemplateIdState] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_TEMPLATE);
+    if (saved && BUILT_IN_TEMPLATES[saved]) {
+      return saved;
     }
-    return initialLayout;
+    // initialLayoutから初期テンプレートを決定
+    return initialLayout === 2 ? 'simple-2up' : 'standard-3up';
   });
+
+  // テンプレートオブジェクト（templateIdから導出）
+  const template = getTemplateById(templateId) || BUILT_IN_TEMPLATES[getDefaultTemplateId()];
+
+  // photosPerPage は template.blocksPerPage から導出（後方互換性）
+  const photosPerPage = template.blocksPerPage as 2 | 3;
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
@@ -92,11 +104,19 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
     }
   }, [showMenu]);
 
-  // 変更時にlocalStorageに保存
-  const setPhotosPerPage = useCallback((value: 2 | 3) => {
-    setPhotosPerPageState(value);
-    localStorage.setItem(STORAGE_KEY, String(value));
+  // テンプレートID変更（localStorageに保存）
+  const setTemplateId = useCallback((id: string) => {
+    if (BUILT_IN_TEMPLATES[id]) {
+      setTemplateIdState(id);
+      localStorage.setItem(STORAGE_KEY_TEMPLATE, id);
+    }
   }, []);
+
+  // 後方互換: photosPerPage からテンプレートを自動選択
+  const setPhotosPerPage = useCallback((value: 2 | 3) => {
+    const newTemplateId = value === 2 ? 'simple-2up' : 'standard-3up';
+    setTemplateId(newTemplateId);
+  }, [setTemplateId]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -284,6 +304,8 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
     scale,
     isFitMode,
     photosPerPage,
+    templateId,
+    template,
     // Export state
     isGeneratingPdf,
     isGeneratingZip,
@@ -300,6 +322,7 @@ export function usePreviewViewState(initialLayout: 2 | 3, isProcessing: boolean 
     fileInputImportRef,
     // Layout actions
     setPhotosPerPage,
+    setTemplateId,
     setShowConsole,
     setShowHistoryPanel,
     // Export actions

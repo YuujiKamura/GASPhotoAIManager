@@ -6,6 +6,7 @@ import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, Sort
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
+import TemplateSelector from './TemplateSelector';
 import { ReorderModeView, PreviewToolsMenu } from './PreviewView/index';
 import { useReorderMode } from '../hooks/useReorderMode';
 import { usePreviewViewState } from '../hooks/usePreviewViewState';
@@ -108,6 +109,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   const {
     scale,
     photosPerPage,
+    templateId,
+    template,
     isGeneratingPdf,
     isGeneratingZip,
     showConsole,
@@ -121,6 +124,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     fileInputImportRef,
     // Actions
     setPhotosPerPage,
+    setTemplateId,
     setShowConsole,
     setShowHistoryPanel,
     handleDownloadPDF,
@@ -251,13 +255,10 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 
           {!isEmpty && (
             <>
-              <div className="flex items-center gap-1 bg-slate-700 rounded-lg px-1">
-                {([2, 3] as const).map(n => (
-                  <button key={n} onClick={() => setPhotosPerPage(n)} className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${photosPerPage === n ? "bg-amber-500 text-white" : "text-slate-300 hover:bg-slate-600"}`} title={`${n}枚/ページ`}>
-                    {n}枚
-                  </button>
-                ))}
-              </div>
+              <TemplateSelector
+                currentTemplateId={templateId}
+                onSelectTemplate={setTemplateId}
+              />
 
               <div className="flex gap-1">
                 <button onClick={() => onExportExcel(photosPerPage)} disabled={isProcessing || isEmpty} className="p-2 md:px-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm flex items-center gap-1" title={txt.exportExcel}>
@@ -378,7 +379,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               records={photos}
               appMode={appMode}
               lang={lang}
-              photosPerPage={photosPerPage}
+              templateId={templateId}
               onUpdatePhoto={onUpdatePhoto}
               onDeletePhoto={onDeletePhoto}
               onReanalyzePhoto={onReanalyzePhoto}
