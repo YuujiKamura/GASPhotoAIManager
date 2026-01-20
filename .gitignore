@@ -51,6 +51,11 @@ test-*.pdf
 rust-compare.json
 dist-cli/
 
+# Visual test artifacts
+test-screenshots/
+test-images/
+test-data/
+
 # Local settings (may contain API keys)
 .claude/settings.local.json
 
