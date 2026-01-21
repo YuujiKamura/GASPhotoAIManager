@@ -52,7 +52,7 @@ export const PromptTab: React.FC<PromptTabProps> = ({ state, appMode }) => {
   const getLayerContent = (layer: PromptLayerType): React.ReactNode => {
     switch (layer) {
       case 'system':
-        return <SystemLayer systemOverride={state.systemOverride} saveSystemOverride={state.saveSystemOverride} appMode={appMode} ruleSettings={state.ruleSettings} />;
+        return <SystemLayer systemOverride={state.systemOverride} saveSystemOverride={state.saveSystemOverride} appMode={appMode} ruleSettings={state.ruleSettings} chainRecords={state.chainRecords} />;
       case 'hierarchy':
         return <HierarchyLayer editingHierarchy={state.editingHierarchy} setEditingHierarchy={state.setEditingHierarchy} hierarchyOverride={state.hierarchyOverride} saveHierarchyOverride={state.saveHierarchyOverride} hierarchyError={state.hierarchyError} CONSTRUCTION_HIERARCHY={state.CONSTRUCTION_HIERARCHY} STORAGE_KEYS={state.STORAGE_KEYS} />;
       case 'rules':

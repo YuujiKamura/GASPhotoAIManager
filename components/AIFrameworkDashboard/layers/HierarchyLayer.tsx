@@ -1,6 +1,5 @@
 import React from 'react';
 import { Edit3, Save } from 'lucide-react';
-import { formatHierarchyForPrompt } from '../../../utils/constructionMaster';
 
 interface HierarchyLayerProps {
   editingHierarchy: boolean;
@@ -21,7 +20,7 @@ export const HierarchyLayer: React.FC<HierarchyLayerProps> = ({
       <div className="space-y-3">
         <div className="text-xs text-gray-600 font-mono bg-gray-50 p-3 rounded max-h-40 overflow-auto">
           <pre className="whitespace-pre-wrap">
-            {(hierarchyOverride || JSON.stringify(formatHierarchyForPrompt(), null, 2)).slice(0, 1000)}...
+            {(hierarchyOverride || JSON.stringify(CONSTRUCTION_HIERARCHY, null, 2)).slice(0, 1000)}...
           </pre>
         </div>
         <button

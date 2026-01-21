@@ -2,7 +2,7 @@
  * 写真ソート関連のユーティリティ関数
  */
 import { PhotoRecord, SortPolicy } from '../types';
-import { getDetailOrderMap, getVarietyOrderMap } from './constructionMaster';
+import { getDetailOrderMapSync, getVarietyOrderMapSync } from './masterCsvParser';
 import { getLearnedOrderValue } from './learnedSortOrder';
 
 /**
@@ -93,7 +93,7 @@ export function sortPhotosLogical(records: PhotoRecord[], policy: SortPolicy = '
     }
 
     case 'by_detail': {
-      const detailOrder = getDetailOrderMap();
+      const detailOrder = getDetailOrderMapSync();
       const groups: { [key: string]: PhotoRecord[] } = {};
       records.forEach(r => {
         const key = r.analysis?.detail || r.analysis?.variety || '未分類';
@@ -112,7 +112,7 @@ export function sortPhotosLogical(records: PhotoRecord[], policy: SortPolicy = '
     }
 
     case 'by_detail_safety_first': {
-      const detailOrderSF = getDetailOrderMap();
+      const detailOrderSF = getDetailOrderMapSync();
       const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
       const others = records.filter(r => !isSafetyPhoto(r));
       const groups: { [key: string]: PhotoRecord[] } = {};
@@ -133,7 +133,7 @@ export function sortPhotosLogical(records: PhotoRecord[], policy: SortPolicy = '
     }
 
     case 'by_detail_safety_last': {
-      const detailOrderSL = getDetailOrderMap();
+      const detailOrderSL = getDetailOrderMapSync();
       const safety = records.filter(isSafetyPhoto).sort(chronologicalSort);
       const others = records.filter(r => !isSafetyPhoto(r));
       const groups: { [key: string]: PhotoRecord[] } = {};
@@ -154,7 +154,7 @@ export function sortPhotosLogical(records: PhotoRecord[], policy: SortPolicy = '
     }
 
     case 'by_worktype': {
-      const varietyOrder = getVarietyOrderMap();
+      const varietyOrder = getVarietyOrderMapSync();
       const groups: { [key: string]: PhotoRecord[] } = {};
       records.forEach(r => {
         const key = r.analysis?.workType || '未分類';

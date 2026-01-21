@@ -1,9 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, Edit3, CheckCircle2, Image, ChevronDown, ChevronUp, History, Layers, BookOpen, Search } from 'lucide-react';
 import { PhotoRecord, AIAnalysisResult } from '../types';
 import { LAYOUT_FIELDS } from '../utils/layoutConfig';
 import { useBulkEditorState } from '../hooks/useBulkEditorState';
-import { extractAllValidValues, getVarietiesByWorkType, getDetailsByVariety, getRemarksByDetail } from '../utils/constructionMaster';
+import {
+  loadMasterCsv,
+  extractAllValidValuesSync,
+  getVarietiesByWorkTypeSync,
+  getDetailsByVarietySync,
+  getRemarksByDetailSync
+} from '../utils/masterCsvParser';
 
 const EDITABLE_FIELDS = LAYOUT_FIELDS.filter(f => !f.readOnly);
 type FieldKey = keyof AIAnalysisResult;
@@ -41,11 +47,14 @@ const MasterSelector: React.FC<{
   onSelect: (value: string) => void;
   selectedValue: string;
   hierarchyContext: HierarchyContext;
-}> = ({ field, lang, onSelect, selectedValue, hierarchyContext }) => {
+  masterLoaded: boolean;
+}> = ({ field, lang, onSelect, selectedValue, hierarchyContext, masterLoaded }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const masterValues = useMemo(() => {
-    const { workTypes, varieties, details, remarks } = extractAllValidValues();
+    if (!masterLoaded) return [];
+
+    const { workTypes, varieties, details, remarks } = extractAllValidValuesSync();
 
     switch (field) {
       case 'workType':
@@ -54,7 +63,7 @@ const MasterSelector: React.FC<{
       case 'variety':
         // 工種が選択されていれば絞り込み
         if (hierarchyContext.workType) {
-          const filtered = getVarietiesByWorkType(hierarchyContext.workType);
+          const filtered = getVarietiesByWorkTypeSync(hierarchyContext.workType);
           return filtered.length > 0 ? filtered : Array.from(varieties).sort();
         }
         return Array.from(varieties).sort();
@@ -62,7 +71,7 @@ const MasterSelector: React.FC<{
       case 'detail':
         // 工種・種別が選択されていれば絞り込み
         if (hierarchyContext.workType && hierarchyContext.variety) {
-          const filtered = getDetailsByVariety(hierarchyContext.workType, hierarchyContext.variety);
+          const filtered = getDetailsByVarietySync(hierarchyContext.workType, hierarchyContext.variety);
           return filtered.length > 0 ? filtered : Array.from(details).sort();
         }
         return Array.from(details).sort();
@@ -70,7 +79,7 @@ const MasterSelector: React.FC<{
       case 'remarks':
         // 工種・種別・細別が選択されていれば絞り込み
         if (hierarchyContext.workType && hierarchyContext.variety && hierarchyContext.detail) {
-          const filtered = getRemarksByDetail(hierarchyContext.workType, hierarchyContext.variety, hierarchyContext.detail);
+          const filtered = getRemarksByDetailSync(hierarchyContext.workType, hierarchyContext.variety, hierarchyContext.detail);
           return filtered.length > 0 ? filtered : Array.from(remarks).sort();
         }
         return Array.from(remarks).sort();
@@ -78,7 +87,7 @@ const MasterSelector: React.FC<{
       default:
         return [];
     }
-  }, [field, hierarchyContext]);
+  }, [field, hierarchyContext, masterLoaded]);
 
   const filteredValues = useMemo(() => {
     if (!searchQuery) return masterValues;
@@ -503,9 +512,15 @@ const BulkEditorFooter: React.FC<{
 const BulkEntryEditor: React.FC<BulkEntryEditorProps> = ({ photos, lang, onClose, onApply }) => {
   const state = useBulkEditorState(photos);
   const [inputMode, setInputMode] = useState<'master' | 'free'>('master');
+  const [masterLoaded, setMasterLoaded] = useState(false);
   const fieldLabel = FIELD_LABELS[state.selectedField]?.[lang] || state.selectedField;
   const isMultiline = EDITABLE_FIELDS.find(f => f.key === state.selectedField)?.multiline;
   const isMasterSelectable = (MASTER_SELECTABLE_FIELDS as readonly string[]).includes(state.selectedField);
+
+  // CSV マスタをプリロード
+  useEffect(() => {
+    loadMasterCsv().then(() => setMasterLoaded(true));
+  }, []);
 
   // 選択された写真から共通の階層情報を取得
   const hierarchyContext = useMemo((): HierarchyContext => {
@@ -556,6 +571,7 @@ const BulkEntryEditor: React.FC<BulkEntryEditorProps> = ({ photos, lang, onClose
         onSelect={(value) => state.setNewValue(value)}
         selectedValue={state.newValue}
         hierarchyContext={hierarchyContext}
+        masterLoaded={masterLoaded}
       />
       {state.newValue && (
         <div className="p-2 bg-green-50 border border-green-200 rounded-lg">

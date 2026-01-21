@@ -288,6 +288,121 @@ export const toHierarchyObject = (rows: MasterRow[]): Record<string, unknown> =>
 };
 
 // ============================================
+// 全有効値の抽出（UI用）
+// ============================================
+
+export interface AllValidValues {
+  workTypes: Set<string>;
+  varieties: Set<string>;
+  details: Set<string>;
+  remarks: Set<string>;
+}
+
+/**
+ * マスタから全ての有効な値を抽出
+ * UI のドロップダウン等で使用
+ */
+export const extractAllValidValuesFromCsv = (rows: MasterRow[]): AllValidValues => {
+  const workTypes = new Set<string>();
+  const varieties = new Set<string>();
+  const details = new Set<string>();
+  const remarks = new Set<string>();
+
+  rows.forEach(row => {
+    if (row.workType) workTypes.add(row.workType);
+    if (row.variety) varieties.add(row.variety);
+    if (row.detail) details.add(row.detail);
+    if (row.remarks) remarks.add(row.remarks);
+  });
+
+  return { workTypes, varieties, details, remarks };
+};
+
+/**
+ * 同期版: キャッシュから全有効値を取得
+ */
+export const extractAllValidValuesSync = (): AllValidValues => {
+  const rows = getMasterRowsSync();
+  return extractAllValidValuesFromCsv(rows);
+};
+
+/**
+ * 同期版: 工種から種別一覧を取得
+ */
+export const getVarietiesByWorkTypeSync = (workType: string): string[] => {
+  const rows = getMasterRowsSync();
+  return getVarietiesFromMaster(rows, workType);
+};
+
+/**
+ * 同期版: 工種・種別から細別一覧を取得
+ */
+export const getDetailsByVarietySync = (workType: string, variety: string): string[] => {
+  const rows = getMasterRowsSync();
+  return getDetailsFromMaster(rows, workType, variety);
+};
+
+/**
+ * 同期版: 工種・種別・細別から備考一覧を取得
+ */
+export const getRemarksByDetailSync = (workType: string, variety: string, detail: string): string[] => {
+  const rows = getMasterRowsSync();
+  return getRemarksFromMaster(rows, workType, variety, detail);
+};
+
+// ============================================
+// ソート用順序マップ
+// ============================================
+
+/**
+ * 細別の順序マップを取得（CSV行順）
+ */
+export const getDetailOrderMapFromRows = (rows: MasterRow[]): Map<string, number> => {
+  const orderMap = new Map<string, number>();
+  let order = 0;
+
+  rows.forEach(row => {
+    if (row.detail && !orderMap.has(row.detail)) {
+      orderMap.set(row.detail, order++);
+    }
+  });
+
+  return orderMap;
+};
+
+/**
+ * 種別の順序マップを取得（CSV行順）
+ */
+export const getVarietyOrderMapFromRows = (rows: MasterRow[]): Map<string, number> => {
+  const orderMap = new Map<string, number>();
+  let order = 0;
+
+  rows.forEach(row => {
+    if (row.variety && !orderMap.has(row.variety)) {
+      orderMap.set(row.variety, order++);
+    }
+  });
+
+  return orderMap;
+};
+
+/**
+ * 同期版: 細別の順序マップを取得
+ */
+export const getDetailOrderMapSync = (): Map<string, number> => {
+  const rows = getMasterRowsSync();
+  return getDetailOrderMapFromRows(rows);
+};
+
+/**
+ * 同期版: 種別の順序マップを取得
+ */
+export const getVarietyOrderMapSync = (): Map<string, number> => {
+  const rows = getMasterRowsSync();
+  return getVarietyOrderMapFromRows(rows);
+};
+
+// ============================================
 // バリデーション
 // ============================================
 

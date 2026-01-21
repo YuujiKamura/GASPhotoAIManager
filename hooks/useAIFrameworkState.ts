@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getSystemInstruction } from '../services/gemini/systemPrompts';
-import { formatHierarchyForPrompt, CONSTRUCTION_HIERARCHY } from '../utils/constructionMaster';
+import { loadMasterCsv, toChainRecordsJson, toHierarchyObject, ChainRecord } from '../utils/masterCsvParser';
 import {
   ANALYSIS_RULES, RuleSettings,
   loadRuleSettings, saveRuleSettings, rulesToPromptText, getDefaultRuleSettings
@@ -70,6 +70,8 @@ export function useAIFrameworkState(appMode: AppMode) {
   // Async Loaded Data
   const [learnedSettings, setLearnedSettings] = useState<LearnedSettings | null>(null);
   const [examples, setExamples] = useState<AnalysisExample[]>([]);
+  const [chainRecords, setChainRecords] = useState<ChainRecord[]>([]);
+  const [masterHierarchy, setMasterHierarchy] = useState<Record<string, unknown>>({});
 
   // Load async data
   useEffect(() => {
@@ -79,6 +81,11 @@ export function useAIFrameworkState(appMode: AppMode) {
         setLearnedSettings(learned);
         const exs = await getExamples();
         setExamples(exs);
+
+        // Load CSV master data
+        const rows = await loadMasterCsv();
+        setChainRecords(toChainRecordsJson(rows));
+        setMasterHierarchy(toHierarchyObject(rows));
       } catch (e) {
         console.warn('Failed to load learned settings/examples:', e);
       }
@@ -223,13 +230,8 @@ export function useAIFrameworkState(appMode: AppMode) {
   const generatePreview = useMemo(() => {
     try {
       const parts: string[] = [];
-      let hierarchy;
-      try {
-        hierarchy = hierarchyOverride ? JSON.parse(hierarchyOverride) : formatHierarchyForPrompt();
-      } catch {
-        hierarchy = formatHierarchyForPrompt();
-      }
-      const systemPrompt = getSystemInstruction(appMode, customInstruction, hierarchy, ruleSettings);
+      // Use chainRecords for preview (new signature: appMode, customInstruction, ruleSettings, chainRecords)
+      const systemPrompt = getSystemInstruction(appMode, customInstruction, ruleSettings, chainRecords);
       const finalSystem = systemOverride || systemPrompt;
       parts.push('=== システムプロンプト ===\n' + finalSystem.slice(0, 800) + '...\n');
       parts.push('\n=== 分析ルール ===\n' + rulesToPromptText(ruleSettings));
@@ -250,7 +252,7 @@ export function useAIFrameworkState(appMode: AppMode) {
       console.error('Failed to generate preview:', e);
       return 'プレビューの生成に失敗しました';
     }
-  }, [appMode, ruleSettings, examples, learnedSettings, customInstruction, systemOverride, hierarchyOverride]);
+  }, [appMode, ruleSettings, examples, learnedSettings, customInstruction, systemOverride, chainRecords]);
 
   return {
     // UI State
@@ -283,7 +285,8 @@ export function useAIFrameworkState(appMode: AppMode) {
 
     // Constants
     STORAGE_KEYS,
-    CONSTRUCTION_HIERARCHY,
+    CONSTRUCTION_HIERARCHY: masterHierarchy,  // 後方互換エイリアス
+    chainRecords,  // 新しいchainRecords形式
   };
 }
 
