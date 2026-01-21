@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 
 import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle, CheckCircle, Upload, Plus, HardHat } from 'lucide-react';
 import { exportDataToJson, importDataFromJson } from '../utils/storage/exportImport';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, SortPolicy, AnalysisStep } from '../types';
+import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, SortPolicy, AnalysisStep, AnalysisMode, AnalysisPauseState } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
@@ -27,6 +27,8 @@ interface PreviewData {
   initialLayout?: 2 | 3;
   apiKey?: string;
   analysisSteps?: AnalysisStep[];
+  analysisMode?: AnalysisMode;
+  pauseState?: AnalysisPauseState;
 }
 
 /** Processing state props */
@@ -43,6 +45,13 @@ interface PhotoHandlers {
   onDeletePhoto: (fileName: string) => void;
   onReanalyzePhoto?: (fileName: string) => void;
   onReorderPhotos?: (reorderedPhotos: PhotoRecord[]) => void;
+}
+
+/** Pause/Resume handlers for interactive analysis mode */
+interface PauseResumeHandlers {
+  onToggleMode?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
 }
 
 /** Action callbacks */
@@ -76,13 +85,15 @@ export interface PreviewViewProps {
   state: PreviewState;
   photoHandlers: PhotoHandlers;
   actionHandlers: ActionHandlers;
+  pauseResumeHandlers?: PauseResumeHandlers;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
-  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey, analysisSteps },
+  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey, analysisSteps, analysisMode, pauseState },
   state: { isProcessing, currentStep, errorMsg, successMsg },
   photoHandlers: { onUpdatePhoto, onDeletePhoto, onReanalyzePhoto, onReorderPhotos },
-  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive }
+  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive },
+  pauseResumeHandlers
 }) => {
   const txt = TRANS[lang];
   const reorder = useReorderMode(photos, onReorderPhotos);
@@ -437,6 +448,11 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             steps={analysisSteps}
             totalPhotos={stats.total}
             processedPhotos={stats.success}
+            analysisMode={analysisMode}
+            pauseState={pauseState}
+            onToggleMode={pauseResumeHandlers?.onToggleMode}
+            onPause={pauseResumeHandlers?.onPause}
+            onResume={pauseResumeHandlers?.onResume}
           />
         </div>
       )}

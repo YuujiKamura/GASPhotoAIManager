@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useCallback } from 'react';
-import { PhotoRecord, AppMode, SortPolicy, AnalysisStep, AnalysisStepId } from './types';
+import { PhotoRecord, AppMode, SortPolicy, AnalysisStep, AnalysisStepId, AnalysisMode, AnalysisPauseState } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 import { fileToBase64 } from './utils/fileHandlers';
@@ -70,8 +70,12 @@ export default function App() {
   const fsCacheState = useFsCache(processing.addLog);
   const pending = usePendingState();
 
-  // Analysis Steps Progress
-  const { steps: analysisSteps, startStep, completeStep, updateProgress, skipStep, errorStep, resetSteps } = useAnalysisSteps();
+  // Analysis Steps Progress (with pause/resume for interactive mode)
+  const {
+    steps: analysisSteps,
+    startStep, completeStep, updateProgress, skipStep, errorStep, resetSteps,
+    analysisMode, toggleMode, pauseState, requestPause, resumeAnalysis
+  } = useAnalysisSteps();
 
   // Handler for step updates from pipeline
   const handleStepUpdate = useCallback((id: AnalysisStepId, update: Partial<AnalysisStep>) => {
@@ -230,8 +234,9 @@ export default function App() {
         </Suspense>
       ) : (
         <PreviewView
-          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '', analysisSteps }}
+          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '', analysisSteps, analysisMode, pauseState }}
           state={{ isProcessing: processing.isProcessing, currentStep: processing.currentStep, errorMsg: processing.errorMsg, successMsg: processing.successMsg }}
+          pauseResumeHandlers={{ onToggleMode: toggleMode, onPause: requestPause, onResume: resumeAnalysis }}
           photoHandlers={{
             onUpdatePhoto: updatePhoto,
             onDeletePhoto: (fileName) => deletePhoto(fileName, lang),

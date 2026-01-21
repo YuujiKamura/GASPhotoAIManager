@@ -25,6 +25,40 @@ export interface AnalysisStep {
   subProgress?: string; // "(3/10)" 等
 }
 
+// 解析モード
+export type AnalysisMode =
+  | 'auto'        // 従来通り自動進行
+  | 'interactive' // ステップごとに確認可能
+  | 'debug';      // 全写真で停止（開発用）
+
+// 一時停止状態
+export interface AnalysisPauseState {
+  isPaused: boolean;           // 現在停止中か
+  pausedAtStep?: AnalysisStepId; // どのステップで停止したか
+  pauseReason?: 'user' | 'step_complete' | 'error'; // 停止理由
+  canResume: boolean;          // 再開可能か
+}
+
+// 会話メッセージ（Phase 2以降で使用）
+export interface ConversationMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: number;
+  attachments?: {
+    type: 'photo' | 'result';
+    fileName?: string;
+    data?: any;
+  }[];
+}
+
+// 解析中の会話コンテキスト（Phase 2以降で使用）
+export interface AnalysisConversation {
+  sessionId: string;
+  messages: ConversationMessage[];
+  isActive: boolean;
+}
+
 // 問題ケース（期待と異なる解析結果を検証用に保存）
 export interface AnalysisIssue {
   id: string;                      // ユニークID
