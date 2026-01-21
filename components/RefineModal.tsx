@@ -1,5 +1,5 @@
-import React from 'react';
-import { Wand2, Save, PlusCircle, Edit2, CheckSquare, Square, Trash2, X, Play, Download, Upload, Tag, Lightbulb, Search, Library, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Wand2, Save, PlusCircle, Edit2, CheckSquare, Square, Trash2, X, Play, Download, Upload, Tag, Lightbulb, Search, Library, RefreshCw, HelpCircle, Loader2, ChevronDown } from 'lucide-react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord } from '../types';
 import { useRefineModalState } from '../hooks/useRefineModalState';
@@ -9,11 +9,13 @@ interface RefineModalProps {
   photos: PhotoRecord[];
   onClose: () => void;
   onRunAnalysis: (instruction: string, batchSize: number) => void;
+  apiKey?: string | null;
 }
 
-const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunAnalysis }) => {
+const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunAnalysis, apiKey }) => {
   const txt = TRANS[lang];
-  const state = useRefineModalState(photos, lang);
+  const state = useRefineModalState(photos, lang, apiKey);
+  const [showPhotoSelector, setShowPhotoSelector] = useState(false);
 
   const handleRunClick = async () => {
     if (!state.customPrompt.trim()) return;
@@ -47,6 +49,87 @@ const RefineModal: React.FC<RefineModalProps> = ({ lang, photos, onClose, onRunA
         </div>
 
         <textarea value={state.customPrompt} onChange={e => state.setCustomPrompt(e.target.value)} placeholder={txt.refinePlaceholder} className="w-full h-32 border border-gray-300 rounded-lg p-3 mb-4 text-sm font-mono bg-white focus:ring-2 focus:ring-purple-500 outline-none resize-none" />
+
+        {/* 理由を聞く機能 */}
+        <div className="mb-4 bg-amber-50 p-3 rounded-lg border border-amber-200">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-bold text-amber-800 flex items-center gap-1">
+              <HelpCircle className="w-4 h-4" />
+              {lang === 'ja' ? '理由を聞く（再解析なし）' : 'Ask Why (No Re-analysis)'}
+            </label>
+          </div>
+          <p className="text-xs text-amber-700 mb-2">
+            {lang === 'ja'
+              ? '上のテキストエリアに質問を入力して「理由を聞く」を押すと、AIが現在の解析結果について説明します。'
+              : 'Enter your question above and click "Ask Why" to get an explanation of the current result.'}
+          </p>
+
+          {photos.length > 1 && (
+            <div className="relative mb-2">
+              <button
+                onClick={() => setShowPhotoSelector(!showPhotoSelector)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-white border border-amber-300 rounded text-sm text-left"
+              >
+                <span className="truncate">
+                  {state.selectedPhotoForWhy?.fileName || (lang === 'ja' ? '写真を選択...' : 'Select photo...')}
+                </span>
+                <ChevronDown className="w-4 h-4 text-amber-600" />
+              </button>
+              {showPhotoSelector && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  {photos.filter(p => p.analysis).map(p => (
+                    <button
+                      key={p.fileName}
+                      onClick={() => {
+                        state.handleAskWhy(p);
+                        setShowPhotoSelector(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 border-b border-gray-100 last:border-0"
+                    >
+                      <div className="font-medium truncate">{p.fileName}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {p.analysis?.remarks || p.analysis?.workType || '(未分類)'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={() => state.handleAskWhy(photos.length === 1 ? photos[0] : undefined)}
+            disabled={state.isAskingWhy || (photos.length > 1 && !state.selectedPhotoForWhy)}
+            className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {state.isAskingWhy ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {lang === 'ja' ? '問い合わせ中...' : 'Asking...'}
+              </>
+            ) : (
+              <>
+                <HelpCircle className="w-4 h-4" />
+                {lang === 'ja' ? '理由を聞く' : 'Ask Why'}
+              </>
+            )}
+          </button>
+
+          {/* 回答表示 */}
+          {state.whyResponse && (
+            <div className="mt-3 p-3 bg-white border border-amber-200 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-amber-800">
+                  {state.selectedPhotoForWhy?.fileName}
+                </span>
+                <button onClick={state.clearWhyResponse} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="text-sm text-gray-700 whitespace-pre-wrap">{state.whyResponse}</div>
+            </div>
+          )}
+        </div>
 
         <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
           <div className="flex justify-between items-center mb-2">

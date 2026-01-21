@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AnalysisRule, getRules, saveRule, deleteRule, exportRulesToJson, importRulesFromJson } from '../utils/storage';
-import { PhotoRecord } from '../types';
+import { PhotoRecord, AIAnalysisResult } from '../types';
+import { askWhyResult } from '../services/gemini/explainService';
 
 const STORAGE_KEY_PROMPT = 'gemini_last_refine_prompt';
 
@@ -11,7 +12,7 @@ const PRESET_RULES: Partial<AnalysisRule>[] = [
   { name: "英語出力 (English Output)", instruction: "Translate all output fields (Work Type, Remarks, Description) into English.", tags: ["翻訳", "English"] }
 ];
 
-export function useRefineModalState(photos: PhotoRecord[], lang: 'en' | 'ja') {
+export function useRefineModalState(photos: PhotoRecord[], lang: 'en' | 'ja', apiKey?: string | null) {
   const [customPrompt, setCustomPrompt] = useState("");
   const [ruleName, setRuleName] = useState("");
   const [ruleTags, setRuleTags] = useState("");
@@ -22,6 +23,10 @@ export function useRefineModalState(photos: PhotoRecord[], lang: 'en' | 'ja') {
   const [autoMatchedCount, setAutoMatchedCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 理由問い合わせ用state
+  const [isAskingWhy, setIsAskingWhy] = useState(false);
+  const [whyResponse, setWhyResponse] = useState<string | null>(null);
+  const [selectedPhotoForWhy, setSelectedPhotoForWhy] = useState<PhotoRecord | null>(null);
 
   const getContextText = useCallback(() => photos.map(p =>
     `${p.fileName} ${p.analysis?.workType || ''} ${p.analysis?.remarks || ''} ${p.analysis?.description || ''}`
@@ -131,11 +136,46 @@ export function useRefineModalState(photos: PhotoRecord[], lang: 'en' | 'ja') {
     !searchTerm || r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.tags?.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // 理由を聞く機能
+  const handleAskWhy = useCallback(async (photo?: PhotoRecord) => {
+    const targetPhoto = photo || (photos.length === 1 ? photos[0] : null);
+    if (!targetPhoto) {
+      alert(lang === 'ja' ? '写真を選択してください' : 'Please select a photo');
+      return;
+    }
+    if (!targetPhoto.analysis) {
+      alert(lang === 'ja' ? 'この写真はまだ解析されていません' : 'This photo has not been analyzed yet');
+      return;
+    }
+
+    setSelectedPhotoForWhy(targetPhoto);
+    setIsAskingWhy(true);
+    setWhyResponse(null);
+
+    try {
+      const question = customPrompt.trim() || undefined;
+      const response = await askWhyResult(targetPhoto, question);
+      setWhyResponse(response);
+    } catch (e: unknown) {
+      const err = e as Error;
+      setWhyResponse(`エラー: ${err.message}`);
+    } finally {
+      setIsAskingWhy(false);
+    }
+  }, [photos, customPrompt, lang]);
+
+  const clearWhyResponse = useCallback(() => {
+    setWhyResponse(null);
+    setSelectedPhotoForWhy(null);
+  }, []);
+
   return {
     customPrompt, setCustomPrompt, ruleName, setRuleName, ruleTags, setRuleTags,
     selectedRuleId, checkedRuleIds, savedRules, batchSize, setBatchSize,
     autoMatchedCount, searchTerm, setSearchTerm, fileInputRef, filteredRules,
     resetForm, handleSaveRule, handleDeleteRule, handleLoadPresets,
     handleToggleRule, handleSelectRuleForEdit, handleExportRules, handleImportRules, triggerImport,
+    // 理由を聞く機能
+    isAskingWhy, whyResponse, selectedPhotoForWhy, handleAskWhy, clearWhyResponse,
   };
 }

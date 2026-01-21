@@ -80,3 +80,11 @@ export {
   type NormalizationCorrection,
   type NormalizationResult,
 } from './normalization';
+
+// ============================================
+// 説明サービス (explainService.ts)
+// ============================================
+export {
+  askWhyResult,
+  askWhyResultsBatch,
+} from './explainService';

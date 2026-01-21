@@ -266,7 +266,7 @@ export default function App() {
 
       {modals.showRefineModal && (
         <Suspense fallback={<LoadingFallback />}>
-          <RefineModal lang={lang} photos={photos} onClose={() => modals.setShowRefineModal(false)} onRunAnalysis={analysisHandlers.handleRefineAnalysis} />
+          <RefineModal lang={lang} photos={photos} onClose={() => modals.setShowRefineModal(false)} onRunAnalysis={analysisHandlers.handleRefineAnalysis} apiKey={apiKeyState.apiKey} />
         </Suspense>
       )}
 
