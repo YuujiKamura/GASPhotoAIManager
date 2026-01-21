@@ -2,7 +2,6 @@ import React, { useCallback, useRef } from 'react';
 import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId } from '../types';
 import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 import { analyzePhotoBatch, getNormalizationProposals, getSelectedModel, NormalizationCorrection } from '../services/geminiService';
-import { processPhotosWithSmartFlow } from '../services/smartFlowService';
 import { getCachedAnalysis, cacheAnalysis, saveAnalysisHistory } from '../utils/storage';
 import { loadRuleSettings } from '../utils/analysisRules';
 import { loadAliasSettings, hasAliases, applyAliasesToRecords } from '../utils/workTypeAliases';
@@ -132,26 +131,16 @@ export function useAnalysisPipeline(p: Props) {
             setPhotos(prev => prev.map(x => pending.find(y => y.fileName === x.fileName) ? { ...x, status: 'error' as const } : x));
           }
         } else if (apiKey) {
-          // 従来のGemini API経由で解析
+          // Gemini API経由でバッチ解析
           onStepUpdate?.('detect', { status: 'done', result: 'Gemini API' });
           onStepUpdate?.('analyze', { status: 'running', subProgress: `(0/${pending.length})` });
-          const res = await processPhotosWithSmartFlow(pending, apiKey, inst, addLog, () => abortRef.current, workTypeFromPreInfo);
-          if (res.type === 'paired') {
-            const up = res.pairs?.flatMap(pr => [
-              { ...pr.before, analysis: { ...(pr.before.analysis || emptyAnalysis(pr.before.fileName)), sceneId: pr.sceneId, phase: 'before' as const, workType: workTypeFromPreInfo || pr.before.analysis?.workType || '', station: stationFromPreInfo, remarks: '着手前' }, status: 'done' as const },
-              { ...pr.after, analysis: { ...(pr.after.analysis || emptyAnalysis(pr.after.fileName)), sceneId: pr.sceneId, phase: 'after' as const, workType: workTypeFromPreInfo || pr.after.analysis?.workType || '', station: stationFromPreInfo, remarks: '竣工' }, status: 'done' as const }
-            ]) || [];
-            setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
-            onStepUpdate?.('analyze', { status: 'done', result: `${up.length}枚ペアリング` });
-          } else {
-            const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
-              try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings(), workTypeFromPreInfo); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
-              catch { return b.map(r => ({ ...r, status: 'error' as const })); }
-            }, (n, t) => { setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`); onStepUpdate?.('analyze', { progress: Math.round((n / t) * 100), subProgress: `(${n + 1}/${t})` }); }, () => abortRef.current);
-            setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
-            const doneCount = an.filter(a => a.status === 'done').length;
-            onStepUpdate?.('analyze', { status: 'done', result: `${doneCount}枚完了` });
-          }
+          const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
+            try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings(), workTypeFromPreInfo); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
+            catch { return b.map(r => ({ ...r, status: 'error' as const })); }
+          }, (n, t) => { setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`); onStepUpdate?.('analyze', { progress: Math.round((n / t) * 100), subProgress: `(${n + 1}/${t})` }); }, () => abortRef.current);
+          setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
+          const doneCount = an.filter(a => a.status === 'done').length;
+          onStepUpdate?.('analyze', { status: 'done', result: `${doneCount}枚完了` });
         } else {
           // APIキーもローカルサーバーもない
           onStepUpdate?.('detect', { status: 'skipped' });
