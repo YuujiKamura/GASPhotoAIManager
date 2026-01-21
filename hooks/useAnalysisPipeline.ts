@@ -9,6 +9,7 @@ import { loadAliasSettings, hasAliases, applyAliasesToRecords } from '../utils/w
 import { extractLocationName } from '../utils/locationUtils';
 import { sortPhotosLogical } from '../utils/sortingUtils';
 import { OriginalData } from '../components/NormalizationPreviewModal';
+import { loadMasterCsv } from '../utils/masterCsvParser';
 import { checkServerHealth, analyzePhotos as localAnalyzePhotos } from '../services/localApiService';
 import { PreAnalysisInfo } from '../components/AnalysisSetupModal';
 
@@ -66,6 +67,10 @@ export function useAnalysisPipeline(p: Props) {
     const workTypeFromPreInfo = preInfo?.workType;
     if (workTypeFromPreInfo) addLog(`📋 事前入力: 工種=${workTypeFromPreInfo}${stationFromPreInfo ? `, 測点=${stationFromPreInfo}` : ''}`, 'info');
     try {
+      // マスタCSVをプリロード（バリデーション用キャッシュを確保）
+      const masterRows = await loadMasterCsv();
+      addLog(`📂 マスタロード: ${masterRows.length}件`, 'info');
+
       setCurrentStep(lang === 'ja' ? "画像準備中..." : "Preparing...");
       onStepUpdate?.('prepare', { status: 'running' });
       const recs: PhotoRecord[] = []; let cached = 0;
