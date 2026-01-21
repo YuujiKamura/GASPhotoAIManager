@@ -30,13 +30,13 @@ const getTexts = (lang: 'ja' | 'en') => ({
   cost: lang === 'ja' ? '推定コスト' : 'Est. Cost',
   model: lang === 'ja' ? 'モデル' : 'Model',
   sort: lang === 'ja' ? '並び替え' : 'Sort',
-  cacheEnabled: lang === 'ja' ? 'キャッシュを有効にする' : 'Enable Cache',
   runNormalization: lang === 'ja' ? '正規化を実行' : 'Run Normalization',
   all: lang === 'ja' ? '全選択' : 'All',
   none: lang === 'ja' ? '解除' : 'None',
   cancel: lang === 'ja' ? 'キャンセル' : 'Cancel',
   manual: lang === 'ja' ? '手動ペアリング' : 'Manual Pairing',
   start: lang === 'ja' ? '解析開始' : 'Start',
+  useCache: lang === 'ja' ? 'キャッシュを利用' : 'Use Cache',
   clickToTest: lang === 'ja' ? 'クリックで対話型テスト' : 'Click for interactive test',
   clearCache: lang === 'ja' ? 'キャッシュ削除' : 'Clear Cache',
   workTypeLabel: lang === 'ja' ? '工種（必須）' : 'Work Type (Required)',
@@ -60,7 +60,15 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
       return;
     }
     setSelectedModel(state.model);
-    onStartAnalysis(state.selectedFiles, state.sortPolicy, state.useCache, state.preInfo);
+    // Always do fresh analysis (useCache = false)
+    onStartAnalysis(state.selectedFiles, state.sortPolicy, false, state.preInfo);
+  };
+
+  const handleUseCache = () => {
+    if (state.selectedCachedCount === 0) return;
+    setSelectedModel(state.model);
+    // Use cached results (useCache = true)
+    onStartAnalysis(state.selectedFiles, state.sortPolicy, true, state.preInfo);
   };
 
   const handleInteractive = (file: File) => {
@@ -93,8 +101,6 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           setModel={state.setModel}
           sortPolicy={state.sortPolicy}
           setSortPolicy={state.setSortPolicy}
-          useCache={state.useCache}
-          setUseCache={state.setUseCache}
           runNormalization={state.runNormalization}
           setRunNormalization={state.setRunNormalization}
           txt={{
@@ -102,7 +108,6 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
             cost: txt.cost,
             model: txt.model,
             sort: txt.sort,
-            cacheEnabled: txt.cacheEnabled,
             runNormalization: txt.runNormalization,
           }}
         />
@@ -129,12 +134,14 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           onCancel={onCancel}
           onManualPairing={onManualPairing}
           onStart={handleStart}
+          onUseCache={handleUseCache}
           onOpenSettings={onOpenSettings}
           selectedFiles={state.selectedFiles}
           enabledWorkTypes={state.enabledWorkTypes}
           workType={state.workType}
           apiKey={apiKey}
-          txt={{ cancel: txt.cancel, manual: txt.manual, start: txt.start }}
+          cachedCount={state.selectedCachedCount}
+          txt={{ cancel: txt.cancel, manual: txt.manual, start: txt.start, useCache: txt.useCache }}
         />
       </div>
     </div>

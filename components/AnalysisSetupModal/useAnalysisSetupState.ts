@@ -18,7 +18,6 @@ export function useAnalysisSetupState(files: File[]) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [model, setModel] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
-  const [useCache, setUseCache] = useState(true);
   const [enabledWorkTypes, setEnabledWorkTypes] = useState<string[]>([]);
   const [workType, setWorkType] = useState<string>('');
   const [station, setStation] = useState<string>('');
@@ -92,8 +91,6 @@ export function useAnalysisSetupState(files: File[]) {
     setModel,
     sortPolicy,
     setSortPolicy,
-    useCache,
-    setUseCache,
     enabledWorkTypes,
     selectedFiles,
     cost,

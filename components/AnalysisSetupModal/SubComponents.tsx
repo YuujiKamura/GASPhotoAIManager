@@ -189,16 +189,6 @@ export const PreAnalysisInfoSection: React.FC<PreAnalysisInfoSectionProps> = ({
 
 // --- Settings Section ---
 
-
-const CacheRow: React.FC<{ useCache: boolean; setUseCache: (v: boolean) => void; txt: { cacheEnabled: string } }> = ({
-  useCache, setUseCache, txt
-}) => (
-  <label className="flex items-center gap-2 text-sm text-gray-700 bg-blue-50 px-3 py-2 rounded border border-blue-200 cursor-pointer hover:bg-blue-100">
-    <input type="checkbox" checked={useCache} onChange={e => setUseCache(e.target.checked)} className="w-4 h-4" />
-    <span className="font-medium">{txt.cacheEnabled}</span>
-  </label>
-);
-
 interface SettingsSectionProps {
   selectedCount: number;
   totalCount: number;
@@ -207,8 +197,6 @@ interface SettingsSectionProps {
   setModel: (m: ModelType) => void;
   sortPolicy: SortPolicy;
   setSortPolicy: (p: SortPolicy) => void;
-  useCache: boolean;
-  setUseCache: (v: boolean) => void;
   runNormalization: boolean;
   setRunNormalization: (v: boolean) => void;
   txt: {
@@ -216,14 +204,13 @@ interface SettingsSectionProps {
     cost: string;
     model: string;
     sort: string;
-    cacheEnabled: string;
     runNormalization: string;
   };
 }
 
 export const SettingsSection: React.FC<SettingsSectionProps> = ({
   selectedCount, totalCount, cost, model, setModel,
-  sortPolicy, setSortPolicy, useCache, setUseCache,
+  sortPolicy, setSortPolicy,
   runNormalization, setRunNormalization, txt
 }) => (
   <div className="px-4 py-3 border-t bg-gray-50 space-y-3">
@@ -245,7 +232,6 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         <SortSelectorRow sortPolicy={sortPolicy} setSortPolicy={setSortPolicy} />
       </div>
     </div>
-    <CacheRow useCache={useCache} setUseCache={setUseCache} txt={{ cacheEnabled: txt.cacheEnabled }} />
     {/* 後処理オプション */}
     <div className="flex flex-wrap gap-3 text-xs text-gray-600">
       <label className="flex items-center gap-1.5 cursor-pointer">
@@ -300,12 +286,14 @@ interface ActionButtonsProps {
   onCancel: () => void;
   onManualPairing?: (files: File[]) => void;
   onStart: () => void;
+  onUseCache?: () => void;
   onOpenSettings?: () => void;
   selectedFiles: File[];
   enabledWorkTypes: string[];
   workType: string;
   apiKey?: string;
-  txt: { cancel: string; manual: string; start: string };
+  cachedCount: number;
+  txt: { cancel: string; manual: string; start: string; useCache: string };
 }
 
 // ボタンが無効な理由を取得
@@ -324,7 +312,7 @@ const getDisabledReasons = (
 };
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
-  onCancel, onManualPairing, onStart, onOpenSettings, selectedFiles, enabledWorkTypes, workType, apiKey, txt
+  onCancel, onManualPairing, onStart, onUseCache, onOpenSettings, selectedFiles, enabledWorkTypes, workType, apiKey, cachedCount, txt
 }) => {
   const disabledReasons = getDisabledReasons(selectedFiles, enabledWorkTypes, workType, apiKey);
   const isDisabled = disabledReasons.length > 0;
@@ -356,11 +344,20 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
       </div>
 
       {/* Buttons */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">
           {txt.cancel}
         </button>
         <div className="flex-1" />
+        {cachedCount > 0 && onUseCache && (
+          <button
+            onClick={onUseCache}
+            className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-1"
+            title="キャッシュされた解析結果を使用してプレビューを表示"
+          >
+            <Database className="w-4 h-4" /> {txt.useCache} ({cachedCount})
+          </button>
+        )}
         {onManualPairing && (
           <button
             onClick={() => onManualPairing(selectedFiles)}
