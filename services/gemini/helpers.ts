@@ -6,7 +6,7 @@
 
 import { Type, Schema } from "@google/genai";
 import { AnalysisExample, FieldChange, ChangeStage, AIAnalysisResult, PhotoRecord } from "../../types";
-import { validateAgainstMaster, validateTemperatureRemarks, isQualityManagementPhoto } from "../../utils/constructionMaster";
+import { detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../../utils/constructionMaster";
 import { REMARKS_CATEGORIES } from './systemPrompts';
 
 // ============================================
@@ -268,7 +268,7 @@ export const applyContextRelay = (results: AIAnalysisResult[]): AIAnalysisResult
 };
 
 // ============================================
-// マスタバリデーション
+// マスタバリデーション（検証のみ、値は置換しない）
 // ============================================
 export const validateResults = (
   results: AIAnalysisResult[],
@@ -276,21 +276,31 @@ export const validateResults = (
 ): AIAnalysisResult[] => {
   return results.map(res => {
     const changeLog = res.changeLog || [];
-    const { validatedWorkType, validatedVariety, validatedDetail, warnings } =
-      validateAgainstMaster(res.workType, res.variety, res.detail, res.remarks);
 
-    if (warnings.length > 0) {
-      onLog?.(`[MASTER警告] ${res.fileName}: ${warnings.join(', ')}`, "error");
+    // マスタ検証: 警告のみ出力、値は置換しない
+    const unknownWarnings = detectUnknownTerms(
+      res.workType || '',
+      res.variety || '',
+      res.detail || '',
+      res.remarks || ''
+    );
+
+    if (unknownWarnings.length > 0) {
+      onLog?.(`[MASTER検証] ${res.fileName}:`, "error");
+      unknownWarnings.forEach(w => onLog?.(`  ${w}`, "error"));
+      // 検証結果をchangeLogに記録（デバッグ用）
+      unknownWarnings.forEach(w => {
+        changeLog.push({
+          field: 'validation_warning',
+          stage: 'master_validation' as ChangeStage,
+          before: '',
+          after: w,
+          reason: 'マスタに存在しない値を検出（値は維持）'
+        });
+      });
     }
 
-    trackFieldChange(changeLog, 'workType', 'master_validation', res.workType || '', validatedWorkType, 'マスタに存在しない値を修正');
-    trackFieldChange(changeLog, 'variety', 'master_validation', res.variety || '', validatedVariety, 'マスタに存在しない値を修正');
-    trackFieldChange(changeLog, 'detail', 'master_validation', res.detail || '', validatedDetail, 'マスタに存在しない値を修正');
-
-    if (res.remarks?.match(/[^着手完]工/) && !res.remarks.includes('施工')) {
-      onLog?.(`🚨 [AI創作検出] ${res.fileName}: 備考「${res.remarks}」に「〜工」が含まれています`, "error");
-    }
-
+    // 温度バリデーション: これは測定値フォーマットの修正なので維持
     let finalRemarks = res.remarks;
     let finalRemarksCategory = res.remarksCategory;
     let finalMeasurements = res.measurements;
@@ -314,11 +324,9 @@ export const validateResults = (
       }
     }
 
+    // 値は元のまま返す（workType, variety, detailは置換しない）
     return {
       ...res,
-      workType: validatedWorkType,
-      variety: validatedVariety,
-      detail: validatedDetail,
       remarks: finalRemarks,
       remarksCategory: finalRemarksCategory,
       measurements: finalMeasurements,
