@@ -16,7 +16,7 @@ import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { formatHierarchyForPrompt, getHierarchySubset } from "../../utils/constructionMaster";
-import { loadMasterCsv, toChainRecordsJson, ChainRecord } from "../../utils/masterCsvParser";
+import { loadMasterCsv, toChainRecordsJson, getWorkTypesFromMaster, ChainRecord } from "../../utils/masterCsvParser";
 import { trackUsage } from "../usageTracker";
 import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
@@ -37,6 +37,7 @@ import {
   MAX_RETRIES,
   RETRY_DELAY_MS,
   BATCH_ANALYSIS_SCHEMA,
+  createBatchAnalysisSchema,
   parseAIResponse,
   mapToAnalysisResults,
   matchResultsToRecords,
@@ -163,8 +164,11 @@ export const analyzePhotoBatch = async (
     }
   }
 
-  const { inputs, examplesPrompt, systemPrompt } = await prepareAnalysisInputs(records, appMode, instruction, filteredHierarchy, ruleSettings, onLog);
+  const { inputs, examplesPrompt, systemPrompt, workTypes } = await prepareAnalysisInputs(records, appMode, instruction, filteredHierarchy, ruleSettings, onLog);
   const prompt = buildBatchPrompt(records);
+
+  // 工種一覧がある場合は動的スキーマを生成（workType を enum 化）
+  const schema = workTypes.length > 0 ? createBatchAnalysisSchema(workTypes) : BATCH_ANALYSIS_SCHEMA;
 
   let attempt = 0;
   let modelToUse = getPrimaryModel();
@@ -174,7 +178,7 @@ export const analyzePhotoBatch = async (
 
     try {
       const { text, apiTime, chunkCount } = await streamAPIResponse(
-        genAI, modelToUse, inputs, prompt, systemPrompt, shouldAbort, onLog, onReasoningStream
+        genAI, modelToUse, inputs, prompt, systemPrompt, schema, shouldAbort, onLog, onReasoningStream
       );
       onLog?.(`[PROFILER] API stream complete: ${formatDuration(apiTime)} (${chunkCount} chunks, ${text.length} chars)`, "info");
 
@@ -231,14 +235,16 @@ async function prepareAnalysisInputs(
 
   let examplesPrompt = "";
   let chainRecords: ChainRecord[] = [];
+  let workTypes: string[] = [];
 
   if (appMode === 'construction') {
-    // CSVマスタからチェーンレコードを読み込み
+    // CSVマスタからチェーンレコードと工種一覧を読み込み
     try {
       const masterRows = await loadMasterCsv();
       if (masterRows.length > 0) {
         chainRecords = toChainRecordsJson(masterRows);
-        onLog?.(`[MASTER] CSVから${masterRows.length}件のマスタレコードを読み込み`, "info");
+        workTypes = getWorkTypesFromMaster(masterRows);
+        onLog?.(`[MASTER] CSVから${masterRows.length}件のマスタレコード、${workTypes.length}件の工種を読み込み`, "info");
       }
     } catch (e) {
       console.warn('Failed to load master CSV:', e);
@@ -284,7 +290,7 @@ async function prepareAnalysisInputs(
   }
 
   const systemPrompt = [baseSystemPrompt, examplesPrompt, learnedRulesPrompt].filter(Boolean).join('\n\n');
-  return { inputs, examplesPrompt, systemPrompt };
+  return { inputs, examplesPrompt, systemPrompt, workTypes };
 }
 
 function buildBatchPrompt(records: PhotoRecord[]): string {
@@ -324,6 +330,7 @@ async function streamAPIResponse(
   inputs: any[],
   prompt: string,
   systemPrompt: string,
+  schema: ReturnType<typeof createBatchAnalysisSchema>,
   shouldAbort?: AbortChecker,
   onLog?: LogFunction,
   onReasoningStream?: (text: string) => void
@@ -337,7 +344,7 @@ async function streamAPIResponse(
     config: {
       systemInstruction: systemPrompt,
       responseMimeType: "application/json",
-      responseSchema: BATCH_ANALYSIS_SCHEMA,
+      responseSchema: schema,
       temperature: 0.1
     }
   });

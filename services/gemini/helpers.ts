@@ -112,13 +112,24 @@ export type LogFunction = (msg: string, type: 'info' | 'success' | 'error' | 'js
 // ============================================
 // バッチ解析用スキーマ
 // ============================================
-export const BATCH_ANALYSIS_SCHEMA: Schema = {
+
+/**
+ * バッチ解析用スキーマを生成
+ * workTypes が渡された場合、workType フィールドを enum 化して選択肢を強制
+ */
+export const createBatchAnalysisSchema = (workTypes?: string[]): Schema => ({
   type: Type.ARRAY,
   items: {
     type: Type.OBJECT,
     properties: {
       fileName: { type: Type.STRING },
-      workType: { type: Type.STRING },
+      workType: workTypes && workTypes.length > 0
+        ? {
+            type: Type.STRING,
+            enum: workTypes,
+            description: "工種。必ずこのリストから選択すること"
+          }
+        : { type: Type.STRING },
       variety: { type: Type.STRING },
       detail: { type: Type.STRING },
       station: { type: Type.STRING },
@@ -138,7 +149,10 @@ export const BATCH_ANALYSIS_SCHEMA: Schema = {
     },
     required: ["fileName", "workType", "station", "description", "remarksCategory"]
   }
-};
+});
+
+// 後方互換性のためのデフォルトスキーマ
+export const BATCH_ANALYSIS_SCHEMA: Schema = createBatchAnalysisSchema();
 
 // ============================================
 // AIレスポンスパース関数

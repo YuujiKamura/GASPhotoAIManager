@@ -36,6 +36,7 @@ export {
   MAX_RETRIES,
   RETRY_DELAY_MS,
   BATCH_ANALYSIS_SCHEMA,
+  createBatchAnalysisSchema,
   parseAIResponse,
   mapToAnalysisResults,
   matchResultsToRecords,
