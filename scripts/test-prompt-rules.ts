@@ -5,7 +5,7 @@
  * Usage: npx tsx scripts/test-prompt-rules.ts [--key YOUR_API_KEY]
  */
 
-import { detectUnknownTerms, extractAllValidValues } from '../utils/constructionMaster.js';
+import { detectUnknownTerms, extractAllValidValues } from '../cli/adapters/masterAdapter.js';
 
 // テストケース定義
 interface TestCase {

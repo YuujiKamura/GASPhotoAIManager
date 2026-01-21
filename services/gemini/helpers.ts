@@ -6,7 +6,7 @@
 
 import { Type, Schema } from "@google/genai";
 import { AnalysisExample, FieldChange, ChangeStage, AIAnalysisResult, PhotoRecord } from "../../types";
-import { detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../../utils/constructionMaster";
+import { detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../../utils/masterCsvParser";
 import { REMARKS_CATEGORIES } from './systemPrompts';
 
 // ============================================

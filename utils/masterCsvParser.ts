@@ -453,3 +453,146 @@ export const isValidCombination = (
     row.remarks === remarks
   );
 };
+
+// ============================================
+// AI結果バリデーション（警告出力用）
+// ============================================
+
+/**
+ * マスタに存在しない値を検出して警告を返す
+ */
+export const detectUnknownTerms = (
+  workType: string,
+  variety: string,
+  detail: string,
+  remarks: string
+): string[] => {
+  const { workTypes, varieties, details, remarks: validRemarks } = extractAllValidValuesSync();
+  const warnings: string[] = [];
+
+  const checkMaster = (val: string, set: Set<string>, label: string) => {
+    if (val && !set.has(val)) {
+      warnings.push(`⚠️ ${label}「${val}」はマスタにありません（AI創作の可能性）`);
+    }
+  };
+
+  checkMaster(workType, workTypes, "工種");
+  checkMaster(variety, varieties, "種別");
+  checkMaster(detail, details, "細別");
+
+  if (remarks) {
+    if (remarks.match(/[^着手完]工/) && !remarks.includes('施工')) {
+      warnings.push(`⚠️ 備考「${remarks}」に「〜工」が含まれています（備考レベルに「工」は不要）`);
+    }
+    const isMeasurement = remarks.match(/[0-9０-９]+|℃|mm|cm|m|%/);
+    const isKnownStatus = remarks.match(/状況|完了|確認|着手前|竣工|出来形/);
+    if (!validRemarks.has(remarks) && !isMeasurement && !isKnownStatus) {
+      const partialMatch = Array.from(validRemarks).some(r => remarks.includes(r) || r.includes(remarks));
+      if (!partialMatch) {
+        warnings.push(`⚠️ 備考「${remarks}」はマスタにありません（AI創作の可能性）`);
+      }
+    }
+  }
+
+  return warnings;
+};
+
+/**
+ * マスタ値のバリデーション（警告付き）
+ */
+export const validateAgainstMaster = (
+  workType: string,
+  variety: string,
+  detail: string,
+  _remarks: string
+): { validatedWorkType: string; validatedVariety: string; validatedDetail: string; warnings: string[] } => {
+  const { workTypes, varieties, details } = extractAllValidValuesSync();
+  const warnings: string[] = [];
+
+  const check = (val: string, set: Set<string>, label: string): string => {
+    if (val && !set.has(val)) {
+      warnings.push(`${label}「${val}」はマスタにありません`);
+      return "";
+    }
+    return val;
+  };
+
+  return {
+    validatedWorkType: check(workType, workTypes, "工種"),
+    validatedVariety: check(variety, varieties, "種別"),
+    validatedDetail: check(detail, details, "細別"),
+    warnings
+  };
+};
+
+// ============================================
+// 温度管理バリデーション
+// ============================================
+
+export interface TemperatureValidationResult {
+  isValid: boolean;
+  correctedCategory?: string;
+  correctedValue?: string;
+  warnings: string[];
+}
+
+const VALID_TEMPERATURE_CATEGORIES = ["到着温度", "敷均し温度", "初期締固め前温度", "開放温度", "アスファルト混合物温度測定"];
+const VALID_DENSITY_CATEGORIES = ["現場密度測定"];
+const VALID_QUALITY_CATEGORIES = [...VALID_TEMPERATURE_CATEGORIES, ...VALID_DENSITY_CATEGORIES];
+
+export const validateTemperatureRemarks = (
+  remarksCategory: string,
+  remarksValue: string
+): TemperatureValidationResult => {
+  const warnings: string[] = [];
+  let correctedCategory = remarksCategory;
+  let correctedValue = remarksValue;
+  let isValid = true;
+
+  if (remarksCategory.match(/[^着手完]工/) && !remarksCategory.includes('施工')) {
+    warnings.push(`⚠️ カテゴリ「${remarksCategory}」に「〜工」が含まれています（不正）`);
+    isValid = false;
+    correctedCategory = remarksCategory.includes('温度')
+      ? "アスファルト混合物温度測定"
+      : remarksCategory.includes('密度')
+        ? "現場密度測定"
+        : correctedCategory;
+  }
+
+  if (VALID_TEMPERATURE_CATEGORIES.some(cat =>
+    remarksCategory.includes(cat.replace('温度', '')) || cat.includes(remarksCategory)
+  )) {
+    if (remarksValue && !remarksValue.match(/[0-9０-９]+\.?[0-9０-９]*\s*℃/)) {
+      warnings.push(`⚠️ 温度値「${remarksValue}」のフォーマットが不正（例: 161.1℃）`);
+      const numMatch = remarksValue.match(/([0-9０-９]+\.?[0-9０-９]*)/);
+      if (numMatch) correctedValue = `${numMatch[1]}℃`;
+    }
+  }
+
+  if (remarksCategory === "温度測定" || remarksCategory === "温度管理") {
+    warnings.push(`⚠️ カテゴリ「${remarksCategory}」は曖昧です。具体的なカテゴリを使用してください`);
+    isValid = false;
+    correctedCategory = remarksValue.includes('到着') || remarksValue.includes('出荷')
+      ? "到着温度"
+      : remarksValue.includes('敷均')
+        ? "敷均し温度"
+        : remarksValue.includes('初期') || remarksValue.includes('締固')
+          ? "初期締固め前温度"
+          : remarksValue.includes('開放')
+            ? "開放温度"
+            : "アスファルト混合物温度測定";
+  }
+
+  return {
+    isValid,
+    correctedCategory: correctedCategory !== remarksCategory ? correctedCategory : undefined,
+    correctedValue: correctedValue !== remarksValue ? correctedValue : undefined,
+    warnings
+  };
+};
+
+export const isQualityManagementPhoto = (remarksCategory: string): boolean => {
+  return VALID_QUALITY_CATEGORIES.some(cat =>
+    remarksCategory.includes(cat) || cat.includes(remarksCategory)
+  ) || remarksCategory.includes('温度') || remarksCategory.includes('密度');
+};

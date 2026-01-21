@@ -12,7 +12,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
-import { detectUnknownTerms } from "../../utils/constructionMaster";
+import { detectUnknownTerms } from "../../utils/masterCsvParser";
 import { trackUsage } from "../usageTracker";
 import { AbortChecker, checkAbort } from './analysis';
 import { isAutoApiEnabled } from './apiKey';

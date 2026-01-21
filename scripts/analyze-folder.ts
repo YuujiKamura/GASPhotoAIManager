@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-import { validateAgainstMaster, getMergedHierarchy } from '../utils/constructionMaster.js';
+import { validateAgainstMaster, getMergedHierarchy } from '../cli/adapters/masterAdapter.js';
 import { getSystemInstruction } from '../services/geminiService.js';
 
 // ESM compatible __dirname

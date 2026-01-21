@@ -1,4 +1,4 @@
-import { CONSTRUCTION_HIERARCHY } from '../utils/constructionHierarchyData';
+import { CONSTRUCTION_HIERARCHY } from '../cli/adapters/masterAdapter.js';
 import * as fs from 'fs';
 import * as path from 'path';
 

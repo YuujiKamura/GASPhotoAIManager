@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import { getSystemInstruction } from '../services/geminiService.js';
-import { getMergedHierarchy } from '../utils/constructionMaster.js';
+import { getMergedHierarchy } from '../cli/adapters/masterAdapter.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL = 'gemini-2.0-flash';

@@ -8,9 +8,10 @@ vi.mock('../services/gemini/systemPrompts', () => ({
   getSystemInstruction: vi.fn(() => 'Mocked system instruction'),
 }));
 
-vi.mock('../utils/constructionMaster', () => ({
-  formatHierarchyForPrompt: vi.fn(() => ({ test: 'hierarchy' })),
-  CONSTRUCTION_HIERARCHY: { test: 'hierarchy' },
+vi.mock('../utils/masterCsvParser', () => ({
+  loadMasterCsv: vi.fn(() => Promise.resolve([])),
+  toChainRecordsJson: vi.fn(() => []),
+  toHierarchyObject: vi.fn(() => ({ "直接工事費": {} })),
 }));
 
 vi.mock('../utils/analysisRules', () => ({

@@ -6,12 +6,138 @@
  *
  * ## 変更履歴
  * - 2026-01-17: 新規作成（layoutConfig共通化に伴い追加）
+ * - 2026-01-21: CSVベースに移行
  */
 
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { CONSTRUCTION_HIERARCHY } from '../../utils/constructionHierarchyData';
+import { fileURLToPath } from 'url';
+
+// ESM compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ============================================
+// CSV読み込み（CLI用）
+// ============================================
+
+interface MasterRow {
+  photoDivision: string;
+  photoType: string;
+  workType: string;
+  variety: string;
+  detail: string;
+  remarks: string;
+  searchPatterns: string;
+}
+
+const parseCSVLine = (line: string): string[] => {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+
+const parseCSV = (csvText: string): MasterRow[] => {
+  const lines = csvText.split('\n').filter(line => line.trim());
+  if (lines.length < 2) return [];
+
+  const dataLines = lines.slice(1);
+  return dataLines.map(line => {
+    const fields = parseCSVLine(line);
+    return {
+      photoDivision: fields[0] || '',
+      photoType: fields[1] || '',
+      workType: fields[2] || '',
+      variety: fields[3] || '',
+      detail: fields[4] || '',
+      remarks: fields[5] || '',
+      searchPatterns: fields[6] || '',
+    };
+  }).filter(row => row.workType);
+};
+
+// CSVファイルのパス
+const CSV_PATH = path.join(__dirname, '../../public/master/construction_hierarchy.csv');
+
+let cachedRows: MasterRow[] | null = null;
+
+const loadMasterCsv = async (): Promise<MasterRow[]> => {
+  if (cachedRows) return cachedRows;
+  try {
+    const csvText = await fs.readFile(CSV_PATH, 'utf-8');
+    cachedRows = parseCSV(csvText);
+    return cachedRows;
+  } catch (e) {
+    console.error('Failed to load master CSV:', e);
+    return [];
+  }
+};
+
+const loadMasterCsvSync = (): MasterRow[] => {
+  if (cachedRows) return cachedRows;
+  try {
+    const csvText = fsSync.readFileSync(CSV_PATH, 'utf-8');
+    cachedRows = parseCSV(csvText);
+    return cachedRows;
+  } catch (e) {
+    console.error('Failed to load master CSV:', e);
+    return [];
+  }
+};
+
+// CSVから階層オブジェクトを構築
+const toHierarchyObject = (rows: MasterRow[]): Record<string, unknown> => {
+  const hierarchy: Record<string, Record<string, Record<string, Record<string, Record<string, Record<string, unknown>>>>>> = {
+    "直接工事費": {}
+  };
+  const root = hierarchy["直接工事費"];
+
+  rows.forEach(row => {
+    if (!row.photoType || !row.workType) return;
+    if (!root[row.photoType]) root[row.photoType] = {};
+    const category = root[row.photoType];
+    if (!category[row.workType]) category[row.workType] = {};
+    const workTypeNode = category[row.workType];
+    if (row.variety) {
+      if (!workTypeNode[row.variety]) workTypeNode[row.variety] = {};
+      const varietyNode = workTypeNode[row.variety];
+      if (row.detail) {
+        if (!varietyNode[row.detail]) varietyNode[row.detail] = {};
+        const detailNode = varietyNode[row.detail];
+        if (row.remarks) detailNode[row.remarks] = {};
+      }
+    }
+  });
+
+  return hierarchy;
+};
+
+// 後方互換用のCONSTRUCTION_HIERARCHY
+export const CONSTRUCTION_HIERARCHY = (() => {
+  const rows = loadMasterCsvSync();
+  return toHierarchyObject(rows);
+})();
 
 // ============================================
 // カスタムマスタ管理（ファイルベース）

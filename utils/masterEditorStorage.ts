@@ -1,4 +1,4 @@
-import { CONSTRUCTION_HIERARCHY } from './constructionMaster';
+import { getMasterRowsSync, toHierarchyObject, getWorkTypesFromMaster } from './masterCsvParser';
 
 // カスタマイズデータの型
 export interface CustomizationData {
@@ -15,13 +15,24 @@ export interface WorkTypeData {
 const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
 const CUSTOMIZATION_KEY = 'construction_customization';
 
+// CSVからhierarchyを取得（キャッシュ使用）
+const getHierarchy = (): Record<string, unknown> => {
+  const rows = getMasterRowsSync();
+  if (rows.length === 0) {
+    // キャッシュがない場合は空を返す
+    return { "直接工事費": {} };
+  }
+  return toHierarchyObject(rows);
+};
+
 // マスタから全工種とその階層データを収集
 export function collectAllWorkTypes(): Map<string, WorkTypeData> {
   const workTypeMap = new Map<string, WorkTypeData>();
-  const root = CONSTRUCTION_HIERARCHY["直接工事費"] as any;
+  const hierarchy = getHierarchy();
+  const root = hierarchy["直接工事費"] as Record<string, unknown>;
 
   for (const categoryKey in root) {
-    const category = root[categoryKey];
+    const category = root[categoryKey] as Record<string, unknown>;
     for (const workTypeKey in category) {
       if (workTypeKey && workTypeKey.trim() !== '') {
         if (!workTypeMap.has(workTypeKey)) {
@@ -78,7 +89,8 @@ export const saveCustomization = (data: CustomizationData) => {
 export const getFilteredMaster = (): any => {
   const enabledTypes = loadEnabledWorkTypes();
   const customization = loadCustomization();
-  const root = JSON.parse(JSON.stringify(CONSTRUCTION_HIERARCHY["直接工事費"]));
+  const hierarchy = getHierarchy();
+  const root = JSON.parse(JSON.stringify(hierarchy["直接工事費"]));
 
   // 無効な工種を削除
   for (const categoryKey in root) {

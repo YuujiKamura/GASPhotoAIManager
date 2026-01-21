@@ -5,7 +5,7 @@
 
 import * as XLSX from 'xlsx';
 import * as path from 'path';
-import { CONSTRUCTION_HIERARCHY } from '../utils/constructionHierarchyData';
+import { CONSTRUCTION_HIERARCHY } from '../cli/adapters/masterAdapter.js';
 
 interface HierarchyRow {
   level1: string;  // 写真区分 (直接工事費)
