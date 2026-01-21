@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { SortPolicy } from '../../types';
 import { setSelectedModel } from '../../services/geminiService';
-import { PhotoGrid, SettingsSection, ActionButtons, PreAnalysisInfoSection } from './SubComponents';
+import { PhotoGrid, SettingsSection, ActionButtons, PreAnalysisInfoSection, PromptPreviewSection } from './SubComponents';
 import { useAnalysisSetupState } from './useAnalysisSetupState';
 import type { PreAnalysisInfo } from './useAnalysisSetupState';
 
@@ -30,20 +30,22 @@ const getTexts = (lang: 'ja' | 'en') => ({
   cost: lang === 'ja' ? '推定コスト' : 'Est. Cost',
   model: lang === 'ja' ? 'モデル' : 'Model',
   sort: lang === 'ja' ? '並び替え' : 'Sort',
-  cache: lang === 'ja' ? 'キャッシュ' : 'Cache',
-  workTypes: lang === 'ja' ? '工種' : 'Work Types',
+  cacheEnabled: lang === 'ja' ? 'キャッシュを有効にする' : 'Enable Cache',
+  runNormalization: lang === 'ja' ? '正規化を実行' : 'Run Normalization',
+  runAliases: lang === 'ja' ? 'エイリアスを適用' : 'Apply Aliases',
   all: lang === 'ja' ? '全選択' : 'All',
   none: lang === 'ja' ? '解除' : 'None',
   cancel: lang === 'ja' ? 'キャンセル' : 'Cancel',
   manual: lang === 'ja' ? '手動ペアリング' : 'Manual Pairing',
   start: lang === 'ja' ? '解析開始' : 'Start',
   clickToTest: lang === 'ja' ? 'クリックで対話型テスト' : 'Click for interactive test',
-  noWorkTypes: lang === 'ja' ? '工種未設定' : 'No work types',
   clearCache: lang === 'ja' ? 'キャッシュ削除' : 'Clear Cache',
   workTypeLabel: lang === 'ja' ? '工種（必須）' : 'Work Type (Required)',
   workTypePlaceholder: lang === 'ja' ? '工種を選択...' : 'Select work type...',
   stationLabel: lang === 'ja' ? '測点（任意）' : 'Station (Optional)',
   stationPlaceholder: lang === 'ja' ? '例: No.5+10' : 'e.g. No.5+10',
+  showPrompt: lang === 'ja' ? '解析プロンプトを表示' : 'Show Analysis Prompt',
+  hidePrompt: lang === 'ja' ? 'プロンプトを隠す' : 'Hide Prompt',
 });
 
 const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions }) => {
@@ -94,16 +96,18 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           setSortPolicy={state.setSortPolicy}
           useCache={state.useCache}
           setUseCache={state.setUseCache}
-          enabledWorkTypes={state.enabledWorkTypes}
-          onOpenMasterEditor={onOpenMasterEditor}
+          runNormalization={state.runNormalization}
+          setRunNormalization={state.setRunNormalization}
+          runAliases={state.runAliases}
+          setRunAliases={state.setRunAliases}
           txt={{
             selected: txt.selected,
             cost: txt.cost,
             model: txt.model,
             sort: txt.sort,
-            cache: txt.cache,
-            workTypes: txt.workTypes,
-            noWorkTypes: txt.noWorkTypes,
+            cacheEnabled: txt.cacheEnabled,
+            runNormalization: txt.runNormalization,
+            runAliases: txt.runAliases,
           }}
         />
         <PreAnalysisInfoSection
@@ -117,6 +121,12 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
             workTypePlaceholder: txt.workTypePlaceholder,
             stationLabel: txt.stationLabel,
             stationPlaceholder: txt.stationPlaceholder,
+          }}
+        />
+        <PromptPreviewSection
+          txt={{
+            showPrompt: txt.showPrompt,
+            hidePrompt: txt.hidePrompt,
           }}
         />
         <ActionButtons

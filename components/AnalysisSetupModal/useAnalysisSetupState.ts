@@ -11,6 +11,8 @@ const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
 export interface PreAnalysisInfo {
   workType: string;
   station: string;
+  runNormalization: boolean;
+  runAliases: boolean;
 }
 
 export function useAnalysisSetupState(files: File[]) {
@@ -21,6 +23,8 @@ export function useAnalysisSetupState(files: File[]) {
   const [enabledWorkTypes, setEnabledWorkTypes] = useState<string[]>([]);
   const [workType, setWorkType] = useState<string>('');
   const [station, setStation] = useState<string>('');
+  const [runNormalization, setRunNormalization] = useState(true);
+  const [runAliases, setRunAliases] = useState(true);
 
   // Load thumbnails and check cache status
   useEffect(() => {
@@ -81,7 +85,9 @@ export function useAnalysisSetupState(files: File[]) {
   const preInfo: PreAnalysisInfo = useMemo(() => ({
     workType,
     station,
-  }), [workType, station]);
+    runNormalization,
+    runAliases,
+  }), [workType, station, runNormalization, runAliases]);
 
   return {
     entries,
@@ -103,6 +109,10 @@ export function useAnalysisSetupState(files: File[]) {
     setWorkType,
     station,
     setStation,
+    runNormalization,
+    setRunNormalization,
+    runAliases,
+    setRunAliases,
     preInfo,
   };
 }

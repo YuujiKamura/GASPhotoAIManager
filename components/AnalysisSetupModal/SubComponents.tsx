@@ -1,8 +1,9 @@
-import React from 'react';
-import { Check, Settings, MousePointer, Play, MessageCircle, Database, Trash2, Key, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, MousePointer, Play, MessageCircle, Database, Trash2, Key, AlertCircle, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 import { SortPolicy, SORT_POLICIES } from '../../types';
 import { AVAILABLE_MODELS, ModelType } from '../../services/geminiService';
 import { formatCostJPY } from '../../services/usageTracker';
+import { loadRuleSettings, rulesToPromptText } from '../../utils/analysisRules';
 
 export interface FileEntry {
   file: File;
@@ -188,34 +189,14 @@ export const PreAnalysisInfoSection: React.FC<PreAnalysisInfoSectionProps> = ({
 
 // --- Settings Section ---
 
-interface CacheAndWorkTypesRowProps {
-  useCache: boolean;
-  setUseCache: (v: boolean) => void;
-  enabledWorkTypes: string[];
-  onOpenMasterEditor: () => void;
-  txt: { cache: string; workTypes: string; noWorkTypes: string };
-}
 
-const CacheAndWorkTypesRow: React.FC<CacheAndWorkTypesRowProps> = ({
-  useCache, setUseCache, enabledWorkTypes, onOpenMasterEditor, txt
+const CacheRow: React.FC<{ useCache: boolean; setUseCache: (v: boolean) => void; txt: { cacheEnabled: string } }> = ({
+  useCache, setUseCache, txt
 }) => (
-  <div className="flex items-center gap-4">
-    <label className="flex items-center gap-2 text-xs text-gray-600">
-      <input type="checkbox" checked={useCache} onChange={e => setUseCache(e.target.checked)} />
-      {txt.cache}
-    </label>
-    <div className="flex items-center gap-2 text-xs text-gray-600">
-      <span>{txt.workTypes}:</span>
-      {enabledWorkTypes.length > 0 ? (
-        <span className="text-blue-600 font-medium">{enabledWorkTypes.length}件</span>
-      ) : (
-        <span className="text-red-500">{txt.noWorkTypes}</span>
-      )}
-      <button onClick={onOpenMasterEditor} className="p-1 hover:bg-gray-200 rounded">
-        <Settings className="w-3 h-3" />
-      </button>
-    </div>
-  </div>
+  <label className="flex items-center gap-2 text-sm text-gray-700 bg-blue-50 px-3 py-2 rounded border border-blue-200 cursor-pointer hover:bg-blue-100">
+    <input type="checkbox" checked={useCache} onChange={e => setUseCache(e.target.checked)} className="w-4 h-4" />
+    <span className="font-medium">{txt.cacheEnabled}</span>
+  </label>
 );
 
 interface SettingsSectionProps {
@@ -228,25 +209,27 @@ interface SettingsSectionProps {
   setSortPolicy: (p: SortPolicy) => void;
   useCache: boolean;
   setUseCache: (v: boolean) => void;
-  enabledWorkTypes: string[];
-  onOpenMasterEditor: () => void;
+  runNormalization: boolean;
+  setRunNormalization: (v: boolean) => void;
+  runAliases: boolean;
+  setRunAliases: (v: boolean) => void;
   txt: {
     selected: string;
     cost: string;
     model: string;
     sort: string;
-    cache: string;
-    workTypes: string;
-    noWorkTypes: string;
+    cacheEnabled: string;
+    runNormalization: string;
+    runAliases: string;
   };
 }
 
 export const SettingsSection: React.FC<SettingsSectionProps> = ({
   selectedCount, totalCount, cost, model, setModel,
   sortPolicy, setSortPolicy, useCache, setUseCache,
-  enabledWorkTypes, onOpenMasterEditor, txt
+  runNormalization, setRunNormalization, runAliases, setRunAliases, txt
 }) => (
-  <div className="px-4 py-3 border-t bg-gray-50 space-y-2">
+  <div className="px-4 py-3 border-t bg-gray-50 space-y-3">
     <div className="flex items-center justify-between text-sm">
       <span className="text-gray-600">
         {txt.selected}: <b className="text-blue-600">{selectedCount}/{totalCount}</b>
@@ -255,7 +238,7 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         {txt.cost}: <b className="text-blue-600">${cost.typical.toFixed(3)} ({formatCostJPY(cost.typical)})</b>
       </span>
     </div>
-    <div className="flex gap-2">
+    <div className="flex flex-col sm:flex-row gap-2">
       <div className="flex-1">
         <div className="text-[10px] text-gray-500 mb-1">{txt.model}</div>
         <ModelSelectorRow model={model} setModel={setModel} />
@@ -265,15 +248,58 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         <SortSelectorRow sortPolicy={sortPolicy} setSortPolicy={setSortPolicy} />
       </div>
     </div>
-    <CacheAndWorkTypesRow
-      useCache={useCache}
-      setUseCache={setUseCache}
-      enabledWorkTypes={enabledWorkTypes}
-      onOpenMasterEditor={onOpenMasterEditor}
-      txt={{ cache: txt.cache, workTypes: txt.workTypes, noWorkTypes: txt.noWorkTypes }}
-    />
+    <CacheRow useCache={useCache} setUseCache={setUseCache} txt={{ cacheEnabled: txt.cacheEnabled }} />
+    {/* 後処理オプション */}
+    <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" checked={runNormalization} onChange={e => setRunNormalization(e.target.checked)} />
+        {txt.runNormalization}
+      </label>
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" checked={runAliases} onChange={e => setRunAliases(e.target.checked)} />
+        {txt.runAliases}
+      </label>
+    </div>
   </div>
 );
+
+// --- Prompt Preview Section ---
+
+interface PromptPreviewSectionProps {
+  txt: { showPrompt: string; hidePrompt: string };
+}
+
+export const PromptPreviewSection: React.FC<PromptPreviewSectionProps> = ({ txt }) => {
+  const [expanded, setExpanded] = useState(false);
+  const rules = loadRuleSettings();
+  const rulesText = rulesToPromptText(rules);
+
+  return (
+    <div className="px-4 py-2 border-t bg-slate-50">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800"
+      >
+        {expanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+        {expanded ? txt.hidePrompt : txt.showPrompt}
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 p-2 bg-white border rounded text-[10px] font-mono text-slate-700 max-h-40 overflow-auto whitespace-pre-wrap">
+          <div className="font-bold text-slate-500 mb-1">--- 解析ルール ---</div>
+          {rulesText || '(カスタムルールなし)'}
+          <div className="font-bold text-slate-500 mt-2 mb-1">--- システム指示概要 ---</div>
+          <div className="text-slate-600">
+            • 写真区分を9カテゴリから自動判定{'\n'}
+            • マスタデータから工種・種別・細別を選択{'\n'}
+            • 黒板OCRで測点・備考を抽出{'\n'}
+            • 温度・出来形の測定値を記録
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // --- Action Buttons ---
 

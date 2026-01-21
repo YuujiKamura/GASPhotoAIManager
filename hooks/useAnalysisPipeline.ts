@@ -151,7 +151,8 @@ export function useAnalysisPipeline(p: Props) {
 
       let cur: PhotoRecord[] = []; setPhotos(prev => { cur = prev; return prev; }); await new Promise(r => setTimeout(r, 0));
       const newly = cur.filter(x => !x.fromCache && x.status === 'done');
-      if (newly.length > 0 && apiKey) {
+      // 正規化処理（オプション）
+      if (preInfo?.runNormalization !== false && newly.length > 0 && apiKey) {
         onStepUpdate?.('normalize', { status: 'running' });
         const nr = await getNormalizationProposals(newly, apiKey, undefined, addLog, () => abortRef.current);
         if (nr.corrections.length > 0) {
@@ -165,7 +166,10 @@ export function useAnalysisPipeline(p: Props) {
         onStepUpdate?.('normalize', { status: 'skipped' });
       }
       setPhotos(prev => { const s = sortPhotosLogical(prev, currentSortPolicy); saveAnalysisHistory(s, inst, getSelectedModel()).catch(() => {}); return s; });
-      const al = loadAliasSettings(); if (al.enabled && hasAliases(al)) setPhotos(prev => applyAliasesToRecords(prev, al).records);
+      // エイリアス適用（オプション）
+      if (preInfo?.runAliases !== false) {
+        const al = loadAliasSettings(); if (al.enabled && hasAliases(al)) setPhotos(prev => applyAliasesToRecords(prev, al).records);
+      }
       setSuccessMsg(txt.done);
     } catch (e: any) { setErrorMsg(e.message || "Error"); } finally { setIsProcessing(false); setCurrentStep(""); }
   }, [apiKey, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setInitialInstruction, setActiveInstruction, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, txt, onStepUpdate]);
