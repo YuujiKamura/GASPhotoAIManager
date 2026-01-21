@@ -480,9 +480,13 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         </Suspense>
       )}
 
-      {/* Analysis Step Progress UI */}
+      {/* Analysis Step Progress UI - ConsolePanelと被らないように位置調整 */}
       {isProcessing && analysisSteps && analysisSteps.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-[102]">
+        <div className={`fixed z-[160] transition-all duration-300 ${
+          showConsole
+            ? 'bottom-[calc(25vh+1rem)] right-4'  // ConsolePanel開: その上に配置
+            : 'bottom-4 right-20'                  // ConsolePanel閉: 閉じボタンの左側
+        }`}>
           <AnalysisStepProgress
             steps={analysisSteps}
             totalPhotos={stats.total}
