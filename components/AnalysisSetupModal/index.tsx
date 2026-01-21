@@ -30,7 +30,7 @@ const getTexts = (lang: 'ja' | 'en') => ({
   cost: lang === 'ja' ? '推定コスト' : 'Est. Cost',
   model: lang === 'ja' ? 'モデル' : 'Model',
   sort: lang === 'ja' ? '並び替え' : 'Sort',
-  runNormalization: lang === 'ja' ? '正規化を実行' : 'Run Normalization',
+  runNormalization: lang === 'ja' ? '前後の写真で情報を補完' : 'Fill from nearby photos',
   all: lang === 'ja' ? '全選択' : 'All',
   none: lang === 'ja' ? '解除' : 'None',
   cancel: lang === 'ja' ? 'キャンセル' : 'Cancel',
