@@ -2,17 +2,33 @@
  * Gemini API - Work Type Selector Module
  *
  * セレクターエージェント: 画像群から工種を判定
- * 軽量モデルで高速に工種を特定し、本解析で使う階層サブセットを決定
+ * 軽量モデルで高速に工種を特定し、chainRecordsのフィルタリングに使用
  */
 
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
-import { formatHierarchyForPrompt, getSelectorPrompt, getHierarchySubset, getWorkTypes } from "../../utils/constructionMaster";
+import { loadMasterCsv, getWorkTypesFromMaster, getMasterRowsSync } from "../../utils/masterCsvParser";
 import { trackUsage } from "../usageTracker";
 import { isAutoApiEnabled } from './apiKey';
 import { SELECTOR_MODEL } from './models';
 import { formatDuration, LogFunction } from './helpers';
+
+/**
+ * 同期的に工種一覧を取得（キャッシュがある場合）
+ * キャッシュがない場合は非同期でロード
+ */
+const getAvailableWorkTypes = async (): Promise<string[]> => {
+  // まずキャッシュを確認
+  const cached = getMasterRowsSync();
+  if (cached.length > 0) {
+    return getWorkTypesFromMaster(cached);
+  }
+
+  // キャッシュがない場合はロード
+  const rows = await loadMasterCsv();
+  return getWorkTypesFromMaster(rows);
+};
 
 /**
  * セレクターエージェント: 画像群から工種を判定
@@ -24,7 +40,7 @@ export const selectWorkTypes = async (
   apiKey: string,
   onLog?: LogFunction
 ): Promise<string[]> => {
-  const availableWorkTypes = getWorkTypes();
+  const availableWorkTypes = await getAvailableWorkTypes();
 
   // 自動工種選択が無効の場合、API呼び出しをスキップ
   if (!isAutoApiEnabled('autoSelectWorkTypes')) {
@@ -54,14 +70,12 @@ export const selectWorkTypes = async (
     }
   }));
 
-  const selectorPrompt = getSelectorPrompt();
-
   const prompt = `
 あなたは建設現場の写真を分類する専門家です。
 以下の${samples.length}枚のサンプル画像を見て、このバッチに含まれる工種を判定してください。
 
-**利用可能な工種と代表的な備考:**
-${selectorPrompt}
+**利用可能な工種:**
+${availableWorkTypes.join(', ')}
 
 **タスク:**
 1. 各画像を観察し、どの工種に該当するか判断
@@ -70,7 +84,7 @@ ${selectorPrompt}
 **重要:**
 - 複数の工種が混在している場合は全て含める
 - 判断できない場合は最も近い工種を選択
-- 利用可能な工種: ${availableWorkTypes.join(', ')}
+- 利用可能な工種リストからのみ選択すること
 
 **出力形式 (JSON):**
 { "workTypes": ["舗装工", ...] }
@@ -105,14 +119,4 @@ ${selectorPrompt}
     onLog?.(`[SELECTOR] Error: ${e.message}, falling back to all types`, 'error');
     return availableWorkTypes;
   }
-};
-
-/**
- * 工種に基づいた階層サブセットを取得
- */
-export const getFilteredHierarchy = (workTypes: string[]): object => {
-  if (workTypes.length === 0 || workTypes.length === getWorkTypes().length) {
-    return formatHierarchyForPrompt();
-  }
-  return getHierarchySubset(workTypes);
 };

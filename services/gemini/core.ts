@@ -53,4 +53,4 @@ export { getSystemInstruction, REMARKS_CATEGORIES } from './systemPrompts';
 // ============================================
 // Work Type Selector (workTypeSelector.ts)
 // ============================================
-export { selectWorkTypes, getFilteredHierarchy } from './workTypeSelector';
+export { selectWorkTypes } from './workTypeSelector';

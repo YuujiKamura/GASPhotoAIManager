@@ -15,7 +15,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
-import { formatHierarchyForPrompt, getHierarchySubset } from "../../utils/constructionMaster";
 import { loadMasterCsv, toChainRecordsJson, getWorkTypesFromMaster, ChainRecord } from "../../utils/masterCsvParser";
 import { trackUsage } from "../usageTracker";
 import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
@@ -45,14 +44,13 @@ import {
   validateResults,
   getSystemInstruction,
   selectWorkTypes,
-  getFilteredHierarchy,
 } from './core';
 
 // Re-export from submodules for backward compatibility
 export { checkAbort, formatDuration, formatExamplesForPrompt, trackFieldChange, sleep, MAX_RETRIES, RETRY_DELAY_MS, REMARKS_CATEGORIES } from './core';
 export type { AbortChecker, LogFunction } from './core';
 export { getSystemInstruction } from './core';
-export { selectWorkTypes, getFilteredHierarchy } from './core';
+export { selectWorkTypes } from './core';
 export { analyzePhotoInteractive } from './interactiveAnalysis';
 export type { InteractiveMessage, InteractiveAnalysisResult } from './interactiveAnalysis';
 
@@ -143,28 +141,23 @@ export const analyzePhotoBatch = async (
   onLog?.(`[PROFILER] Batch start: ${records.length} photos, model=${getPrimaryModel()}`, "info");
   records.forEach((r, i) => onLog?.(`  [${i + 1}/${records.length}] ${r.fileName}`, 'info'));
 
-  // Use selector to determine work types (only for construction mode)
-  let filteredHierarchy: object | undefined;
+  // 工種フィルタ（chainRecordsの絞り込みに使用）
+  let selectedWorkTypes: string[] | undefined;
   if (appMode === 'construction') {
-    const fullSize = JSON.stringify(formatHierarchyForPrompt()).length;
-
     if (workType) {
-      // 工種指定あり → selectWorkTypes()スキップ（API呼び出し削減）
-      filteredHierarchy = getHierarchySubset([workType]);
-      const filteredSize = JSON.stringify(filteredHierarchy).length;
-      onLog?.(`[PROFILER] 工種指定済み: ${workType} - selector skip, hierarchy ${fullSize} -> ${filteredSize} chars (${((1 - filteredSize/fullSize) * 100).toFixed(1)}% reduction)`, "info");
+      // 工種指定あり → selectWorkTypes()スキップ
+      selectedWorkTypes = [workType];
+      onLog?.(`[PROFILER] 工種指定済み: ${workType} - selector skip`, "info");
     } else if (records.length >= 3) {
-      // 工種指定なし → 従来通りAIが推定
+      // 工種指定なし → AIが推定
       const selectorStart = performance.now();
-      const selectedWorkTypes = await selectWorkTypes(records, apiKey, onLog);
-      filteredHierarchy = getFilteredHierarchy(selectedWorkTypes);
+      selectedWorkTypes = await selectWorkTypes(records, apiKey, onLog);
       const selectorTime = performance.now() - selectorStart;
-      const filteredSize = JSON.stringify(filteredHierarchy).length;
-      onLog?.(`[PROFILER] Selector: ${formatDuration(selectorTime)}, hierarchy ${fullSize} -> ${filteredSize} chars (${((1 - filteredSize/fullSize) * 100).toFixed(1)}% reduction)`, "info");
+      onLog?.(`[PROFILER] Selector: ${formatDuration(selectorTime)}, selected: ${selectedWorkTypes.join(', ')}`, "info");
     }
   }
 
-  const { inputs, examplesPrompt, systemPrompt, workTypes } = await prepareAnalysisInputs(records, appMode, instruction, filteredHierarchy, ruleSettings, onLog);
+  const { inputs, examplesPrompt, systemPrompt, workTypes } = await prepareAnalysisInputs(records, appMode, instruction, selectedWorkTypes, ruleSettings, onLog);
   const prompt = buildBatchPrompt(records);
 
   // 工種一覧がある場合は動的スキーマを生成（workType を enum 化）
@@ -225,7 +218,7 @@ async function prepareAnalysisInputs(
   records: PhotoRecord[],
   appMode: AppMode,
   instruction: string,
-  filteredHierarchy: object | undefined,
+  selectedWorkTypes: string[] | undefined,
   ruleSettings: RuleSettings | undefined,
   onLog?: LogFunction
 ) {
@@ -242,9 +235,19 @@ async function prepareAnalysisInputs(
     try {
       const masterRows = await loadMasterCsv();
       if (masterRows.length > 0) {
-        chainRecords = toChainRecordsJson(masterRows);
+        let allChainRecords = toChainRecordsJson(masterRows);
         workTypes = getWorkTypesFromMaster(masterRows);
-        onLog?.(`[MASTER] CSVから${masterRows.length}件のマスタレコード、${workTypes.length}件の工種を読み込み`, "info");
+
+        // 工種でフィルタリング（指定がある場合）
+        if (selectedWorkTypes && selectedWorkTypes.length > 0) {
+          chainRecords = allChainRecords.filter(r => selectedWorkTypes.includes(r.workType));
+          // フィルタ後の工種一覧を使用
+          workTypes = selectedWorkTypes;
+          onLog?.(`[MASTER] CSVから${allChainRecords.length}件 → ${chainRecords.length}件にフィルタ (工種: ${selectedWorkTypes.join(', ')})`, "info");
+        } else {
+          chainRecords = allChainRecords;
+          onLog?.(`[MASTER] CSVから${masterRows.length}件のマスタレコード、${workTypes.length}件の工種を読み込み`, "info");
+        }
       }
     } catch (e) {
       console.warn('Failed to load master CSV:', e);
@@ -276,7 +279,7 @@ async function prepareAnalysisInputs(
     }
   }
 
-  const baseSystemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy, ruleSettings, chainRecords);
+  const baseSystemPrompt = getSystemInstruction(appMode, instruction, ruleSettings, chainRecords);
 
   let learnedRulesPrompt = "";
   try {

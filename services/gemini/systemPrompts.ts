@@ -5,17 +5,66 @@
  */
 
 import { AppMode } from "../../types";
-import { formatHierarchyForPrompt } from "../../utils/constructionMaster";
 import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../../utils/analysisRules";
 import { ChainRecord } from "../../utils/masterCsvParser";
 
 export interface SystemInstructionOptions {
   appMode: AppMode;
   customInstruction?: string;
-  hierarchy?: object;
   ruleSettings?: RuleSettings;
-  chainRecords?: ChainRecord[];  // CSVベースのチェーンレコード
+  chainRecords?: ChainRecord[];  // CSVベースのチェーンレコード（必須）
 }
+
+/**
+ * chainRecords を階層表示にフォーマット
+ * workType → variety → detail → remarks の関係を明示
+ */
+const formatChainRecordsHierarchy = (records: ChainRecord[]): string => {
+  // workType でグループ化
+  const byWorkType = new Map<string, Map<string, Map<string, Set<string>>>>();
+
+  for (const r of records) {
+    if (!byWorkType.has(r.workType)) {
+      byWorkType.set(r.workType, new Map());
+    }
+    const varietyMap = byWorkType.get(r.workType)!;
+
+    if (!varietyMap.has(r.variety)) {
+      varietyMap.set(r.variety, new Map());
+    }
+    const detailMap = varietyMap.get(r.variety)!;
+
+    const detailKey = r.subphase || "(none)";
+    if (!detailMap.has(detailKey)) {
+      detailMap.set(detailKey, new Set());
+    }
+    if (r.remarks) {
+      detailMap.get(detailKey)!.add(r.remarks);
+    }
+  }
+
+  // 階層形式で出力
+  const lines: string[] = [];
+  for (const [workType, varietyMap] of byWorkType) {
+    lines.push(`【工種】${workType}`);
+    for (const [variety, detailMap] of varietyMap) {
+      lines.push(`  └─ 種別: ${variety}`);
+      for (const [detail, remarksSet] of detailMap) {
+        if (detail !== "(none)") {
+          lines.push(`      └─ 細別: ${detail}`);
+        }
+        if (remarksSet.size > 0) {
+          const remarksList = Array.from(remarksSet).slice(0, 5).join(", ");
+          const more = remarksSet.size > 5 ? ` ...他${remarksSet.size - 5}件` : "";
+          lines.push(`          備考: ${remarksList}${more}`);
+        }
+      }
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
+};
 
 /**
  * モード別システム指示を生成
@@ -23,7 +72,6 @@ export interface SystemInstructionOptions {
 export const getSystemInstruction = (
   appMode: AppMode,
   customInstruction?: string,
-  hierarchy?: object,
   ruleSettings?: RuleSettings,
   chainRecords?: ChainRecord[]
 ) => {
@@ -44,21 +92,15 @@ You are a Japanese construction site supervisor creating a formal photo ledger (
 The hierarchy provided is a STRICT SUBSET of the MLIT (Ministry of Land, Infrastructure, Transport and Tourism) standards.
 
 **CRITICAL CONSTRAINT**:
-You MUST NOT use any Work Types, Varieties, or Details that are not explicitly defined in the provided MASTER DATA JSON.
-Even if you recognize a standard MLIT term, if it is not in the JSON, do not use it. Map to the closest existing node.
+You MUST select values ONLY from the provided MASTER DATA below.
+Even if you recognize a standard MLIT term, if it is not in the master data, do not use it.
+**workType is an ENUM** - you can only output values that are defined.
 
---- MASTER DATA HIERARCHY ---
-${JSON.stringify(hierarchy || formatHierarchyForPrompt(), null, 2)}
-${chainRecords && chainRecords.length > 0 ? `
---- CHAIN RECORDS (選択肢リスト) ---
-以下は有効な組み合わせの完全なリストです。出力は必ずこのリストの中から選択してください。
+--- VALID COMBINATIONS (マスタデータ) ---
+以下は有効な工種・種別・細別・備考の組み合わせです。
+**出力は必ずこのリストの中から選択してください。リストにない値は出力禁止。**
 
-${JSON.stringify(chainRecords.slice(0, 100), null, 2)}
-${chainRecords.length > 100 ? `\n... and ${chainRecords.length - 100} more records` : ''}
-
-**STRICT RULE**: workType, variety, detail (subphase), remarks はすべてこのリストに存在する値のみを使用すること。
-リストにない値を創作してはいけません。
-` : ''}
+${chainRecords && chainRecords.length > 0 ? formatChainRecordsHierarchy(chainRecords) : '(マスタデータなし - 自由入力可)'}
 --- HIERARCHY MAPPING RULES (STRICT) ---
 The master data JSON has this structure. "直接工事費" is the root and should be IGNORED.
 
