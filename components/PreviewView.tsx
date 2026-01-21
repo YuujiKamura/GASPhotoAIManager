@@ -10,7 +10,6 @@ import TemplateSelector from './TemplateSelector';
 import { ReorderModeView, PreviewToolsMenu } from './PreviewView/index';
 import { useReorderMode } from '../hooks/useReorderMode';
 import { usePreviewViewState } from '../hooks/usePreviewViewState';
-import { useProgressNotification } from '../hooks/useProgressNotification';
 import { AnalysisStepProgress } from './AnalysisStepProgress';
 
 // Lazy load AnalysisSetupModal
@@ -102,13 +101,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
 }) => {
   const txt = TRANS[lang];
   const reorder = useReorderMode(photos, onReorderPhotos);
-
-  // 解析進捗をブラウザタブ/デスクトップ通知で表示
-  useProgressNotification({
-    isProcessing,
-    processedCount: stats.success,
-    totalCount: stats.total,
-  });
 
   // ローカル状態で通知の表示/自動消去を管理
   const [localErrorMsg, setLocalErrorMsg] = useState<string | null>(null);
