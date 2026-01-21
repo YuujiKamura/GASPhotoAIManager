@@ -32,7 +32,6 @@ const getTexts = (lang: 'ja' | 'en') => ({
   sort: lang === 'ja' ? '並び替え' : 'Sort',
   cacheEnabled: lang === 'ja' ? 'キャッシュを有効にする' : 'Enable Cache',
   runNormalization: lang === 'ja' ? '正規化を実行' : 'Run Normalization',
-  runAliases: lang === 'ja' ? 'エイリアスを適用' : 'Apply Aliases',
   all: lang === 'ja' ? '全選択' : 'All',
   none: lang === 'ja' ? '解除' : 'None',
   cancel: lang === 'ja' ? 'キャンセル' : 'Cancel',
@@ -98,8 +97,6 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           setUseCache={state.setUseCache}
           runNormalization={state.runNormalization}
           setRunNormalization={state.setRunNormalization}
-          runAliases={state.runAliases}
-          setRunAliases={state.setRunAliases}
           txt={{
             selected: txt.selected,
             cost: txt.cost,
@@ -107,7 +104,6 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
             sort: txt.sort,
             cacheEnabled: txt.cacheEnabled,
             runNormalization: txt.runNormalization,
-            runAliases: txt.runAliases,
           }}
         />
         <PreAnalysisInfoSection

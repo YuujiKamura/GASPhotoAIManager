@@ -2,9 +2,6 @@
  * export コマンド
  *
  * 解析結果をExcel/PDFに出力
- *
- * ## 変更履歴
- * - 2026-01-17: エイリアス適用オプション追加（--alias, --preset）
  */
 
 import * as fs from 'fs/promises';
@@ -14,7 +11,6 @@ import ora from 'ora';
 import { generateExcelBuffer, type PhotoData as ExcelPhotoData } from '../../shared/generators/excelCore';
 import { generatePdfBuffer, type PhotoData as PdfPhotoData, type PdfQuality } from '../../shared/generators/pdfCore';
 import { optimizeImageForPdf } from '../adapters/imageAdapter';
-import { loadAliasConfig, applyAliasesToData, getPresetConfig, PRESET_ALIASES } from '../adapters/aliasAdapter';
 
 interface ExportOptions {
   format: string;
@@ -23,8 +19,6 @@ interface ExportOptions {
   title: string;
   font?: string;
   pdfQuality?: string;
-  alias?: string;    // エイリアス設定ファイルパス
-  preset?: string;   // プリセット名
 }
 
 interface InputData {
@@ -77,31 +71,12 @@ export async function exportCommand(
     preview: 'プレビュー用 (300px, 40%)',
   };
 
-  // エイリアス設定の読み込み
-  let aliasConfig = await loadAliasConfig(options.alias);
-  if (options.preset && options.preset in PRESET_ALIASES) {
-    aliasConfig = getPresetConfig(options.preset as keyof typeof PRESET_ALIASES);
-  }
-
-  // エイリアスの適用
-  if (aliasConfig.enabled) {
-    const { data: aliasedData, modifiedCount } = applyAliasesToData(inputData, aliasConfig);
-    inputData = aliasedData;
-    if (modifiedCount > 0) {
-      console.log(chalk.cyan(`エイリアス適用: ${modifiedCount}件を変換`));
-    }
-  }
-
   console.log(chalk.gray(`入力: ${inputPath}`));
   console.log(chalk.gray(`写真数: ${inputData.length}枚`));
   console.log(chalk.gray(`形式: ${options.format}`));
   console.log(chalk.gray(`ページあたり: ${options.photosPerPage}枚`));
   if (options.format === 'pdf' || options.format === 'both') {
     console.log(chalk.gray(`PDF画質: ${pdfQuality} - ${qualityLabels[pdfQuality]}`));
-  }
-  if (aliasConfig.enabled) {
-    const presetName = aliasConfig.activePreset || 'カスタム';
-    console.log(chalk.gray(`エイリアス: ${presetName}`));
   }
   console.log('');
 

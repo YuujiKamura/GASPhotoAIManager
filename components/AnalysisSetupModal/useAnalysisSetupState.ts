@@ -12,7 +12,6 @@ export interface PreAnalysisInfo {
   workType: string;
   station: string;
   runNormalization: boolean;
-  runAliases: boolean;
 }
 
 export function useAnalysisSetupState(files: File[]) {
@@ -24,7 +23,6 @@ export function useAnalysisSetupState(files: File[]) {
   const [workType, setWorkType] = useState<string>('');
   const [station, setStation] = useState<string>('');
   const [runNormalization, setRunNormalization] = useState(true);
-  const [runAliases, setRunAliases] = useState(true);
 
   // Load thumbnails and check cache status
   useEffect(() => {
@@ -86,8 +84,7 @@ export function useAnalysisSetupState(files: File[]) {
     workType,
     station,
     runNormalization,
-    runAliases,
-  }), [workType, station, runNormalization, runAliases]);
+  }), [workType, station, runNormalization]);
 
   return {
     entries,
@@ -111,8 +108,6 @@ export function useAnalysisSetupState(files: File[]) {
     setStation,
     runNormalization,
     setRunNormalization,
-    runAliases,
-    setRunAliases,
     preInfo,
   };
 }

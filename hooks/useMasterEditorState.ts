@@ -11,7 +11,7 @@ import {
   UNCATEGORIZED_ORDER
 } from '../utils/masterEditorStorage';
 
-export type ViewMode = 'list' | 'detail' | 'alias';
+export type ViewMode = 'list' | 'detail';
 
 export function useMasterEditorState() {
   const [allWorkTypes] = useState<Map<string, WorkTypeData>>(() => collectAllWorkTypes());

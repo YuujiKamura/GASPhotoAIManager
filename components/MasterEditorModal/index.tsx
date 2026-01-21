@@ -1,10 +1,8 @@
 import React from 'react';
-import { ArrowLeft, Save, Check, Search, ChevronRight, Replace } from 'lucide-react';
+import { ArrowLeft, Save, Check, Search, ChevronRight } from 'lucide-react';
 import { CATEGORY_SHORT_NAMES } from '../../utils/masterEditorStorage';
 import { useMasterEditorState } from '../../hooks/useMasterEditorState';
-import { useMasterEditorAlias } from '../../hooks/useMasterEditorAlias';
 import { DetailEditView } from './DetailEditView';
-import { AliasSettingsView } from './AliasSettingsView';
 
 // Re-export for backwards compatibility
 export { getFilteredMaster } from '../../utils/masterEditorStorage';
@@ -12,7 +10,6 @@ export { getFilteredMaster } from '../../utils/masterEditorStorage';
 interface Props {
   onClose: () => void;
   lang: 'en' | 'ja';
-  onApplyAliasesToSession?: () => { modifiedCount: number };
 }
 
 const getTexts = (lang: 'en' | 'ja') => ({
@@ -29,17 +26,6 @@ const getTexts = (lang: 'en' | 'ja') => ({
   back: lang === 'ja' ? '戻る' : 'Back',
   edit: lang === 'ja' ? '編集' : 'Edit',
   resetCustomization: lang === 'ja' ? 'リセット' : 'Reset',
-  aliasTitle: lang === 'ja' ? '名称エイリアス' : 'Name Aliases',
-  aliasDescription: lang === 'ja' ? '工種・種別名を別名に変換' : 'Convert names to aliases',
-  aliasEnabled: lang === 'ja' ? '有効' : 'Enabled',
-  aliasDisabled: lang === 'ja' ? '無効' : 'Disabled',
-  workTypeAliases: lang === 'ja' ? '工種エイリアス' : 'Work Type Aliases',
-  varietyAliases: lang === 'ja' ? '種別エイリアス' : 'Variety Aliases',
-  from: lang === 'ja' ? '元の名前' : 'Original',
-  to: lang === 'ja' ? '変換後' : 'Alias',
-  add: lang === 'ja' ? '追加' : 'Add',
-  presets: lang === 'ja' ? 'プリセット' : 'Presets',
-  noAliases: lang === 'ja' ? 'エイリアスなし' : 'No aliases',
 });
 
 interface WorkTypeListItemProps {
@@ -86,9 +72,8 @@ const WorkTypeListItem: React.FC<WorkTypeListItemProps> = ({ workType, isEnabled
   </div>
 );
 
-const MasterEditorModal: React.FC<Props> = ({ onClose, lang, onApplyAliasesToSession }) => {
+const MasterEditorModal: React.FC<Props> = ({ onClose, lang }) => {
   const state = useMasterEditorState();
-  const alias = useMasterEditorAlias(onApplyAliasesToSession);
   const txt = getTexts(lang);
 
   // 詳細編集画面
@@ -105,59 +90,6 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang, onApplyAliasesToSes
         onRename={state.handleRename}
         onAdd={state.handleAdd}
         txt={{ detailTitle: txt.detailTitle, unsaved: txt.unsaved, resetCustomization: txt.resetCustomization, save: txt.save, editHint: txt.editHint }}
-      />
-    );
-  }
-
-  // エイリアス設定画面
-  if (state.viewMode === 'alias') {
-    return (
-      <AliasSettingsView
-        data={{
-          aliasSettings: alias.aliasSettings,
-          workTypeAliasEntries: alias.workTypeAliasEntries,
-          varietyAliasEntries: alias.varietyAliasEntries,
-          hasAnyAliases: alias.hasAnyAliases,
-          applyResult: alias.applyResult,
-          canApplyToSession: !!onApplyAliasesToSession
-        }}
-        inputState={{
-          newWorkTypeFrom: alias.newWorkTypeFrom,
-          newWorkTypeTo: alias.newWorkTypeTo,
-          newVarietyFrom: alias.newVarietyFrom,
-          newVarietyTo: alias.newVarietyTo
-        }}
-        inputSetters={{
-          setNewWorkTypeFrom: alias.setNewWorkTypeFrom,
-          setNewWorkTypeTo: alias.setNewWorkTypeTo,
-          setNewVarietyFrom: alias.setNewVarietyFrom,
-          setNewVarietyTo: alias.setNewVarietyTo
-        }}
-        handlers={{
-          onBack: () => state.setViewMode('list'),
-          onToggleEnabled: alias.handleToggleAliasEnabled,
-          onApplyPreset: alias.handleApplyPreset,
-          onReset: alias.handleResetAliases,
-          onRemoveWorkTypeAlias: alias.handleRemoveWorkTypeAlias,
-          onRemoveVarietyAlias: alias.handleRemoveVarietyAlias,
-          onAddWorkTypeAlias: alias.handleAddWorkTypeAlias,
-          onAddVarietyAlias: alias.handleAddVarietyAlias,
-          onApplyToSession: alias.handleApplyToSession
-        }}
-        txt={{
-          aliasTitle: txt.aliasTitle,
-          aliasDescription: txt.aliasDescription,
-          aliasEnabled: txt.aliasEnabled,
-          aliasDisabled: txt.aliasDisabled,
-          presets: txt.presets,
-          resetCustomization: txt.resetCustomization,
-          workTypeAliases: txt.workTypeAliases,
-          varietyAliases: txt.varietyAliases,
-          from: txt.from,
-          to: txt.to,
-          add: txt.add,
-          noAliases: txt.noAliases
-        }}
       />
     );
   }
@@ -188,14 +120,6 @@ const MasterEditorModal: React.FC<Props> = ({ onClose, lang, onApplyAliasesToSes
           {txt.enabled}: <span className="font-bold text-blue-600">{state.enabledTypes.size}</span> / {state.allWorkTypes.size}
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => state.setViewMode('alias')}
-            className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${alias.hasAnyAliases && alias.aliasSettings.enabled ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-          >
-            <Replace className="w-3 h-3" />
-            {txt.aliasTitle}
-            {alias.hasAnyAliases && alias.aliasSettings.enabled && <span className="w-2 h-2 bg-amber-500 rounded-full" />}
-          </button>
           <button onClick={state.handleSelectAll} className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">{txt.selectAll}</button>
           <button onClick={state.handleClearAll} className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">{txt.clear}</button>
         </div>

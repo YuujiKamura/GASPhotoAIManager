@@ -211,8 +211,6 @@ interface SettingsSectionProps {
   setUseCache: (v: boolean) => void;
   runNormalization: boolean;
   setRunNormalization: (v: boolean) => void;
-  runAliases: boolean;
-  setRunAliases: (v: boolean) => void;
   txt: {
     selected: string;
     cost: string;
@@ -220,14 +218,13 @@ interface SettingsSectionProps {
     sort: string;
     cacheEnabled: string;
     runNormalization: string;
-    runAliases: string;
   };
 }
 
 export const SettingsSection: React.FC<SettingsSectionProps> = ({
   selectedCount, totalCount, cost, model, setModel,
   sortPolicy, setSortPolicy, useCache, setUseCache,
-  runNormalization, setRunNormalization, runAliases, setRunAliases, txt
+  runNormalization, setRunNormalization, txt
 }) => (
   <div className="px-4 py-3 border-t bg-gray-50 space-y-3">
     <div className="flex items-center justify-between text-sm">
@@ -254,10 +251,6 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
       <label className="flex items-center gap-1.5 cursor-pointer">
         <input type="checkbox" checked={runNormalization} onChange={e => setRunNormalization(e.target.checked)} />
         {txt.runNormalization}
-      </label>
-      <label className="flex items-center gap-1.5 cursor-pointer">
-        <input type="checkbox" checked={runAliases} onChange={e => setRunAliases(e.target.checked)} />
-        {txt.runAliases}
       </label>
     </div>
   </div>
