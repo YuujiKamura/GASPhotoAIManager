@@ -220,6 +220,17 @@ ${workTypesList ? `**AVAILABLE WORK TYPES (工種一覧)**:\n${workTypesList}\n\
 For safety photos, set workType="", variety="", detail="".
 Use remarksCategory like "朝礼実施状況", "KY活動状況", "新規入場者教育状況"
 
+**DISPOSAL PHOTOS (処分関連写真)**:
+For asphalt debris disposal photos (アスガラ処分):
+- detail: 舗装版破砕
+- remarksCategory options:
+  - "処分施設" - Photo of the disposal facility
+  - "処分施設許可票" - Permit/license plate of disposal facility
+  - "計量状況" - Weighing on scale (truck on weighbridge)
+  - "処分状況" - General disposal scene
+
+**IMPORTANT**: If the blackboard clearly shows text like "処分状況", use that exact text for remarksCategory.
+
 ${instruction ? `\nUSER INSTRUCTION: ${instruction}` : ""}
   `.trim();
 };
