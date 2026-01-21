@@ -88,6 +88,12 @@ Based on MLIT (Ministry of Land, Infrastructure, Transport and Tourism) photo ma
     *   **Emulsion Spraying (乳剤散布)**: Worker holding a **THIN NOZZLE/HOSE** connected to a tank/truck. Liquid spray.
     *   **Curing Sand Spraying (養生砂散布)**: Worker using a **SHOVEL** or **BROAD SPREADER**. Sand cannot be sprayed from a thin nozzle.
     *   *Note*: Do NOT rely solely on surface color (black vs gray) as both can look similar. Look at the **EQUIPMENT**.
+*   **DISPOSAL PHOTOS (アスガラ処分関連) - 4 DISTINCT CATEGORIES**:
+    *   **アスファルト塊処分施設**: Disposal facility overview photo - shows the entire processing plant
+    *   **As塊処分施設許可票**: Permit/license sign photo - shows 産業廃棄物処理許可証 with permit number
+    *   **アスファルト塊計量状況**: Weighing photo - truck on truck scale (計量台/トラックスケール)
+    *   **アスファルト塊処分状況**: Dumping photo - truck dumping asphalt debris (general disposal scene)
+    *   When blackboard says "処分状況": Use visual cues to determine the specific category above.
 
 **CATEGORY 3: "安全管理写真"** (Safety Management):
 *   **CRITICAL**: For safety management photos, set workType="", variety="", detail="".
@@ -302,6 +308,9 @@ export const REMARKS_CATEGORIES = [
   "転圧状況", "敷均し状況", "舗設状況", "初期転圧状況", "2次転圧状況",
   "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
   "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
+  // 舗装版破砕・処分関連
+  "剥取状況", "既設舗装厚さ確認",
+  "アスファルト塊処分施設", "As塊処分施設許可票", "アスファルト塊計量状況", "アスファルト塊処分状況",
   // 着手前・完成
   "着手前", "完了", "竣工", "施工完了", "既済部分",
   // 出来形
@@ -316,5 +325,6 @@ export const REMARKS_CATEGORIES = [
   "災害発生状況", "事故発生状況", "被害状況",
   // その他（公害、環境、補償等）
   "環境対策状況", "騒音対策状況", "粉塵対策状況",
-  "その他"
+  // 該当なしの場合は空文字列
+  ""
 ];

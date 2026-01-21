@@ -157,6 +157,15 @@ export const getNormalizationProposals = async (
        - Keep measurement values intact (e.g., "出荷時156℃", "t=50mm")
        - Keep specific descriptions from board photos
        - DO NOT simplify "アスファルト混合物温度測定 出荷時156℃" to just "温度測定"
+
+    **DISPOSAL PHOTO REMARKS (処分関連写真 - 絶対に変更しない)**:
+    The following remarks are CORRECT and must NEVER be changed:
+    - "アスファルト塊処分施設" (disposal facility overview)
+    - "As塊処分施設許可票" (disposal facility permit sign)
+    - "アスファルト塊計量状況" (weighing on truck scale)
+    - "アスファルト塊処分状況" (actual disposal/dumping scene)
+    These are distinct categories. DO NOT unify them or change to "その他".
+    If a photo has any of these remarks, PRESERVE IT EXACTLY.
     ${userInstruction}
 
     INPUT DATA:
