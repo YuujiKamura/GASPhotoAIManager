@@ -62,6 +62,9 @@ export default function App() {
   // Interactive Analysis Target
   const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
 
+  // Pending Upload Files (managed at App level to survive modal transitions)
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
+
   // Core Hooks
   const apiKeyState = useApiKey();
   const modals = useAppModals();
@@ -234,7 +237,7 @@ export default function App() {
         </Suspense>
       ) : (
         <PreviewView
-          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '', analysisSteps, analysisMode, pauseState }}
+          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '', analysisSteps, analysisMode, pauseState, pendingUploadFiles }}
           state={{ isProcessing: processing.isProcessing, currentStep: processing.currentStep, errorMsg: processing.errorMsg, successMsg: processing.successMsg }}
           pauseResumeHandlers={{ onToggleMode: toggleMode, onPause: requestPause, onResume: resumeAnalysis }}
           photoHandlers={{
@@ -245,7 +248,7 @@ export default function App() {
           }}
           actionHandlers={{
             onClearLogs: processing.clearLogs,
-            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setPhotos([]); resetStats(); setInitialLayout(3); resetSteps(); },
+            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setPhotos([]); resetStats(); setInitialLayout(3); resetSteps(); setPendingUploadFiles(null); },
             onRefine: () => modals.setShowRefineModal(true),
             onExportExcel: (layout) => generateExcel(photos, appMode, layout),
             onAutoPair: analysisHandlers.handleAutoPair,
@@ -264,7 +267,9 @@ export default function App() {
             onClearCache: cacheHandlers.handleClearCache,
             onStartProcessing: handleStartAnalysis,
             onManualPairing: handleManualPairing,
-            onTestOneInteractive: handleTestOneInteractive
+            onTestOneInteractive: handleTestOneInteractive,
+            onFilesSelected: setPendingUploadFiles,
+            onClearPendingFiles: () => setPendingUploadFiles(null),
           }}
         />
       )}

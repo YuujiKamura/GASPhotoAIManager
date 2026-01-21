@@ -29,6 +29,7 @@ interface PreviewData {
   analysisSteps?: AnalysisStep[];
   analysisMode?: AnalysisMode;
   pauseState?: AnalysisPauseState;
+  pendingUploadFiles?: File[] | null;  // Managed at App level to survive modal transitions
 }
 
 /** Processing state props */
@@ -77,6 +78,9 @@ interface ActionHandlers {
   onStartProcessing?: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
   onManualPairing?: (files: File[]) => void;
   onTestOneInteractive?: (file: File) => void;
+  // Pending files management (App level)
+  onFilesSelected?: (files: File[]) => void;
+  onClearPendingFiles?: () => void;
 }
 
 // Main props interface using grouped interfaces
@@ -89,10 +93,10 @@ export interface PreviewViewProps {
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
-  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey, analysisSteps, analysisMode, pauseState },
+  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey, analysisSteps, analysisMode, pauseState, pendingUploadFiles },
   state: { isProcessing, currentStep, errorMsg, successMsg },
   photoHandlers: { onUpdatePhoto, onDeletePhoto, onReanalyzePhoto, onReorderPhotos },
-  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive },
+  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive, onFilesSelected, onClearPendingFiles },
   pauseResumeHandlers
 }) => {
   const txt = TRANS[lang];
@@ -153,6 +157,33 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     clearPendingFiles,
   } = usePreviewViewState(initialLayout, isProcessing);
 
+  // Use parent-managed pendingFiles if available (survives modal transitions like API key setup)
+  const effectivePendingFiles = pendingUploadFiles ?? pendingFiles;
+  const effectiveClearPendingFiles = useCallback(() => {
+    clearPendingFiles();  // Clear local state
+    onClearPendingFiles?.();  // Clear parent state
+  }, [clearPendingFiles, onClearPendingFiles]);
+
+  // Wrap file handlers to notify parent
+  const wrappedHandleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isProcessing && e.dataTransfer.files?.length) {
+      const imageFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+      if (imageFiles.length > 0) {
+        onFilesSelected?.(imageFiles);  // Notify parent (survives modal transitions)
+      }
+    }
+    handleDragLeave(e);
+  }, [isProcessing, onFilesSelected, handleDragLeave]);
+
+  const wrappedHandleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) {
+      const files = Array.from(e.target.files);
+      onFilesSelected?.(files);  // Notify parent (survives modal transitions)
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [onFilesSelected, fileInputRef]);
+
   // 写真が0件かどうか
   const isEmpty = photos.length === 0;
 
@@ -203,23 +234,23 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     if (onStartProcessing) {
       onStartProcessing(files, sortPolicy, useCache);
     }
-    clearPendingFiles();
-  }, [onStartProcessing, clearPendingFiles]);
+    effectiveClearPendingFiles();
+  }, [onStartProcessing, effectiveClearPendingFiles]);
 
   // Handle manual pairing from modal
   const handleManualPairingClick = useCallback((files: File[]) => {
     if (onManualPairing) {
       onManualPairing(files);
     }
-    clearPendingFiles();
-  }, [onManualPairing, clearPendingFiles]);
+    effectiveClearPendingFiles();
+  }, [onManualPairing, effectiveClearPendingFiles]);
 
   return (
     <div
       className={`fixed inset-0 z-[100] overflow-hidden flex flex-col transition-colors duration-300 ${isDragging ? 'bg-blue-50' : 'bg-gray-200'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDrop={wrappedHandleDrop}
     >
       {/* Header */}
       <div className="sticky top-0 z-[101] bg-slate-800 text-white p-3 shadow-md flex justify-between items-center">
@@ -411,7 +442,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         ref={fileInputRef}
         accept="image/*"
         multiple
-        onChange={handleFileInputChange}
+        onChange={wrappedHandleFileInputChange}
         style={{ display: 'none' }}
       />
 
@@ -425,13 +456,13 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       />
 
       {/* Analysis Setup Modal */}
-      {pendingFiles && pendingFiles.length > 0 && onStartProcessing && (
+      {effectivePendingFiles && effectivePendingFiles.length > 0 && onStartProcessing && (
         <Suspense fallback={<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"><Loader2 className="w-8 h-8 text-white animate-spin" /></div>}>
           <AnalysisSetupModal
-            files={pendingFiles}
+            files={effectivePendingFiles}
             lang={lang}
             apiKey={apiKey}
-            onCancel={clearPendingFiles}
+            onCancel={effectiveClearPendingFiles}
             onStartAnalysis={handleStartAnalysis}
             onManualPairing={onManualPairing ? handleManualPairingClick : undefined}
             onInteractiveTest={(file) => onTestOneInteractive?.(file)}
