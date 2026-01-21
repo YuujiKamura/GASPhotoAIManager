@@ -213,22 +213,41 @@ const isSafetyRemarks = (remarks: string): boolean => {
   return safetyKeywords.some(kw => remarks.includes(kw));
 };
 
+// 処分関連remarksは写真ごとに異なるため継承しない
+const isDisposalRemarks = (remarks: string): boolean => {
+  const disposalKeywords = ['処分', '計量', '許可票', 'アスファルト塊', 'As塊'];
+  return disposalKeywords.some(kw => remarks.includes(kw));
+};
+
+// remarksを継承すべきでないカテゴリ
+const shouldSkipRemarksInheritance = (remarks: string): boolean => {
+  return isSafetyRemarks(remarks) || isDisposalRemarks(remarks);
+};
+
 export const applyContextRelay = (results: AIAnalysisResult[]): AIAnalysisResult[] => {
   let lastKnown = { station: "", variety: "", workType: "", detail: "", remarks: "", measurements: "" };
 
   return results.map(res => {
+    // 安全管理写真は完全にスキップ
     if (isSafetyRemarks(res.remarks || '')) return res;
 
     const changeLog = res.changeLog || [];
-    const fields = ['station', 'variety', 'workType', 'detail', 'remarks', 'measurements'] as const;
     const updated: any = { ...res };
 
-    for (const field of fields) {
+    // remarksは継承しない（写真ごとに固有であるべき）
+    // station, variety, workType, detail, measurementsのみ継承
+    const fieldsToInherit = ['station', 'variety', 'workType', 'detail', 'measurements'] as const;
+
+    for (const field of fieldsToInherit) {
       const inherited = res[field] || lastKnown[field];
       trackFieldChange(changeLog, field, 'context_relay', res[field] || '', inherited, '前の写真から継承');
       updated[field] = inherited;
       if (res[field]) lastKnown[field] = res[field];
     }
+
+    // remarksは継承しない（AIが返した値をそのまま使用）
+    // ただし、lastKnownは更新して同じremarksが続く場合に備える
+    if (res.remarks) lastKnown.remarks = res.remarks;
 
     return { ...updated, changeLog };
   });
