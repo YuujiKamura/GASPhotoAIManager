@@ -273,7 +273,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             title={!isEmpty ? (lang === 'ja' ? 'ホームに戻る（新規セッション）' : 'Go Home (New Session)') : undefined}
           >
             {appMode === 'construction' && <HardHat className="w-5 h-5 text-amber-500" />}
-            {txt.appTitle}
+            <span className="hidden sm:inline">{txt.appTitle}</span>
           </h1>
           {!isEmpty && (
             <div className="flex gap-2 text-xs md:text-sm bg-slate-700 px-2 py-1 rounded-lg flex-shrink-0 whitespace-nowrap items-center">
