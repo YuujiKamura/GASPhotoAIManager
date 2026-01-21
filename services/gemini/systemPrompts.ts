@@ -7,11 +7,26 @@
 import { AppMode } from "../../types";
 import { formatHierarchyForPrompt } from "../../utils/constructionMaster";
 import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../../utils/analysisRules";
+import { ChainRecord } from "../../utils/masterCsvParser";
+
+export interface SystemInstructionOptions {
+  appMode: AppMode;
+  customInstruction?: string;
+  hierarchy?: object;
+  ruleSettings?: RuleSettings;
+  chainRecords?: ChainRecord[];  // CSVベースのチェーンレコード
+}
 
 /**
  * モード別システム指示を生成
  */
-export const getSystemInstruction = (appMode: AppMode, customInstruction?: string, hierarchy?: object, ruleSettings?: RuleSettings) => {
+export const getSystemInstruction = (
+  appMode: AppMode,
+  customInstruction?: string,
+  hierarchy?: object,
+  ruleSettings?: RuleSettings,
+  chainRecords?: ChainRecord[]
+) => {
   if (appMode === 'general') {
     return `
 You are a professional photo archivist. Analyze the image and provide structured metadata.
@@ -34,7 +49,16 @@ Even if you recognize a standard MLIT term, if it is not in the JSON, do not use
 
 --- MASTER DATA HIERARCHY ---
 ${JSON.stringify(hierarchy || formatHierarchyForPrompt(), null, 2)}
+${chainRecords && chainRecords.length > 0 ? `
+--- CHAIN RECORDS (選択肢リスト) ---
+以下は有効な組み合わせの完全なリストです。出力は必ずこのリストの中から選択してください。
 
+${JSON.stringify(chainRecords.slice(0, 100), null, 2)}
+${chainRecords.length > 100 ? `\n... and ${chainRecords.length - 100} more records` : ''}
+
+**STRICT RULE**: workType, variety, detail (subphase), remarks はすべてこのリストに存在する値のみを使用すること。
+リストにない値を創作してはいけません。
+` : ''}
 --- HIERARCHY MAPPING RULES (STRICT) ---
 The master data JSON has this structure. "直接工事費" is the root and should be IGNORED.
 

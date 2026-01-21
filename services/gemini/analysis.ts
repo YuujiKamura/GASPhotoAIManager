@@ -16,6 +16,7 @@ import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { formatHierarchyForPrompt, getHierarchySubset } from "../../utils/constructionMaster";
+import { loadMasterCsv, toChainRecordsJson, ChainRecord } from "../../utils/masterCsvParser";
 import { trackUsage } from "../usageTracker";
 import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
@@ -229,7 +230,20 @@ async function prepareAnalysisInputs(
   }));
 
   let examplesPrompt = "";
+  let chainRecords: ChainRecord[] = [];
+
   if (appMode === 'construction') {
+    // CSVマスタからチェーンレコードを読み込み
+    try {
+      const masterRows = await loadMasterCsv();
+      if (masterRows.length > 0) {
+        chainRecords = toChainRecordsJson(masterRows);
+        onLog?.(`[MASTER] CSVから${masterRows.length}件のマスタレコードを読み込み`, "info");
+      }
+    } catch (e) {
+      console.warn('Failed to load master CSV:', e);
+    }
+
     try {
       // セッションベースのお手本をチェック
       const activeSession = await getActiveSession();
@@ -256,7 +270,7 @@ async function prepareAnalysisInputs(
     }
   }
 
-  const baseSystemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy, ruleSettings);
+  const baseSystemPrompt = getSystemInstruction(appMode, instruction, filteredHierarchy, ruleSettings, chainRecords);
 
   let learnedRulesPrompt = "";
   try {
