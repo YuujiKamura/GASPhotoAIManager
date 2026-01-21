@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, RefreshCw, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2, Plus, ImagePlus } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2, Plus, ImagePlus } from 'lucide-react';
 
 // Grouped action props
 interface PairingActions {
@@ -16,7 +16,6 @@ interface EditActions {
 interface SettingsActions {
   onShowHistory: () => void;
   onOpenMasterEditor?: () => void;
-  onApplyAliases?: () => { modifiedCount: number };
   onOpenGitHubSync?: () => void;
 }
 
@@ -110,18 +109,6 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
-
-  const handleApplyAliases = () => {
-    if (settingsActions.onApplyAliases) {
-      const result = settingsActions.onApplyAliases();
-      setShowMenu(false);
-      if (result.modifiedCount === 0) {
-        alert(lang === 'ja'
-          ? 'エイリアスの適用対象がありませんでした。\n設定でエイリアスを有効にし、変換ルールを追加してください。'
-          : 'No aliases to apply. Enable aliases and add mappings in settings.');
-      }
-    }
-  };
 
   const menuSections: MenuSection[] = [
     {
@@ -226,14 +213,6 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
           label: { ja: 'マスタ管理', en: 'Master Data' },
           onClick: () => { settingsActions.onOpenMasterEditor?.(); setShowMenu(false); },
           show: !!settingsActions.onOpenMasterEditor
-        },
-        {
-          icon: <RefreshCw className="w-4 h-4 text-cyan-400" />,
-          hoverBg: 'hover:bg-cyan-600',
-          label: { ja: 'エイリアス適用', en: 'Apply Aliases' },
-          title: { ja: '設定済みのエイリアスを適用します', en: 'Apply configured aliases' },
-          onClick: handleApplyAliases,
-          show: !!settingsActions.onApplyAliases
         },
         {
           icon: <Github className="w-4 h-4 text-purple-400" />,

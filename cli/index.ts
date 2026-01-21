@@ -47,8 +47,6 @@ program
   .option('-t, --title <title>', 'ドキュメントタイトル', '工事写真帳')
   .option('--font <path>', '日本語フォントファイルパス')
   .option('-q, --pdf-quality <quality>', 'PDF画質 (high=印刷用/medium=デジタル提出用/low=ドラフト用/preview=プレビュー)', 'high')
-  .option('--alias <file>', 'エイリアス設定ファイルパス (.alias-config.json)')
-  .option('--preset <name>', 'エイリアスプリセット (舗装補修)')
   .action(exportCommand);
 
 // config コマンド

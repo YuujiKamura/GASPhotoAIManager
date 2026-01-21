@@ -18,7 +18,6 @@ import {
   useCacheHandlers,
   useStartProcessingFlow,
   useNormalizationHandlers,
-  usePhotoManagement,
   useProjectHandlers,
   usePhotosState,
   useAnalysisSteps,
@@ -134,11 +133,6 @@ export default function App() {
     addLog: processing.addLog, setShowNormalizationModal: modals.setShowNormalizationModal, resetNormalization: normalization.resetNormalization,
   });
 
-  // Photo Management (エイリアス適用のみ - 他はusePhotosStateに統合)
-  const photoManagement = usePhotoManagement({
-    photos, setPhotos, addLog: processing.addLog,
-  });
-
   // Project Handlers
   const projectHandlers = useProjectHandlers({
     txt, setPhotos, setShowPreview, setInitialLayout, resetStats, setErrorMsg: processing.setErrorMsg,
@@ -233,7 +227,7 @@ export default function App() {
         </Suspense>
       ) : modals.showMasterEditor ? (
         <Suspense fallback={<LoadingFallback />}>
-          <MasterEditorModal lang={lang} onClose={() => modals.setShowMasterEditor(false)} onApplyAliasesToSession={photoManagement.handleApplyAliases} />
+          <MasterEditorModal lang={lang} onClose={() => modals.setShowMasterEditor(false)} />
         </Suspense>
       ) : (
         <PreviewView
@@ -257,7 +251,6 @@ export default function App() {
             onAbort: () => { analysisHandlers.shouldAbortRef.current = true; processing.addLog("解析を中断しています...", 'info'); },
             onOpenMasterEditor: () => modals.setShowMasterEditor(true),
             onOpenBulkEditor: () => modals.setShowBulkEditor(true),
-            onApplyAliases: photoManagement.handleApplyAliases,
             onOpenGitHubSync: () => modals.setShowGitHubSync(true),
             // System handlers (from UploadView)
             onOpenSettings: () => modals.setShowApiKeySetup(true),
