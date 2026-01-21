@@ -84,7 +84,7 @@ export const REMARKS_CATEGORIES = [
   "乳剤散布状況", "端部乳剤塗布状況", "養生砂散布状況", "清掃状況",
   "掘削状況", "積込状況", "取壊し状況", "据付状況", "設置状況",
   "剥取状況", "既設舗装厚さ確認",
-  "処分施設", "処分施設許可票", "計量状況", "処分状況",
+  "アスファルト塊処分施設", "As塊処分施設許可票", "アスファルト塊計量状況", "アスファルト塊処分状況",
   "着手前", "完了", "竣工", "施工完了", "既済部分",
   "不陸整正出来形", "路盤厚出来形", "表層厚出来形", "幅員出来形",
   "朝礼実施状況", "朝礼・KYミーティング実施状況", "朝礼状況",
@@ -223,13 +223,11 @@ Use remarksCategory like "朝礼実施状況", "KY活動状況", "新規入場�
 **DISPOSAL PHOTOS (処分関連写真)**:
 For asphalt debris disposal photos (アスガラ処分):
 - detail: 舗装版破砕
-- remarksCategory options:
-  - "処分施設" - Photo of the disposal facility
-  - "処分施設許可票" - Permit/license plate of disposal facility
-  - "計量状況" - Weighing on scale (truck on weighbridge)
-  - "処分状況" - General disposal scene
-
-**IMPORTANT**: If the blackboard clearly shows text like "処分状況", use that exact text for remarksCategory.
+- remarksCategory options (must match exactly):
+  - "アスファルト塊処分施設" - Photo of the disposal facility
+  - "As塊処分施設許可票" - Permit/license plate of disposal facility
+  - "アスファルト塊計量状況" - Weighing on scale (truck on weighbridge)
+  - "アスファルト塊処分状況" - General disposal scene (when blackboard shows "処分状況")
 
 ${instruction ? `\nUSER INSTRUCTION: ${instruction}` : ""}
   `.trim();
