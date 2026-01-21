@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 
 import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle, CheckCircle, Upload, Plus, HardHat } from 'lucide-react';
 import { exportDataToJson, importDataFromJson } from '../utils/storage/exportImport';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, SortPolicy } from '../types';
+import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, SortPolicy, AnalysisStep } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
@@ -10,6 +10,7 @@ import TemplateSelector from './TemplateSelector';
 import { ReorderModeView, PreviewToolsMenu } from './PreviewView/index';
 import { useReorderMode } from '../hooks/useReorderMode';
 import { usePreviewViewState } from '../hooks/usePreviewViewState';
+import { AnalysisStepProgress } from './AnalysisStepProgress';
 
 // Lazy load AnalysisSetupModal
 const AnalysisSetupModal = lazy(() => import('./AnalysisSetupModal'));
@@ -25,6 +26,7 @@ interface PreviewData {
   logs: LogEntry[];
   initialLayout?: 2 | 3;
   apiKey?: string;
+  analysisSteps?: AnalysisStep[];
 }
 
 /** Processing state props */
@@ -77,7 +79,7 @@ export interface PreviewViewProps {
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
-  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey },
+  data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey, analysisSteps },
   state: { isProcessing, currentStep, errorMsg, successMsg },
   photoHandlers: { onUpdatePhoto, onDeletePhoto, onReanalyzePhoto, onReorderPhotos },
   actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive }
@@ -426,6 +428,17 @@ const PreviewView: React.FC<PreviewViewProps> = ({
             onOpenSettings={onOpenSettings}
           />
         </Suspense>
+      )}
+
+      {/* Analysis Step Progress UI */}
+      {isProcessing && analysisSteps && analysisSteps.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-[102]">
+          <AnalysisStepProgress
+            steps={analysisSteps}
+            totalPhotos={stats.total}
+            processedPhotos={stats.success}
+          />
+        </div>
       )}
     </div>
   );

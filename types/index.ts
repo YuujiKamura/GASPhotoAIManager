@@ -21,6 +21,9 @@ export { SORT_POLICIES } from './photo';
 
 // Analysis types
 export type {
+  AnalysisStepId,
+  AnalysisStepStatus,
+  AnalysisStep,
   AnalysisIssue,
   IssueType,
   IssueStatus,

@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry } from '../types';
+import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId } from '../types';
 import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 import { analyzePhotoBatch, getNormalizationProposals, getSelectedModel, NormalizationCorrection } from '../services/geminiService';
 import { processPhotosWithSmartFlow } from '../services/smartFlowService';
@@ -48,10 +48,11 @@ interface Props {
   setInitialInstruction: (v: string) => void;
   setActiveInstruction: (v: string) => void;
   txt: any;
+  onStepUpdate?: (id: AnalysisStepId, update: Partial<AnalysisStep>) => void;
 }
 
 export function useAnalysisPipeline(p: Props) {
-  const { apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setInitialInstruction, setActiveInstruction, txt } = p;
+  const { apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setInitialInstruction, setActiveInstruction, txt, onStepUpdate } = p;
   const abortRef = useRef(false);
 
   const logResult = useCallback((fn: string, r: AIAnalysisResult) => {
@@ -66,6 +67,7 @@ export function useAnalysisPipeline(p: Props) {
     if (workTypeFromPreInfo) addLog(`📋 事前入力: 工種=${workTypeFromPreInfo}${stationFromPreInfo ? `, 測点=${stationFromPreInfo}` : ''}`, 'info');
     try {
       setCurrentStep(lang === 'ja' ? "画像準備中..." : "Preparing...");
+      onStepUpdate?.('prepare', { status: 'running' });
       const recs: PhotoRecord[] = []; let cached = 0;
       for (const f of files) {
         const [date, { base64, mimeType }] = await Promise.all([getPhotoDate(f), processImageForAI(f)]);
@@ -75,16 +77,20 @@ export function useAnalysisPipeline(p: Props) {
       }
       const sorted = sortPhotosLogical(recs, currentSortPolicy);
       setPhotos(sorted); setStats({ total: sorted.length, processed: cached, success: cached, failed: 0, cached }); setShowPreview(true);
+      onStepUpdate?.('prepare', { status: 'done', result: `${sorted.length}枚読込` });
 
       const pending = sorted.filter(x => x.status === 'pending');
       if (pending.length > 0) {
         // ローカルAPIサーバーが起動しているかチェック
+        onStepUpdate?.('detect', { status: 'running' });
         const localServerAvailable = await checkServerHealth();
 
         if (localServerAvailable) {
           // ローカルAPI経由で解析（Claude Code CLI使用）
+          onStepUpdate?.('detect', { status: 'done', result: 'ローカルAPI' });
           addLog('🖥️ ローカルAPIサーバー経由で解析開始', 'info');
           setCurrentStep(lang === 'ja' ? "Claude Code解析中..." : "Analyzing with Claude Code...");
+          onStepUpdate?.('analyze', { status: 'running', subProgress: `(0/${pending.length})` });
           try {
             const photos = pending.map(p => ({
               fileName: p.fileName,
@@ -109,16 +115,21 @@ export function useAnalysisPipeline(p: Props) {
                 return { ...p, status: 'error' as const };
               });
               setPhotos(prev => prev.map(x => analyzed.find(y => y.fileName === x.fileName) || x));
-              addLog(`✅ ${analyzed.filter(a => a.status === 'done').length}枚の解析完了`, 'success');
+              const doneCount = analyzed.filter(a => a.status === 'done').length;
+              addLog(`✅ ${doneCount}枚の解析完了`, 'success');
+              onStepUpdate?.('analyze', { status: 'done', result: `${doneCount}枚完了` });
             } else {
               throw new Error(response.error || 'Local API error');
             }
           } catch (e: any) {
             addLog(`❌ ローカルAPI解析エラー: ${e.message}`, 'error');
+            onStepUpdate?.('analyze', { status: 'error', result: e.message });
             setPhotos(prev => prev.map(x => pending.find(y => y.fileName === x.fileName) ? { ...x, status: 'error' as const } : x));
           }
         } else if (apiKey) {
           // 従来のGemini API経由で解析
+          onStepUpdate?.('detect', { status: 'done', result: 'Gemini API' });
+          onStepUpdate?.('analyze', { status: 'running', subProgress: `(0/${pending.length})` });
           const res = await processPhotosWithSmartFlow(pending, apiKey, inst, addLog, () => abortRef.current, workTypeFromPreInfo);
           if (res.type === 'paired') {
             const up = res.pairs?.flatMap(pr => [
@@ -126,15 +137,20 @@ export function useAnalysisPipeline(p: Props) {
               { ...pr.after, analysis: { ...(pr.after.analysis || emptyAnalysis(pr.after.fileName)), sceneId: pr.sceneId, phase: 'after' as const, workType: workTypeFromPreInfo || pr.after.analysis?.workType || '', station: stationFromPreInfo, remarks: '竣工' }, status: 'done' as const }
             ]) || [];
             setPhotos(prev => [...prev.filter(x => x.status !== 'pending'), ...up]); setInitialLayout(2);
+            onStepUpdate?.('analyze', { status: 'done', result: `${up.length}枚ペアリング` });
           } else {
             const an = await runBatches(pending, BATCH_SIZE, PARALLEL, async b => {
               try { const rs = await analyzePhotoBatch(b, inst, BATCH_SIZE, appMode, apiKey, addLog, logResult, () => abortRef.current, undefined, loadRuleSettings(), workTypeFromPreInfo); return b.map(r => { const x = rs.find(y => y.fileName === r.fileName); if (x) { cacheAnalysis(r, x).catch(() => {}); return { ...r, analysis: x, status: 'done' as const }; } return { ...r, status: 'error' as const }; }); }
               catch { return b.map(r => ({ ...r, status: 'error' as const })); }
-            }, (n, t) => setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`), () => abortRef.current);
+            }, (n, t) => { setCurrentStep(`${txt.analyzing} (${n + 1}/${t})`); onStepUpdate?.('analyze', { progress: Math.round((n / t) * 100), subProgress: `(${n + 1}/${t})` }); }, () => abortRef.current);
             setPhotos(prev => prev.map(x => an.find(y => y.fileName === x.fileName) || x));
+            const doneCount = an.filter(a => a.status === 'done').length;
+            onStepUpdate?.('analyze', { status: 'done', result: `${doneCount}枚完了` });
           }
         } else {
           // APIキーもローカルサーバーもない
+          onStepUpdate?.('detect', { status: 'skipped' });
+          onStepUpdate?.('analyze', { status: 'skipped' });
           addLog('⚠️ 解析するにはローカルAPIサーバーを起動するか、Gemini APIキーを設定してください', 'warning');
         }
       }
@@ -142,18 +158,23 @@ export function useAnalysisPipeline(p: Props) {
       let cur: PhotoRecord[] = []; setPhotos(prev => { cur = prev; return prev; }); await new Promise(r => setTimeout(r, 0));
       const newly = cur.filter(x => !x.fromCache && x.status === 'done');
       if (newly.length > 0 && apiKey) {
+        onStepUpdate?.('normalize', { status: 'running' });
         const nr = await getNormalizationProposals(newly, apiKey, undefined, addLog, () => abortRef.current);
         if (nr.corrections.length > 0) {
+          onStepUpdate?.('normalize', { status: 'done', result: `${nr.corrections.length}件提案` });
           setNormalizationProposals(nr.corrections);
           setNormalizationOriginals(newly.map(x => ({ fileName: x.fileName, workType: x.analysis?.workType || '', variety: x.analysis?.variety || '', detail: x.analysis?.detail || '', station: x.analysis?.station || '', remarks: x.analysis?.remarks || '' })));
           setPhotosForNormalization(newly); setShowNormalizationModal(true); setIsProcessing(false); setCurrentStep(""); return;
         }
+        onStepUpdate?.('normalize', { status: 'done', result: '変更なし' });
+      } else {
+        onStepUpdate?.('normalize', { status: 'skipped' });
       }
       setPhotos(prev => { const s = sortPhotosLogical(prev, currentSortPolicy); saveAnalysisHistory(s, inst, getSelectedModel()).catch(() => {}); return s; });
       const al = loadAliasSettings(); if (al.enabled && hasAliases(al)) setPhotos(prev => applyAliasesToRecords(prev, al).records);
       setSuccessMsg(txt.done);
     } catch (e: any) { setErrorMsg(e.message || "Error"); } finally { setIsProcessing(false); setCurrentStep(""); }
-  }, [apiKey, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setInitialInstruction, setActiveInstruction, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, txt]);
+  }, [apiKey, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setInitialInstruction, setActiveInstruction, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, txt, onStepUpdate]);
 
   return { abortRef, startAnalysisPipeline, logResult };
 }

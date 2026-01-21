@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { PhotoRecord, AppMode, SortPolicy, LogEntry } from '../types';
+import { PhotoRecord, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId } from '../types';
 import { NormalizationCorrection } from '../services/geminiService';
 import { runAIAgent } from '../services/aiAgentService';
 import { OriginalData } from '../components/NormalizationPreviewModal';
@@ -19,10 +19,11 @@ interface Props {
   setManualPairingPhotos: (v: PhotoRecord[]) => void; setShowManualPairing: (v: boolean) => void;
   setShowHistory: (v: boolean) => void; setIsAskingAI: (v: boolean) => void; initialInstruction: string;
   setInitialInstruction: (v: string) => void; activeInstruction: string; setActiveInstruction: (v: string) => void; txt: any;
+  onStepUpdate?: (id: AnalysisStepId, update: Partial<AnalysisStep>) => void;
 }
 
 export function useAnalysisHandlers(p: Props) {
-  const { apiKey, photos, setPhotos, setStats, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setManualPairingPhotos, setShowManualPairing, setShowHistory, setIsAskingAI, initialInstruction, setInitialInstruction, activeInstruction, setActiveInstruction, txt } = p;
+  const { apiKey, photos, setPhotos, setStats, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setManualPairingPhotos, setShowManualPairing, setShowHistory, setIsAskingAI, initialInstruction, setInitialInstruction, activeInstruction, setActiveInstruction, txt, onStepUpdate } = p;
 
   // 分離したフックを使用
   const { handleStartManualPairing, handleManualPairingComplete } = useManualPairingHandlers({
@@ -34,7 +35,7 @@ export function useAnalysisHandlers(p: Props) {
   });
 
   const { abortRef, startAnalysisPipeline, logResult } = useAnalysisPipeline({
-    apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setInitialInstruction, setActiveInstruction, txt
+    apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setInitialInstruction, setActiveInstruction, txt, onStepUpdate
   });
 
   const { handleAutoPair, handleSmartSort, handleRefineAnalysis } = usePairingHandlers({

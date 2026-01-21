@@ -23,3 +23,4 @@ export { useGitHubSyncState } from './useGitHubSyncState';
 export { useModelValidationState } from './useModelValidationState';
 export { useBiometricAuth } from './useBiometricAuth';
 export { usePreviewViewState } from './usePreviewViewState';
+export { useAnalysisSteps } from './useAnalysisSteps';

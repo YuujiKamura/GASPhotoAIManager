@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useCallback } from 'react';
-import { PhotoRecord, AppMode, SortPolicy } from './types';
+import { PhotoRecord, AppMode, SortPolicy, AnalysisStep, AnalysisStepId } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 import { fileToBase64 } from './utils/fileHandlers';
@@ -21,6 +21,7 @@ import {
   usePhotoManagement,
   useProjectHandlers,
   usePhotosState,
+  useAnalysisSteps,
 } from './hooks';
 
 // Core components (PreviewViewは主要ビュー)
@@ -69,6 +70,18 @@ export default function App() {
   const fsCacheState = useFsCache(processing.addLog);
   const pending = usePendingState();
 
+  // Analysis Steps Progress
+  const { steps: analysisSteps, startStep, completeStep, updateProgress, skipStep, errorStep, resetSteps } = useAnalysisSteps();
+
+  // Handler for step updates from pipeline
+  const handleStepUpdate = useCallback((id: AnalysisStepId, update: Partial<AnalysisStep>) => {
+    if (update.status === 'running') startStep(id);
+    else if (update.status === 'done') completeStep(id, update.result);
+    else if (update.status === 'skipped') skipStep(id);
+    else if (update.status === 'error') errorStep(id, update.result);
+    if (update.progress !== undefined) updateProgress(id, update.progress, update.subProgress);
+  }, [startStep, completeStep, skipStep, errorStep, updateProgress]);
+
   // Photos State (unified state management with auto-save)
   const photosState = usePhotosState(processing.addLog);
   const { photos, setPhotos, stats, setStats, showPreview, setShowPreview, currentSortPolicy, setCurrentSortPolicy, initialLayout, setInitialLayout, resetStats, updatePhoto, deletePhoto, reorderPhotos, bulkUpdateFields } = photosState;
@@ -84,6 +97,7 @@ export default function App() {
     setShowManualPairing: modals.setShowManualPairing, setShowHistory: modals.setShowHistory, setIsAskingAI: processing.setIsAskingAI,
     initialInstruction: pending.initialInstruction, setInitialInstruction: pending.setInitialInstruction,
     activeInstruction: pending.activeInstruction, setActiveInstruction: pending.setActiveInstruction, txt,
+    onStepUpdate: handleStepUpdate,
   });
 
   // PDF Handlers
@@ -169,9 +183,10 @@ export default function App() {
 
   // 簡素化した解析開始ハンドラ
   const handleStartAnalysis = useCallback((files: File[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => {
+    resetSteps(); // ステップ進捗をリセット
     setCurrentSortPolicy(sortPolicy);
     analysisHandlers.startAnalysisPipeline(files, '', useCache, preInfo);
-  }, [setCurrentSortPolicy, analysisHandlers]);
+  }, [setCurrentSortPolicy, analysisHandlers, resetSteps]);
 
   // 手動ペアリングモード（2枚ペアを選択するUI）
   const handleManualPairing = useCallback((files: File[]) => {
@@ -215,7 +230,7 @@ export default function App() {
         </Suspense>
       ) : (
         <PreviewView
-          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '' }}
+          data={{ lang, photos, stats, appMode, logs: processing.logs, initialLayout, apiKey: apiKeyState.apiKey || '', analysisSteps }}
           state={{ isProcessing: processing.isProcessing, currentStep: processing.currentStep, errorMsg: processing.errorMsg, successMsg: processing.successMsg }}
           photoHandlers={{
             onUpdatePhoto: updatePhoto,
@@ -225,7 +240,7 @@ export default function App() {
           }}
           actionHandlers={{
             onClearLogs: processing.clearLogs,
-            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setPhotos([]); resetStats(); setInitialLayout(3); },
+            onGoHome: () => { analysisHandlers.shouldAbortRef.current = true; setPhotos([]); resetStats(); setInitialLayout(3); resetSteps(); },
             onRefine: () => modals.setShowRefineModal(true),
             onExportExcel: (layout) => generateExcel(photos, appMode, layout),
             onAutoPair: analysisHandlers.handleAutoPair,

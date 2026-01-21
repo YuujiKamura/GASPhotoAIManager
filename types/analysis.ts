@@ -5,6 +5,26 @@
 
 import type { AIAnalysisResult, PhotoCategory } from './photo';
 
+// AI解析ステップの識別子
+export type AnalysisStepId =
+  | 'prepare'    // 画像準備
+  | 'detect'     // 黒板判定
+  | 'analyze'    // AI解析
+  | 'normalize'; // 正規化
+
+// ステップの状態
+export type AnalysisStepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
+
+// 解析ステップの詳細
+export interface AnalysisStep {
+  id: AnalysisStepId;
+  name: string;
+  status: AnalysisStepStatus;
+  result?: string;      // "黒板あり検出", "10枚完了"等
+  progress?: number;    // 0-100 (analyzeステップ用)
+  subProgress?: string; // "(3/10)" 等
+}
+
 // 問題ケース（期待と異なる解析結果を検証用に保存）
 export interface AnalysisIssue {
   id: string;                      // ユニークID
