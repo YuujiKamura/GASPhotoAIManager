@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Settings, MousePointer, Play, MessageCircle, Database, Trash2 } from 'lucide-react';
+import { Check, Settings, MousePointer, Play, MessageCircle, Database, Trash2, Key, AlertCircle } from 'lucide-react';
 import { SortPolicy, SORT_POLICIES } from '../../types';
 import { AVAILABLE_MODELS, ModelType } from '../../services/geminiService';
 import { formatCostJPY } from '../../services/usageTracker';
@@ -281,34 +281,84 @@ interface ActionButtonsProps {
   onCancel: () => void;
   onManualPairing?: (files: File[]) => void;
   onStart: () => void;
+  onOpenSettings?: () => void;
   selectedFiles: File[];
   enabledWorkTypes: string[];
   workType: string;
+  apiKey?: string;
   txt: { cancel: string; manual: string; start: string };
 }
 
+// ボタンが無効な理由を取得
+const getDisabledReasons = (
+  selectedFiles: File[],
+  enabledWorkTypes: string[],
+  workType: string,
+  apiKey?: string
+): string[] => {
+  const reasons: string[] = [];
+  if (!apiKey) reasons.push('APIキー未設定');
+  if (selectedFiles.length === 0) reasons.push('写真未選択');
+  if (enabledWorkTypes.length === 0) reasons.push('工種マスタ未設定');
+  if (!workType) reasons.push('工種未選択');
+  return reasons;
+};
+
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
-  onCancel, onManualPairing, onStart, selectedFiles, enabledWorkTypes, workType, txt
-}) => (
-  <div className="flex gap-2 px-4 py-3 border-t">
-    <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">
-      {txt.cancel}
-    </button>
-    <div className="flex-1" />
-    {onManualPairing && (
-      <button
-        onClick={() => onManualPairing(selectedFiles)}
-        className="px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded flex items-center gap-1"
-      >
-        <MousePointer className="w-4 h-4" /> {txt.manual}
-      </button>
-    )}
-    <button
-      onClick={onStart}
-      disabled={selectedFiles.length === 0 || enabledWorkTypes.length === 0 || !workType}
-      className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded font-bold flex items-center gap-1"
-    >
-      <Play className="w-4 h-4" /> {txt.start}
-    </button>
-  </div>
-);
+  onCancel, onManualPairing, onStart, onOpenSettings, selectedFiles, enabledWorkTypes, workType, apiKey, txt
+}) => {
+  const disabledReasons = getDisabledReasons(selectedFiles, enabledWorkTypes, workType, apiKey);
+  const isDisabled = disabledReasons.length > 0;
+
+  return (
+    <div className="px-4 py-3 border-t space-y-2">
+      {/* API Key Status & Disabled Reasons */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {apiKey ? (
+            <span className="text-xs text-green-600 flex items-center gap-1">
+              <Key className="w-3 h-3" /> APIキー設定済み
+            </span>
+          ) : (
+            <button
+              onClick={onOpenSettings}
+              className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1 underline"
+            >
+              <Key className="w-3 h-3" /> APIキー未設定 - クリックして設定
+            </button>
+          )}
+        </div>
+        {isDisabled && disabledReasons.length > 0 && (
+          <span className="text-xs text-amber-600 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            {disabledReasons.join('、')}
+          </span>
+        )}
+      </div>
+
+      {/* Buttons */}
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">
+          {txt.cancel}
+        </button>
+        <div className="flex-1" />
+        {onManualPairing && (
+          <button
+            onClick={() => onManualPairing(selectedFiles)}
+            className="px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded flex items-center gap-1"
+          >
+            <MousePointer className="w-4 h-4" /> {txt.manual}
+          </button>
+        )}
+        <button
+          onClick={onStart}
+          disabled={isDisabled}
+          className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded font-bold flex items-center gap-1"
+          title={isDisabled ? disabledReasons.join('、') : undefined}
+        >
+          <Play className="w-4 h-4" /> {txt.start}
+        </button>
+      </div>
+    </div>
+  );
+};

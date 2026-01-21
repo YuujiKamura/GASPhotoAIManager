@@ -123,9 +123,11 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           onCancel={onCancel}
           onManualPairing={onManualPairing}
           onStart={handleStart}
+          onOpenSettings={onOpenSettings}
           selectedFiles={state.selectedFiles}
           enabledWorkTypes={state.enabledWorkTypes}
           workType={state.workType}
+          apiKey={apiKey}
           txt={{ cancel: txt.cancel, manual: txt.manual, start: txt.start }}
         />
       </div>
