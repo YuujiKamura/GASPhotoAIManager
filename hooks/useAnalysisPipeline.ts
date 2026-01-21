@@ -70,7 +70,7 @@ export function useAnalysisPipeline(p: Props) {
       for (const f of files) {
         const [date, { base64, mimeType }] = await Promise.all([getPhotoDate(f), processImageForAI(f)]);
         const ca = useCache ? await getCachedAnalysis(f) : null;
-        if (ca) { recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, analysis: { ...ca, station: stationFromPreInfo }, status: 'done', date, fromCache: true }); cached++; }
+        if (ca) { recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, analysis: { ...ca, station: stationFromPreInfo || ca.station }, status: 'done', date, fromCache: true }); cached++; }
         else recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, status: 'pending', date, fromCache: false });
       }
       const sorted = sortPhotosLogical(recs, currentSortPolicy);
@@ -100,7 +100,7 @@ export function useAnalysisPipeline(p: Props) {
                   const analysis: AIAnalysisResult = {
                     ...result.analysis,
                     workType: workTypeFromPreInfo || result.analysis.workType,
-                    station: result.analysis.station || stationFromPreInfo,
+                    station: stationFromPreInfo || result.analysis.station,
                   };
                   logResult(p.fileName, analysis);
                   cacheAnalysis(p, analysis).catch(() => {});
