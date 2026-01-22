@@ -15,6 +15,7 @@ export interface MasterRow {
   variety: string;         // 種別
   detail: string;          // 細別
   remarks: string;         // 備考（最下層）
+  photoCategory: string;   // 写真区分（level5：施工状況写真／安全管理写真 等）
   searchPatterns: string;  // 検索パターン（OCRマッチング用）
 }
 
@@ -24,6 +25,7 @@ export interface ChainRecord {
   variety: string;
   subphase: string;  // detail
   remarks: string;
+  photoCategory: string;
   patterns: string;
 }
 
@@ -74,7 +76,8 @@ const parseCSV = (csvText: string): MasterRow[] => {
       variety: fields[3] || '',
       detail: fields[4] || '',
       remarks: fields[5] || '',
-      searchPatterns: fields[6] || '',
+      photoCategory: fields[6] || fields[1] || '',
+      searchPatterns: fields[7] || '',
     };
   }).filter(row => row.workType); // workTypeが空の行は除外
 };
@@ -219,6 +222,7 @@ export const toChainRecordsJson = (rows: MasterRow[]): ChainRecord[] => {
     variety: row.variety,
     subphase: row.detail,
     remarks: row.remarks,
+    photoCategory: row.photoCategory,
     patterns: row.searchPatterns,
   }));
 };

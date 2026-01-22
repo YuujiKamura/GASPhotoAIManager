@@ -7,6 +7,7 @@
 import { AppMode } from "../../types";
 import { RuleSettings, rulesToPromptText, loadRuleSettings } from "../../utils/analysisRules";
 import { ChainRecord } from "../../utils/masterCsvParser";
+import type { PhotoCategory } from "../../types/photo";
 
 export interface SystemInstructionOptions {
   appMode: AppMode;
@@ -19,9 +20,19 @@ export interface SystemInstructionOptions {
  * chainRecords を階層表示にフォーマット
  * workType → variety → detail → remarks の関係を明示
  */
+const PHOTO_CATEGORY_LIST: PhotoCategory[] = [
+  "着手前及び完成写真",
+  "施工状況写真",
+  "安全管理写真",
+  "使用材料写真",
+  "品質管理写真",
+  "出来形管理写真",
+  "災害写真",
+  "事故写真",
+  "その他",
+];
 const formatChainRecordsHierarchy = (records: ChainRecord[]): string => {
-  // workType でグループ化
-  const byWorkType = new Map<string, Map<string, Map<string, Set<string>>>>();
+  const byWorkType = new Map<string, Map<string, Map<string, Map<string, Set<string>>>>>();
 
   for (const r of records) {
     if (!byWorkType.has(r.workType)) {
@@ -36,27 +47,36 @@ const formatChainRecordsHierarchy = (records: ChainRecord[]): string => {
 
     const detailKey = r.subphase || "(none)";
     if (!detailMap.has(detailKey)) {
-      detailMap.set(detailKey, new Set());
+      detailMap.set(detailKey, new Map());
     }
-    if (r.remarks) {
-      detailMap.get(detailKey)!.add(r.remarks);
+    const remarksMap = detailMap.get(detailKey)!;
+
+    const remarksKey = r.remarks || "(none)";
+    if (!remarksMap.has(remarksKey)) {
+      remarksMap.set(remarksKey, new Set());
+    }
+    if (r.photoCategory) {
+      remarksMap.get(remarksKey)!.add(r.photoCategory);
     }
   }
 
-  // 階層形式で出力
   const lines: string[] = [];
   for (const [workType, varietyMap] of byWorkType) {
     lines.push(`【工種】${workType}`);
     for (const [variety, detailMap] of varietyMap) {
       lines.push(`  └─ 種別: ${variety}`);
-      for (const [detail, remarksSet] of detailMap) {
+      for (const [detail, remarksMap] of detailMap) {
         if (detail !== "(none)") {
           lines.push(`      └─ 細別: ${detail}`);
         }
-        if (remarksSet.size > 0) {
-          const remarksList = Array.from(remarksSet).slice(0, 5).join(", ");
-          const more = remarksSet.size > 5 ? ` ...他${remarksSet.size - 5}件` : "";
-          lines.push(`          備考: ${remarksList}${more}`);
+        for (const [remarks, categories] of remarksMap) {
+          if (remarks && remarks !== "(none)") {
+            lines.push(`          └─ 備考: ${remarks}`);
+          }
+          if (categories.size > 0) {
+            const categoryList = Array.from(categories).join(", ");
+            lines.push(`              └─ 写真区分: ${categoryList}`);
+          }
         }
       }
     }
@@ -112,6 +132,7 @@ The master data JSON has this structure. "直接工事費" is the root and shoul
             └─ [種別 variety] (e.g., 舗装打換え工, 未舗装部舗装工)
                  └─ [細別 detail] (e.g., 表層工, 上層路盤工, 舗装版破砕)
                       └─ [備考 remarks] (e.g., 舗設状況, 転圧状況, 着手前)
+                           └─ [写真区分 photoCategory] (e.g., 施工状況写真, 安全管理写真)
 \`\`\`
 
 **Output Mapping**:
@@ -119,6 +140,7 @@ The master data JSON has this structure. "直接工事費" is the root and shoul
 *   **variety**: The key under workType (e.g., "舗装打換え工").
 *   **detail**: The key under variety (e.g., "表層工", "舗装版破砕").
 *   **remarks**: The leaf key or alias (e.g., "舗設状況", "着手前").
+*   **photoCategory**: The photo category tied to the remarks (e.g., "施工状況写真", "安全管理写真").
 
 **CRITICAL**: Do NOT output "直接工事費", "施工状況写真", "出来形管理写真" etc. as workType. These are NOT workTypes.
 
@@ -231,6 +253,7 @@ Traverse the hierarchy directly:
 
 **STEP 3: Remarks (備考) - remarksCategory のみ出力**
 *   **remarksCategory**: Select from the enum (e.g., "到着温度", "転圧状況", "着手前")
+*   **photoCategory**: Output the photo category that corresponds to the chosen remarks (e.g., "施工状況写真", "安全管理写真")
 *   **IMPORTANT**: 備考には測定値を含めない。測定値はすべて measurements フィールドに出力する。
 
 **MATCHING RULE for remarksCategory**:
@@ -312,7 +335,7 @@ Rule:
 
 **OUTPUT FORMAT**:
 JSON only.
-keys: workType, variety, detail, station, remarksCategory, measurements, description, hasBoard, detectedText.
+keys: workType, variety, detail, station, remarksCategory, photoCategory, measurements, description, hasBoard, detectedText.
 Note: remarksCategory is from the enum, measurements contains all numerical values.
 
 ${(() => {
@@ -345,13 +368,14 @@ MGS2の無線通信のように、簡潔でプロフェッショナルに対話�
 必ず以下のJSON形式で返答すること:
 {
   "response": "ユーザーへの返答メッセージ",
-  "analysis": {
-    "fileName": "ファイル名",
-    "workType": "工種",
-    "variety": "種別",
-    "detail": "細別",
-    "station": "測点",
-    "remarks": "備考",
+    "analysis": {
+      "fileName": "ファイル名",
+      "workType": "工種",
+      "variety": "種別",
+      "detail": "細別",
+      "photoCategory": "写真区分",
+      "station": "測点",
+      "remarks": "備考",
     "measurements": "測定値",
     "description": "記事",
     "hasBoard": true/false,
@@ -394,3 +418,5 @@ export const REMARKS_CATEGORIES = [
   // 該当なしの場合
   "その他"
 ];
+
+export const PHOTO_CATEGORIES = PHOTO_CATEGORY_LIST;

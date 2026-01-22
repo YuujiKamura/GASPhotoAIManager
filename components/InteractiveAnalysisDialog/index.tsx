@@ -129,6 +129,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                   <InfoField label={txt.workType} value={analysis.workType} />
                   <InfoField label={txt.variety} value={analysis.variety || ''} />
                   <InfoField label={txt.detail} value={analysis.detail || ''} />
+                  <InfoField label={txt.photoCategory} value={analysis.photoCategory || ''} />
                   <InfoField label={txt.station} value={analysis.station} />
                   <InfoField label={txt.remarks} value={analysis.remarks} />
                   {analysis.measurements && (

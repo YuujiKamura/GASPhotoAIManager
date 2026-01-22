@@ -97,6 +97,7 @@ export const TRANSLATIONS = {
     station: '測点',
     remarks: '備考',
     measurements: '測定値',
+    photoCategory: '写真区分',
   },
   en: {
     title: 'Interactive Analysis',
@@ -113,5 +114,6 @@ export const TRANSLATIONS = {
     station: 'Station',
     remarks: 'Remarks',
     measurements: 'Measurements',
+    photoCategory: 'Photo Category',
   },
 };

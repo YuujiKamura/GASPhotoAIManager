@@ -7,7 +7,7 @@
 import { Type, Schema } from "@google/genai";
 import { AnalysisExample, FieldChange, ChangeStage, AIAnalysisResult, PhotoRecord } from "../../types";
 import { detectUnknownTerms, validateTemperatureRemarks, isQualityManagementPhoto } from "../../utils/masterCsvParser";
-import { REMARKS_CATEGORIES } from './systemPrompts';
+import { REMARKS_CATEGORIES, PHOTO_CATEGORIES } from './systemPrompts';
 
 // ============================================
 // 中断処理の共通インターフェース
@@ -132,6 +132,11 @@ export const createBatchAnalysisSchema = (workTypes?: string[]): Schema => ({
         : { type: Type.STRING },
       variety: { type: Type.STRING },
       detail: { type: Type.STRING },
+      photoCategory: {
+        type: Type.STRING,
+        enum: PHOTO_CATEGORIES,
+        description: "写真区分（施工状況写真、安全管理写真など）"
+      },
       station: { type: Type.STRING },
       remarksCategory: {
         type: Type.STRING,
@@ -147,7 +152,7 @@ export const createBatchAnalysisSchema = (workTypes?: string[]): Schema => ({
       detectedText: { type: Type.STRING },
       reasoning: { type: Type.STRING }
     },
-    required: ["fileName", "workType", "station", "description", "remarksCategory"]
+    required: ["fileName", "workType", "station", "description", "remarksCategory", "photoCategory"]
   }
 });
 
@@ -182,6 +187,7 @@ export const mapToAnalysisResults = (parsed: any[]): AIAnalysisResult[] => {
       variety: item.variety || "",
       detail: item.detail || "",
       station: item.station || "",
+      photoCategory: item.photoCategory || "",
       remarks: remarksCategory,
       remarksCategory: remarksCategory,
       remarksValue: "",
