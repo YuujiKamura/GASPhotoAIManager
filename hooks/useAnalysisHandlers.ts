@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { PhotoRecord, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId } from '../types';
 import { NormalizationCorrection } from '../services/geminiService';
+import { AnalysisBackend } from '../services/analysisBackend';
 import { runAIAgent } from '../services/aiAgentService';
 import { OriginalData } from '../components/NormalizationPreviewModal';
 import { useManualPairingHandlers } from './useManualPairingHandlers';
@@ -20,10 +21,11 @@ interface Props {
   setShowHistory: (v: boolean) => void; setIsAskingAI: (v: boolean) => void; initialInstruction: string;
   setInitialInstruction: (v: string) => void; activeInstruction: string; setActiveInstruction: (v: string) => void; txt: any;
   onStepUpdate?: (id: AnalysisStepId, update: Partial<AnalysisStep>) => void;
+  backend: AnalysisBackend | null;
 }
 
 export function useAnalysisHandlers(p: Props) {
-  const { apiKey, photos, setPhotos, setStats, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setManualPairingPhotos, setShowManualPairing, setShowHistory, setIsAskingAI, initialInstruction, setInitialInstruction, activeInstruction, setActiveInstruction, txt, onStepUpdate } = p;
+  const { apiKey, photos, setPhotos, setStats, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setManualPairingPhotos, setShowManualPairing, setShowHistory, setIsAskingAI, initialInstruction, setInitialInstruction, activeInstruction, setActiveInstruction, txt, onStepUpdate, backend } = p;
 
   // 分離したフックを使用
   const { handleStartManualPairing, handleManualPairingComplete } = useManualPairingHandlers({
@@ -35,19 +37,24 @@ export function useAnalysisHandlers(p: Props) {
   });
 
   const { abortRef, startAnalysisPipeline, logResult } = useAnalysisPipeline({
-    apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setInitialInstruction, setActiveInstruction, txt, onStepUpdate
+    apiKey, appMode, lang, currentSortPolicy, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setStats, setShowPreview, setInitialLayout, setShowNormalizationModal, setNormalizationProposals, setNormalizationOriginals, setPhotosForNormalization, setInitialInstruction, setActiveInstruction, txt, onStepUpdate, backend
   });
 
   const { handleAutoPair, handleSmartSort, handleRefineAnalysis } = usePairingHandlers({
-    apiKey, photos, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, abortRef, txt
+    apiKey, photos, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, abortRef, txt, backend
   });
 
   const handleAskAI = useCallback(async (prompt: string) => {
+    if (backend !== 'gemini') {
+      const message = 'AIエージェントはGeminiモードでのみ利用できます。';
+      addLog(message, 'warning');
+      throw new Error(message);
+    }
     setIsAskingAI(true);
     try { addLog(`[AIエージェント] ${prompt.slice(0, 50)}...`, 'info'); const r = await runAIAgent(prompt, l => addLog(l, 'info')); addLog('[AIエージェント] 完了', 'success'); return r; }
     catch (e: any) { addLog(`[AIエージェント] エラー: ${e.message}`, 'error'); throw e; }
     finally { setIsAskingAI(false); }
-  }, [addLog, setIsAskingAI]);
+  }, [addLog, setIsAskingAI, backend]);
 
   return { shouldAbortRef: abortRef, handleAskAI, handleAutoPair, handleSmartSort, handleStartManualPairing, handleManualPairingComplete, handleLoadHistory, startAnalysisPipeline, handleRefineAnalysis, logIndividualResult: logResult };
 }

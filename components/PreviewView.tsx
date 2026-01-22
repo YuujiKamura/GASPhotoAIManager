@@ -71,6 +71,7 @@ interface ActionHandlers {
   onOpenGitHubSync?: () => void;
   // Upload/System handlers (from UploadView)
   onOpenSettings?: () => void;
+  onSelectBackend?: () => void;
   onOpenHealthDashboard?: () => void;
   onOpenAIFramework?: () => void;
   onPdfLoad?: () => void;
@@ -96,7 +97,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   data: { lang, photos, stats, appMode, logs, initialLayout = 3 as const, apiKey, analysisSteps, analysisMode, pauseState, pendingUploadFiles },
   state: { isProcessing, currentStep, errorMsg, successMsg },
   photoHandlers: { onUpdatePhoto, onDeletePhoto, onReanalyzePhoto, onReorderPhotos },
-  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive, onFilesSelected, onClearPendingFiles },
+  actionHandlers: { onClearLogs, onGoHome, onRefine, onExportExcel, onAutoPair, onManualPair, onSendInstruction, onAbort, onOpenMasterEditor, onOpenBulkEditor, onApplyAliases, onOpenGitHubSync, onOpenSettings, onSelectBackend, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache, onStartProcessing, onManualPairing, onTestOneInteractive, onFilesSelected, onClearPendingFiles },
   pauseResumeHandlers
 }) => {
   const txt = TRANS[lang];
@@ -344,6 +345,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               onImportJson={onReorderPhotos ? handleImportJson : undefined}
               // System actions
               onOpenSettings={onOpenSettings}
+              onSelectBackend={onSelectBackend}
               onOpenHealthDashboard={onOpenHealthDashboard}
               onOpenAIFramework={onOpenAIFramework}
               onPdfLoad={onPdfLoad}

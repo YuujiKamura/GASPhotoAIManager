@@ -4,6 +4,7 @@ import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 import { fileToBase64 } from './utils/fileHandlers';
 import { checkServerHealth, SERVER_NOT_RUNNING_MESSAGE } from './services/localApiService';
+import { useAnalysisBackend } from './hooks/useAnalysisBackend';
 
 // Hooks
 import {
@@ -56,6 +57,7 @@ const LoadingFallback = () => (
 export default function App() {
   // Server Connection State (null = checking, true = connected, false = not connected)
   const [serverConnected, setServerConnected] = useState<boolean | null>(null);
+  const { backend, setBackend, resetBackend } = useAnalysisBackend();
 
   // Language & App Mode
   const [lang] = useState<'en' | 'ja'>(() => navigator.language.startsWith('en') ? 'en' : 'ja');
@@ -64,12 +66,20 @@ export default function App() {
 
   // Check server connection on mount
   useEffect(() => {
-    const checkConnection = async () => {
-      const isHealthy = await checkServerHealth();
-      setServerConnected(isHealthy);
-    };
-    checkConnection();
-  }, []);
+    if (backend === 'local') {
+      const checkConnection = async () => {
+        const isHealthy = await checkServerHealth();
+        setServerConnected(isHealthy);
+      };
+      checkConnection();
+      return;
+    }
+    if (backend === 'gemini') {
+      setServerConnected(true);
+    } else {
+      setServerConnected(null);
+    }
+  }, [backend]);
 
   // Interactive Analysis Target
   const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
@@ -79,7 +89,7 @@ export default function App() {
 
   // Core Hooks
   const apiKeyState = useApiKey();
-  const modals = useAppModals();
+  const modals = useAppModals(backend);
   const processing = useProcessingState();
   const normalization = useNormalizationFlow();
   const fsCacheState = useFsCache(processing.addLog);
@@ -116,6 +126,7 @@ export default function App() {
     setShowManualPairing: modals.setShowManualPairing, setShowHistory: modals.setShowHistory, setIsAskingAI: processing.setIsAskingAI,
     initialInstruction: pending.initialInstruction, setInitialInstruction: pending.setInitialInstruction,
     activeInstruction: pending.activeInstruction, setActiveInstruction: pending.setActiveInstruction, txt,
+    backend,
     onStepUpdate: handleStepUpdate,
   });
 
@@ -208,48 +219,65 @@ export default function App() {
   }, [analysisHandlers]);
 
   // Render
-
-  // Server connection check (blocks entire app until connected)
-  if (serverConnected === null) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">サーバー接続を確認中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (serverConnected === false) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-lg">
-          <div className="text-center mb-6">
-            <div className="text-red-500 text-5xl mb-4">⚠️</div>
-            <h1 className="text-xl font-bold text-gray-800 mb-2">サーバー未接続</h1>
-            <p className="text-gray-600">ローカルAPIサーバーに接続できません。</p>
-          </div>
-          <div className="bg-gray-50 rounded p-4 mb-6">
-            <p className="text-sm text-gray-700 whitespace-pre-wrap font-mono">{SERVER_NOT_RUNNING_MESSAGE}</p>
-          </div>
-          <button
-            onClick={async () => {
-              setServerConnected(null);
-              const isHealthy = await checkServerHealth();
-              setServerConnected(isHealthy);
-            }}
-            className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            再接続を試す
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
+      {backend === null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
+            <h1 className="text-lg font-bold text-gray-800 mb-2">解析エンジンを選択</h1>
+            <p className="text-sm text-gray-600 mb-4">
+              起動時に解析の実行先を選んでください。後からいつでも変更できます。
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => setBackend('gemini')}
+                className="w-full py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                Gemini API（クラウド）
+              </button>
+              <button
+                onClick={() => setBackend('local')}
+                className="w-full py-3 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors"
+              >
+                ローカルAPI（Claude Code）
+              </button>
+              <button
+                onClick={() => setBackend('none')}
+                className="w-full py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                今は選ばない
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {backend === 'local' && serverConnected !== true && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-3 text-sm">
+            {serverConnected === null ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+                <span>ローカルAPIサーバーの接続を確認中...</span>
+              </>
+            ) : (
+              <>
+                <span className="font-medium">ローカルAPIサーバー未接続</span>
+                <span className="text-amber-800">{SERVER_NOT_RUNNING_MESSAGE}</span>
+                <button
+                  onClick={async () => {
+                    setServerConnected(null);
+                    const isHealthy = await checkServerHealth();
+                    setServerConnected(isHealthy);
+                  }}
+                  className="px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                >
+                  再接続
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {modals.showPdfLoadDialog && (
         <Suspense fallback={<LoadingFallback />}>
           <PdfLoadDialog
@@ -307,6 +335,7 @@ export default function App() {
             onOpenGitHubSync: () => modals.setShowGitHubSync(true),
             // System handlers (from UploadView)
             onOpenSettings: () => modals.setShowApiKeySetup(true),
+            onSelectBackend: () => resetBackend(),
             onOpenHealthDashboard: () => modals.setShowHealthDashboard(true),
             onOpenAIFramework: () => modals.setShowAIFramework(true),
             onPdfLoad: () => modals.setShowPdfLoadDialog(true),
@@ -380,7 +409,7 @@ export default function App() {
       )}
 
       <Suspense fallback={<LoadingFallback />}>
-        <InteractiveAnalysisDialog photo={interactiveAnalysisTarget} apiKey={apiKeyState.apiKey || ''} lang={lang}
+        <InteractiveAnalysisDialog photo={interactiveAnalysisTarget} apiKey={apiKeyState.apiKey || ''} backend={backend} lang={lang}
           onConfirm={projectHandlers.handleInteractiveAnalysisConfirm} onClose={() => setInteractiveAnalysisTarget(null)} />
       </Suspense>
     </>

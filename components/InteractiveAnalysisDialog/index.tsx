@@ -3,11 +3,13 @@ import { createPortal } from 'react-dom';
 import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain } from 'lucide-react';
 import { AIAnalysisResult, PhotoRecord } from '../../types';
 import { useInteractiveAnalysis } from './useInteractiveAnalysis';
+import { AnalysisBackend } from '../../services/analysisBackend';
 import { TRANSLATIONS, DialogChoice } from './types';
 
 interface InteractiveAnalysisDialogProps {
   photo: PhotoRecord | null;
   apiKey: string;
+  backend: AnalysisBackend | null;
   lang?: 'ja' | 'en';
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void;
   onClose: () => void;
@@ -16,6 +18,7 @@ interface InteractiveAnalysisDialogProps {
 export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps> = ({
   photo,
   apiKey,
+  backend,
   lang = 'ja',
   onConfirm,
   onClose,
@@ -32,7 +35,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
     acceptAnalysis,
     setInputText,
     toggleTextInput,
-  } = useInteractiveAnalysis(apiKey, onConfirm);
+  } = useInteractiveAnalysis(apiKey, backend, onConfirm);
 
   // 写真が設定されたらダイアログを開く
   useEffect(() => {

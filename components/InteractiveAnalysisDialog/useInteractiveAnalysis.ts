@@ -9,9 +9,11 @@ import {
   INITIAL_STATE,
 } from './types';
 import { analyzePhotoInteractive } from '../../services/geminiService';
+import { AnalysisBackend } from '../../services/analysisBackend';
 
 export const useInteractiveAnalysis = (
   apiKey: string,
+  backend: AnalysisBackend | null,
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void,
   onLog?: (message: string, type?: string) => void
 ): UseInteractiveAnalysisReturn => {
@@ -21,6 +23,16 @@ export const useInteractiveAnalysis = (
 
   // ダイアログを開く
   const openDialog = useCallback(async (photo: PhotoRecord) => {
+    if (backend !== 'gemini') {
+      setState(prev => ({
+        ...prev,
+        isOpen: true,
+        targetPhoto: photo,
+        isProcessing: false,
+        error: '対話型解析はGeminiモードでのみ利用できます。',
+      }));
+      return;
+    }
     abortRef.current = false;
     conversationRef.current = [];
 
@@ -86,7 +98,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [apiKey, onConfirm]);
+  }, [apiKey, onConfirm, backend]);
 
   // ダイアログを閉じる
   const closeDialog = useCallback(() => {
@@ -98,6 +110,15 @@ export const useInteractiveAnalysis = (
   // メッセージ送信
   const sendMessage = useCallback(async (text: string) => {
     if (!state.targetPhoto || !text.trim()) return;
+    if (backend !== 'gemini') {
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
+        isStreaming: false,
+        error: '対話型解析はGeminiモードでのみ利用できます。',
+      }));
+      return;
+    }
 
     // ユーザーメッセージを追加
     const userMessage: DialogMessage = {
@@ -169,7 +190,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [state.targetPhoto, apiKey, onConfirm]);
+  }, [state.targetPhoto, apiKey, onConfirm, backend]);
 
   // 選択肢を選択
   const selectChoice = useCallback(async (choice: DialogChoice) => {

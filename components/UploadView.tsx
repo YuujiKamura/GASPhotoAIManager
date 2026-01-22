@@ -1,7 +1,7 @@
 import React from 'react';
 import { TRANS } from '../utils/translations';
 import { PhotoRecord, AppMode, SortPolicy, LogEntry } from '../types';
-import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity, Brain } from 'lucide-react';
+import { Upload, FileUp, HardHat, Trash2, Settings, History, FileText, FolderTree, MoreVertical, Activity, Brain, Server } from 'lucide-react';
 import { getSelectedModel } from '../services/geminiService';
 import { useUploadViewState } from '../hooks/useUploadViewState';
 import ConsolePanel from './ConsolePanel';
@@ -39,6 +39,7 @@ interface FeatureHandlers {
   onClearCache?: () => void;
   onShowPreview?: () => void;
   onOpenSettings?: () => void;
+  onSelectBackend?: () => void;
   onManualPairing?: (files: File[]) => void;
   onShowHistory?: () => void;
   onOpenMasterEditor?: () => void;
@@ -77,7 +78,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   data: { lang, photos, appMode, apiKey, logs },
   state: { isProcessing, isAskingAI },
   coreHandlers: { setAppMode, onStartProcessing, onResume, onExportJson, onImportJson },
-  featureHandlers: { onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onManualPairing, onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onOpenAIFramework, onAskAI, onClearLogs, onTestOneInteractive }
+  featureHandlers: { onPdfButtonClick, onClearCache, onShowPreview, onOpenSettings, onSelectBackend, onManualPairing, onShowHistory, onOpenMasterEditor, onOpenHealthDashboard, onOpenAIFramework, onAskAI, onClearLogs, onTestOneInteractive }
 }) => {
   const txt = TRANS[lang];
   const { refs, state: viewState, handlers } = useUploadViewState(isProcessing);
@@ -89,6 +90,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const menuItems = [
+    ...(onSelectBackend ? [{ label: '解析エンジン選択', icon: <Server className="w-4 h-4" />, onClick: onSelectBackend }] : []),
     ...(onOpenSettings ? [{ label: apiKey ? `API設定 (${getSelectedModel()})` : 'API設定 (未設定)', icon: <Settings className="w-4 h-4" />, onClick: onOpenSettings, warning: !apiKey }] : []),
     ...(onOpenMasterEditor ? [{ label: 'マスタ管理', icon: <FolderTree className="w-4 h-4" />, onClick: onOpenMasterEditor }] : []),
     { divider: true },

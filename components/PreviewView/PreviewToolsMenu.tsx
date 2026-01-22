@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
-import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2, Plus, ImagePlus } from 'lucide-react';
+import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2, Plus, ImagePlus, Server } from 'lucide-react';
 
 // Grouped action props
 interface PairingActions {
@@ -28,6 +28,7 @@ interface DataActions {
 
 interface SystemActions {
   onOpenSettings?: () => void;
+  onSelectBackend?: () => void;
   onOpenHealthDashboard?: () => void;
   onOpenAIFramework?: () => void;
   onPdfLoad?: () => void;
@@ -65,6 +66,7 @@ export interface LegacyPreviewToolsMenuProps {
   onImportJson?: () => void;
   // System actions (from UploadView)
   onOpenSettings?: () => void;
+  onSelectBackend?: () => void;
   onOpenHealthDashboard?: () => void;
   onOpenAIFramework?: () => void;
   onPdfLoad?: () => void;
@@ -228,6 +230,14 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
       label: { ja: 'システム', en: 'System' },
       items: [
         {
+          icon: <Server className="w-4 h-4 text-blue-300" />,
+          hoverBg: 'hover:bg-blue-600',
+          label: { ja: '解析エンジン選択', en: 'Select Backend' },
+          title: { ja: '解析エンジンを選び直す', en: 'Choose analysis backend' },
+          onClick: () => { systemActions.onSelectBackend?.(); setShowMenu(false); },
+          show: !!systemActions.onSelectBackend
+        },
+        {
           icon: <Settings className="w-4 h-4 text-gray-400" />,
           hoverBg: 'hover:bg-gray-600',
           label: { ja: 'API設定', en: 'API Settings' },
@@ -322,6 +332,7 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
   onImportJson,
   // System actions
   onOpenSettings,
+  onSelectBackend,
   onOpenHealthDashboard,
   onOpenAIFramework,
   onPdfLoad,
@@ -334,7 +345,7 @@ const PreviewToolsMenu: React.FC<LegacyPreviewToolsMenuProps> = ({
     editActions={{ onEnterReorderMode, onRefine, onOpenBulkEditor }}
     settingsActions={{ onShowHistory, onOpenMasterEditor, onApplyAliases, onOpenGitHubSync }}
     dataActions={{ onNewSession, onUploadPhotos, onExportJson, onImportJson }}
-    systemActions={{ onOpenSettings, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache }}
+    systemActions={{ onOpenSettings, onSelectBackend, onOpenHealthDashboard, onOpenAIFramework, onPdfLoad, onClearCache }}
   />
 );
 

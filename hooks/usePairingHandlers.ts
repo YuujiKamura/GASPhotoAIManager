@@ -5,6 +5,7 @@ import { cacheAnalysis } from '../utils/storage';
 import { loadRuleSettings } from '../utils/analysisRules';
 import { extractLocationName } from '../utils/locationUtils';
 import { sortPhotosLogical, normalizeStationName, arrangePairsStrictly } from '../utils/sortingUtils';
+import { AnalysisBackend } from '../services/analysisBackend';
 
 const PARALLEL = 2;
 
@@ -37,12 +38,17 @@ interface Props {
   setActiveInstruction: (v: string) => void;
   abortRef: React.MutableRefObject<boolean>;
   txt: any;
+  backend: AnalysisBackend | null;
 }
 
 export function usePairingHandlers(p: Props) {
-  const { apiKey, photos, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, abortRef, txt } = p;
+  const { apiKey, photos, appMode, lang, currentSortPolicy, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, abortRef, txt, backend } = p;
 
   const handleAutoPair = useCallback(async () => {
+    if (backend !== 'gemini') {
+      setErrorMsg('自動ペアリングはGeminiモードでのみ利用できます。');
+      return;
+    }
     if (!apiKey) { alert(txt.permissionError); return; }
     setIsProcessing(true); setCurrentStep(txt.pairingProcessing);
     try {
@@ -70,11 +76,15 @@ export function usePairingHandlers(p: Props) {
       setSuccessMsg(lang === 'ja' ? `${pairCount}組の着手前-完了ペア${omittedCount > 0 ? `（${omittedCount}枚除外）` : ''}` : `${pairCount} pairs${omittedCount > 0 ? ` (${omittedCount} omitted)` : ''}`);
     } catch (e: any) { setErrorMsg("Pairing failed: " + e.message); }
     finally { setIsProcessing(false); setCurrentStep(""); }
-  }, [apiKey, photos, setPhotos, lang, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, abortRef, txt]);
+  }, [apiKey, photos, setPhotos, lang, addLog, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, abortRef, txt, backend]);
 
   const handleSmartSort = useCallback(() => { setPhotos(sortPhotosLogical([...photos], currentSortPolicy)); setSuccessMsg(lang === 'ja' ? "測点・シーン順に並び替え" : "Sorted"); }, [photos, setPhotos, currentSortPolicy, lang, setSuccessMsg]);
 
   const handleRefineAnalysis = useCallback(async (inst: string, bs: number) => {
+    if (backend !== 'gemini') {
+      setErrorMsg('再解析/絞り込みはGeminiモードでのみ利用できます。');
+      return;
+    }
     setIsProcessing(true); setCurrentStep("Refining..."); if (inst && inst !== "__REANALYZE__") setActiveInstruction(inst);
     try {
       const all = inst === "__REANALYZE__" || /全体|すべて|全件|全部|all\s*(photos?)?|re-?analyze\s*all/i.test(inst);
@@ -91,7 +101,7 @@ export function usePairingHandlers(p: Props) {
       setPhotos(prev => prev.map(x => { const u = fin.find(y => y.fileName === x.fileName); if (u) return u; if (hasLoc && loc && x.analysis) return { ...x, analysis: { ...x.analysis, station: loc } }; return x; }));
       setSuccessMsg(`Updated ${fin.length}${hasLoc ? ` (${loc})` : ''}`);
     } catch (e: any) { setErrorMsg("Refine: " + e.message); } finally { abortRef.current = false; setIsProcessing(false); setCurrentStep(""); }
-  }, [apiKey, photos, appMode, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, abortRef, txt]);
+  }, [apiKey, photos, appMode, addLog, logResult, setIsProcessing, setCurrentStep, setErrorMsg, setSuccessMsg, setPhotos, setActiveInstruction, abortRef, txt, backend]);
 
   return { handleAutoPair, handleSmartSort, handleRefineAnalysis };
 }
