@@ -95,7 +95,9 @@ export const loadMasterCsv = async (): Promise<MasterRow[]> => {
 
   cachePromise = (async () => {
     try {
-      const response = await fetch('/master/construction_hierarchy.csv');
+      const baseUrl = import.meta.env.BASE_URL || '/';
+      const masterUrl = new URL('master/construction_hierarchy.csv', `${window.location.origin}${baseUrl}`).toString();
+      const response = await fetch(masterUrl);
       if (!response.ok) {
         throw new Error(`Failed to load master CSV: ${response.status}`);
       }
