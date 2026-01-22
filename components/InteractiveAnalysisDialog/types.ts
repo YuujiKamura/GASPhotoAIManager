@@ -28,6 +28,7 @@ export interface InteractiveAnalysisState {
   currentChoices: DialogChoice[];
   isStreaming: boolean;
   streamingText: string;
+  rawResponse: string;
 
   // 解析結果
   currentAnalysis: AIAnalysisResult | null;
@@ -71,6 +72,7 @@ export const INITIAL_STATE: InteractiveAnalysisState = {
   currentChoices: [],
   isStreaming: false,
   streamingText: '',
+  rawResponse: '',
   currentAnalysis: null,
   isProcessing: false,
   error: null,

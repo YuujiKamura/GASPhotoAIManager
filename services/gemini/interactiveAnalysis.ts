@@ -26,6 +26,7 @@ export interface InteractiveMessage {
 
 export interface InteractiveAnalysisResult {
   response: string;
+  rawResponse: string;
   analysis: AIAnalysisResult | null;
 }
 
@@ -192,12 +193,14 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
           // それでも失敗したら生レスポンスを返す
           return {
             response: fullText || '解析を実行中...',
+            rawResponse: fullText || '',
             analysis: null,
           };
         }
       } else {
         return {
           response: fullText || '解析を実行中...',
+          rawResponse: fullText || '',
           analysis: null,
         };
       }
@@ -233,6 +236,7 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
 
     return {
       response: responseText,
+      rawResponse: fullText,
       analysis,
     };
   } catch (error: any) {

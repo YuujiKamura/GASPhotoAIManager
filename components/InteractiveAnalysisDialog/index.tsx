@@ -140,6 +140,12 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                       <div className="text-gray-300 text-xs whitespace-pre-wrap">{analysis.detectedText}</div>
                     </div>
                   )}
+                  {state.rawResponse && (
+                    <div className="mt-2 pt-2 border-t border-gray-600">
+                      <div className="text-gray-500 text-xs mb-1">Gemini回答（生）:</div>
+                      <div className="text-gray-200 text-xs whitespace-pre-wrap">{state.rawResponse}</div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-gray-500 text-sm">{txt.noAnalysis}</div>
