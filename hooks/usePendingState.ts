@@ -1,14 +1,13 @@
 import { useState, useCallback } from 'react';
-import { PhotoRecord } from '../types';
-
-type PendingFile = { file: File; date: number };
+import { PhotoRecord, ProcessedFile } from '../types';
 
 /**
  * ペンディング状態（ファイル選択・指示など）を管理するカスタムフック
  */
 export function usePendingState() {
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[] | null>(null);
-  const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<File[] | null>(null);
+  // 30枚超過時の選択用（すでにProcessedFileに変換済み）
+  const [pendingFiles, setPendingFiles] = useState<ProcessedFile[] | null>(null);
+  const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<ProcessedFile[] | null>(null);
   const [pendingInstruction, setPendingInstruction] = useState<string>("");
   const [pendingUseCache, setPendingUseCache] = useState<boolean>(true);
   const [manualPairingPhotos, setManualPairingPhotos] = useState<PhotoRecord[]>([]);

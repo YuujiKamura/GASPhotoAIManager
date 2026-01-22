@@ -1,6 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId, PostProcessType } from '../types';
-import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
+import { PhotoRecord, ProcessedFile, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId, PostProcessType } from '../types';
 import { analyzePhotoBatch, getNormalizationProposals, getSelectedModel, NormalizationCorrection } from '../services/geminiService';
 import { AnalysisBackend } from '../services/analysisBackend';
 import { getCachedAnalysis, cacheAnalysis, saveAnalysisHistory } from '../utils/storage';
@@ -60,7 +59,7 @@ export function useAnalysisPipeline(p: Props) {
     addLog([`📸 ${fn}`, r.workType && `工種: ${r.workType}`, r.variety && `種別: ${r.variety}`, r.detail && `細別: ${r.detail}`, r.station && `測点: ${r.station}`, r.remarks && `備考: ${r.remarks}`].filter(Boolean).join(' | '), 'success', r);
   }, [addLog]);
 
-  const startAnalysisPipeline = useCallback(async (files: File[], inst: string, useCache: boolean, preInfo?: PreAnalysisInfo) => {
+  const startAnalysisPipeline = useCallback(async (files: ProcessedFile[], inst: string, useCache: boolean, preInfo?: PreAnalysisInfo) => {
     setIsProcessing(true); abortRef.current = false; setErrorMsg(null); setSuccessMsg(null); setInitialInstruction(inst); setActiveInstruction(inst);
     // preInfoから測点情報を抽出（指定があればそちらを優先）
     const stationFromPreInfo = preInfo?.station || extractLocationName(inst);
@@ -74,11 +73,11 @@ export function useAnalysisPipeline(p: Props) {
       setCurrentStep(lang === 'ja' ? "画像準備中..." : "Preparing...");
       onStepUpdate?.('prepare', { status: 'running' });
       const recs: PhotoRecord[] = []; let cached = 0;
+      // ProcessedFile にはすでに base64, mimeType, date が含まれている
       for (const f of files) {
-        const [date, { base64, mimeType }] = await Promise.all([getPhotoDate(f), processImageForAI(f)]);
         const ca = useCache ? await getCachedAnalysis(f) : null;
-        if (ca) { recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, analysis: { ...ca, station: stationFromPreInfo || ca.station }, status: 'done', date, fromCache: true }); cached++; }
-        else recs.push({ fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, status: 'pending', date, fromCache: false });
+        if (ca) { recs.push({ fileName: f.fileName, base64: f.base64, mimeType: f.mimeType, fileSize: f.fileSize, lastModified: f.lastModified, analysis: { ...ca, station: stationFromPreInfo || ca.station }, status: 'done', date: f.date, fromCache: true }); cached++; }
+        else recs.push({ fileName: f.fileName, base64: f.base64, mimeType: f.mimeType, fileSize: f.fileSize, lastModified: f.lastModified, status: 'pending', date: f.date, fromCache: false });
       }
       const sorted = sortPhotosLogical(recs, currentSortPolicy);
       setPhotos(sorted); setStats({ total: sorted.length, processed: cached, success: cached, failed: 0, cached }); setShowPreview(true);

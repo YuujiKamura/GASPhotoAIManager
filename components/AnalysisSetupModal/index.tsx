@@ -1,6 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import { SortPolicy } from '../../types';
+import { SortPolicy, ProcessedFile } from '../../types';
 import { setSelectedModel } from '../../services/geminiService';
 import { PhotoGrid, SettingsSection, ActionButtons, PreAnalysisInfoSection, PromptPreviewSection } from './SubComponents';
 import { useAnalysisSetupState } from './useAnalysisSetupState';
@@ -8,15 +8,15 @@ import type { PreAnalysisInfo } from './useAnalysisSetupState';
 
 interface AnalysisActions {
   onCancel: () => void;
-  onStartAnalysis: (files: File[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => void;
-  onManualPairing?: (files: File[]) => void;
-  onInteractiveTest: (file: File) => void;
+  onStartAnalysis: (files: ProcessedFile[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => void;
+  onManualPairing?: (files: ProcessedFile[]) => void;
+  onInteractiveTest: (file: ProcessedFile) => void;
   onOpenMasterEditor: () => void;
   onOpenSettings?: () => void;
 }
 
 interface Props {
-  files: File[];
+  files: ProcessedFile[];
   lang: 'ja' | 'en';
   apiKey?: string;
   actions: AnalysisActions;

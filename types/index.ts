@@ -6,6 +6,7 @@
 // Photo types
 export type {
   PhotoMetadata,
+  ProcessedFile,
   AppMode,
   PhotoCategory,
   FieldChange,

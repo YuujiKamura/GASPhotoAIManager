@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 
 import { Loader2, Download, Printer, AlertCircle, Home, X, Database, FileArchive, Save, StopCircle, CheckCircle, Upload, Plus, HardHat } from 'lucide-react';
 import { exportDataToJson, importDataFromJson } from '../utils/storage/exportImport';
 import { TRANS } from '../utils/translations';
-import { PhotoRecord, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, SortPolicy, AnalysisStep, AnalysisMode, AnalysisPauseState } from '../types';
+import { PhotoRecord, ProcessedFile, ProcessingStats, AppMode, AIAnalysisResult, LogEntry, SortPolicy, AnalysisStep, AnalysisMode, AnalysisPauseState } from '../types';
 import PhotoAlbumView from './PhotoAlbumView';
 import ConsolePanel from './ConsolePanel';
 import SessionHistoryPanel from './SessionHistoryPanel';
@@ -29,7 +29,7 @@ interface PreviewData {
   analysisSteps?: AnalysisStep[];
   analysisMode?: AnalysisMode;
   pauseState?: AnalysisPauseState;
-  pendingUploadFiles?: File[] | null;  // Managed at App level to survive modal transitions
+  pendingUploadFiles?: ProcessedFile[] | null;  // Managed at App level to survive modal transitions
 }
 
 /** Processing state props */
@@ -76,10 +76,10 @@ interface ActionHandlers {
   onOpenAIFramework?: () => void;
   onPdfLoad?: () => void;
   onClearCache?: () => void;
-  onStartProcessing?: (files: File[], sortPolicy: SortPolicy, useCache: boolean) => void;
-  onManualPairing?: (files: File[]) => void;
-  onTestOneInteractive?: (file: File) => void;
-  // Pending files management (App level)
+  onStartProcessing?: (files: ProcessedFile[], sortPolicy: SortPolicy, useCache: boolean) => void;
+  onManualPairing?: (files: ProcessedFile[]) => void;
+  onTestOneInteractive?: (file: ProcessedFile) => void;
+  // Pending files management (App level) - receives File[], converts to ProcessedFile[] in App.tsx
   onFilesSelected?: (files: File[]) => void;
   onClearPendingFiles?: () => void;
 }
@@ -231,7 +231,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   }, [onReorderPhotos, lang]);
 
   // Handle start analysis from modal
-  const handleStartAnalysis = useCallback((files: File[], sortPolicy: SortPolicy, useCache: boolean) => {
+  const handleStartAnalysis = useCallback((files: ProcessedFile[], sortPolicy: SortPolicy, useCache: boolean) => {
     if (onStartProcessing) {
       onStartProcessing(files, sortPolicy, useCache);
     }
@@ -239,7 +239,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   }, [onStartProcessing, effectiveClearPendingFiles]);
 
   // Handle manual pairing from modal
-  const handleManualPairingClick = useCallback((files: File[]) => {
+  const handleManualPairingClick = useCallback((files: ProcessedFile[]) => {
     if (onManualPairing) {
       onManualPairing(files);
     }

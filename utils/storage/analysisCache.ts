@@ -1,13 +1,16 @@
 // Analysis cache management
 
-import { PhotoRecord, AIAnalysisResult } from "../../types";
+import { PhotoRecord, ProcessedFile, AIAnalysisResult } from "../../types";
 import { fsCache } from '../fileSystemCache';
 import { openDB, STORE_CACHE } from "./dbCore";
+
+/** Input type for getFileKey */
+type FileKeyInput = File | PhotoRecord | ProcessedFile;
 
 /**
  * Generates a unique key for the file based on its immutable properties.
  */
-export const getFileKey = (input: File | PhotoRecord): string => {
+export const getFileKey = (input: FileKeyInput): string => {
   let name = "";
   let size = 0;
   let modified = 0;
@@ -16,11 +19,13 @@ export const getFileKey = (input: File | PhotoRecord): string => {
     name = input.name;
     size = input.size;
     modified = input.lastModified;
-  } else if (input.originalFile) {
+  } else if ('originalFile' in input && input.originalFile) {
+    // PhotoRecord with originalFile
     name = input.fileName;
     size = input.originalFile.size;
     modified = input.originalFile.lastModified;
   } else {
+    // ProcessedFile or PhotoRecord without originalFile
     name = input.fileName;
     size = input.fileSize || 0;
     modified = input.lastModified || 0;
@@ -104,7 +109,7 @@ export const clearAnalysisCache = async (): Promise<void> => {
 /**
  * Check if a file has cached analysis result
  */
-export const hasCachedAnalysis = async (file: File): Promise<boolean> => {
+export const hasCachedAnalysis = async (file: FileKeyInput): Promise<boolean> => {
   const db = await openDB();
   return new Promise((resolve) => {
     const transaction = db.transaction(STORE_CACHE, 'readonly');
@@ -124,7 +129,7 @@ export const hasCachedAnalysis = async (file: File): Promise<boolean> => {
 /**
  * Delete cache for specific files
  */
-export const deleteCacheByFiles = async (files: File[]): Promise<void> => {
+export const deleteCacheByFiles = async (files: FileKeyInput[]): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_CACHE, 'readwrite');

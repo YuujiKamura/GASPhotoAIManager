@@ -1,8 +1,9 @@
 import React, { useState, useEffect, lazy, Suspense, useCallback } from 'react';
-import { PhotoRecord, AppMode, SortPolicy, AnalysisStep, AnalysisStepId, AnalysisMode, AnalysisPauseState } from './types';
+import { PhotoRecord, ProcessedFile, AppMode, SortPolicy, AnalysisStep, AnalysisStepId, AnalysisMode, AnalysisPauseState } from './types';
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 import { fileToBase64 } from './utils/fileHandlers';
+import { processImageForAI, getPhotoDate } from './utils/imageUtils';
 import { checkServerHealth, SERVER_NOT_RUNNING_MESSAGE, getLocalApiBase, setLocalApiBase } from './services/localApiService';
 import { useAnalysisBackend } from './hooks/useAnalysisBackend';
 
@@ -100,7 +101,34 @@ export default function App() {
   }, [resetBackend]);
 
   // Pending Upload Files (managed at App level to survive modal transitions)
-  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
+  // ProcessedFile[] に変換済みで保持することで、モバイルのGCによるFile無効化を回避
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<ProcessedFile[] | null>(null);
+
+  // 画像選択時に即座にBase64変換を行うハンドラ
+  const handleFilesSelected = useCallback(async (files: File[]) => {
+    try {
+      const processed = await Promise.all(
+        files.map(async (file): Promise<ProcessedFile> => {
+          const [{ base64, mimeType }, date] = await Promise.all([
+            processImageForAI(file),
+            getPhotoDate(file),
+          ]);
+          return {
+            fileName: file.name,
+            base64,
+            mimeType,
+            fileSize: file.size,
+            lastModified: file.lastModified,
+            date,
+          };
+        })
+      );
+      setPendingUploadFiles(processed);
+    } catch (error) {
+      console.error('Failed to process selected files:', error);
+      processing.addLog('画像の処理に失敗しました', 'error');
+    }
+  }, [processing]);
 
   // Core Hooks
   const apiKeyState = useApiKey();
@@ -204,32 +232,29 @@ export default function App() {
     modals.setShowApiKeySetup(true);
   };
 
-  // Test One Interactive: FileをPhotoRecordに変換して対話型解析を開く
-  const handleTestOneInteractive = useCallback(async (file: File) => {
-    try {
-      const base64 = await fileToBase64(file);
-      const photoRecord: PhotoRecord = {
-        fileName: file.name,
-        base64,
-        mimeType: file.type,
-        status: 'pending',
-      };
-      setInteractiveAnalysisTarget(photoRecord);
-    } catch (error) {
-      console.error('Failed to load file for interactive analysis:', error);
-      processing.setErrorMsg('ファイルの読み込みに失敗しました');
-    }
-  }, [processing]);
+  // Test One Interactive: ProcessedFileをPhotoRecordに変換して対話型解析を開く
+  const handleTestOneInteractive = useCallback((file: ProcessedFile) => {
+    const photoRecord: PhotoRecord = {
+      fileName: file.fileName,
+      base64: file.base64,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      lastModified: file.lastModified,
+      date: file.date,
+      status: 'pending',
+    };
+    setInteractiveAnalysisTarget(photoRecord);
+  }, []);
 
-  // 簡素化した解析開始ハンドラ
-  const handleStartAnalysis = useCallback((files: File[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => {
+  // 簡素化した解析開始ハンドラ（ProcessedFile[]を受け取る）
+  const handleStartAnalysis = useCallback((files: ProcessedFile[], sortPolicy: SortPolicy, useCache: boolean, preInfo: PreAnalysisInfo) => {
     resetSteps(); // ステップ進捗をリセット
     setCurrentSortPolicy(sortPolicy);
     analysisHandlers.startAnalysisPipeline(files, '', useCache, preInfo);
   }, [setCurrentSortPolicy, analysisHandlers, resetSteps]);
 
   // 手動ペアリングモード（2枚ペアを選択するUI）
-  const handleManualPairing = useCallback((files: File[]) => {
+  const handleManualPairing = useCallback((files: ProcessedFile[]) => {
     analysisHandlers.handleStartManualPairing(files, '', false); // 2枚ペアリングUIを表示
   }, [analysisHandlers]);
 
@@ -424,7 +449,7 @@ export default function App() {
             onStartProcessing: handleStartAnalysis,
             onManualPairing: handleManualPairing,
             onTestOneInteractive: handleTestOneInteractive,
-            onFilesSelected: setPendingUploadFiles,
+            onFilesSelected: handleFilesSelected,
             onClearPendingFiles: () => setPendingUploadFiles(null),
           }}
         />

@@ -12,6 +12,20 @@ export interface PhotoMetadata {
   lastModified?: number; // Used for cache key generation without File object
 }
 
+/**
+ * 画像選択時に即座に変換した処理済みファイル
+ * モバイル環境でのFile GC問題を回避するため、
+ * 画像選択時に即座にBase64に変換して保持する
+ */
+export interface ProcessedFile {
+  fileName: string;
+  base64: string;     // リサイズ済みBase64（AI解析・表示用）
+  mimeType: string;
+  fileSize: number;
+  lastModified: number;
+  date?: number;      // EXIF撮影日時
+}
+
 export type AppMode = 'construction' | 'general';
 
 // 写真管理基準（国土交通省）による正式な写真区分

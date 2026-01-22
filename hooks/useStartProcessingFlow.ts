@@ -1,8 +1,6 @@
 import { useCallback } from 'react';
-import { SortPolicy } from '../types';
-import { getPhotoDate } from '../utils/imageUtils';
-
-type PendingFile = { file: File; date: number };
+import { SortPolicy, ProcessedFile } from '../types';
+import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 
 const MAX_PHOTOS = 30;
 
@@ -10,17 +8,17 @@ interface UseStartProcessingFlowProps {
   setCurrentSortPolicy: (policy: SortPolicy) => void;
   setPendingInstruction: (instruction: string) => void;
   setPendingUseCache: (useCache: boolean) => void;
-  setPendingFiles: (files: PendingFile[] | null) => void;
+  setPendingFiles: (files: ProcessedFile[] | null) => void;
   setSelectionCount: (count: number) => void;
-  setPendingAnalysisFiles: (files: File[] | null) => void;
+  setPendingAnalysisFiles: (files: ProcessedFile[] | null) => void;
   setShowWorkTypeConfirm: (show: boolean) => void;
-  pendingFiles: PendingFile[] | null;
-  pendingAnalysisFiles: File[] | null;
+  pendingFiles: ProcessedFile[] | null;
+  pendingAnalysisFiles: ProcessedFile[] | null;
   pendingInstruction: string;
   pendingUseCache: boolean;
   selectionStart: number;
   selectionCount: number;
-  startAnalysisPipeline: (files: File[], instruction: string, useCache: boolean) => void;
+  startAnalysisPipeline: (files: ProcessedFile[], instruction: string, useCache: boolean) => void;
 }
 
 /**
@@ -42,9 +40,9 @@ export function useStartProcessingFlow({
   selectionCount,
   startAnalysisPipeline,
 }: UseStartProcessingFlowProps) {
-  // 処理開始
-  const handleStartProcessing = useCallback(async (
-    files: File[],
+  // 処理開始（ProcessedFile[]を受け取る - すでに変換済み）
+  const handleStartProcessing = useCallback((
+    files: ProcessedFile[],
     instruction: string,
     useCache: boolean,
     sortPolicy: SortPolicy = 'by_detail_safety_first'
@@ -55,11 +53,10 @@ export function useStartProcessingFlow({
     setPendingUseCache(useCache);
 
     if (files.length > MAX_PHOTOS) {
-      const pendingList: PendingFile[] = [];
-      for (const f of files) pendingList.push({ file: f, date: await getPhotoDate(f) });
-      pendingList.sort((a, b) => a.date - b.date);
-      setPendingFiles(pendingList);
-      setSelectionCount(Math.min(pendingList.length, MAX_PHOTOS));
+      // 日付でソートしてLimitModalへ
+      const sorted = [...files].sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
+      setPendingFiles(sorted);
+      setSelectionCount(Math.min(sorted.length, MAX_PHOTOS));
       return;
     }
 
@@ -79,7 +76,7 @@ export function useStartProcessingFlow({
   // 枚数制限モーダルで確定
   const confirmLimitSelection = useCallback(() => {
     if (!pendingFiles) return;
-    const selected = pendingFiles.slice(selectionStart - 1, selectionStart - 1 + selectionCount).map(p => p.file);
+    const selected = pendingFiles.slice(selectionStart - 1, selectionStart - 1 + selectionCount);
     setPendingFiles(null);
     setPendingAnalysisFiles(selected);
     setShowWorkTypeConfirm(true);

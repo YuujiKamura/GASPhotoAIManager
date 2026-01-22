@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { SortPolicy, PostProcessType } from '../../types';
+import { SortPolicy, PostProcessType, ProcessedFile } from '../../types';
 import { ModelType, getSelectedModel } from '../../services/geminiService';
-import { fileToBase64 } from '../../utils/fileHandlers';
 import { estimateQuickCost } from '../../services/usageTracker';
 import { hasCachedAnalysis, deleteCacheByFiles } from '../../utils/storage';
 import { FileEntry } from './SubComponents';
@@ -14,7 +13,7 @@ export interface PreAnalysisInfo {
   postProcessType: PostProcessType;
 }
 
-export function useAnalysisSetupState(files: File[]) {
+export function useAnalysisSetupState(files: ProcessedFile[]) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [model, setModel] = useState<ModelType>(getSelectedModel());
   const [sortPolicy, setSortPolicy] = useState<SortPolicy>('by_detail_safety_first');
@@ -23,19 +22,16 @@ export function useAnalysisSetupState(files: File[]) {
   const [station, setStation] = useState<string>('');
   const [postProcessType, setPostProcessType] = useState<PostProcessType>('relay_only');
 
-  // Load thumbnails and check cache status
+  // Check cache status (Base64 is already available in ProcessedFile)
   useEffect(() => {
     const load = async () => {
       const loaded = await Promise.all(
         files.map(async (file) => {
           try {
-            const [thumbnail, hasCache] = await Promise.all([
-              fileToBase64(file),
-              hasCachedAnalysis(file)
-            ]);
-            return { file, selected: true, thumbnail, hasCache };
+            const hasCache = await hasCachedAnalysis(file);
+            return { file, selected: true, hasCache };
           } catch {
-            return { file, selected: true, thumbnail: null, hasCache: false };
+            return { file, selected: true, hasCache: false };
           }
         })
       );

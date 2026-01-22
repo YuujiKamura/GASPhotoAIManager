@@ -1,17 +1,16 @@
 import React, { useCallback } from 'react';
-import { PhotoRecord, AIAnalysisResult, LogEntry } from '../types';
-import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
+import { PhotoRecord, AIAnalysisResult, LogEntry, ProcessedFile } from '../types';
 import { saveAnalysisHistory } from '../utils/storage';
 import { extractLocationName } from '../utils/locationUtils';
 
 const emptyAnalysis = (fn: string): AIAnalysisResult => ({ fileName: fn, workType: '', variety: '', detail: '', station: '', remarks: '', description: '', hasBoard: false, detectedText: '' });
 
-async function loadFiles(files: File[], log: (m: string, t?: LogEntry['type']) => void): Promise<PhotoRecord[]> {
-  return Promise.all(files.map(async (f, i) => {
-    log(`  [${i + 1}/${files.length}] ${f.name}`, 'info');
-    const [date, { base64, mimeType }] = await Promise.all([getPhotoDate(f), processImageForAI(f)]);
-    return { fileName: f.name, base64, mimeType, fileSize: f.size, lastModified: f.lastModified, originalFile: f, status: 'pending' as const, date, fromCache: false };
-  }));
+/** Convert ProcessedFile[] to PhotoRecord[] (no async conversion needed since files are pre-processed) */
+function toPhotoRecords(files: ProcessedFile[], log: (m: string, t?: LogEntry['type']) => void): PhotoRecord[] {
+  return files.map((f, i) => {
+    log(`  [${i + 1}/${files.length}] ${f.fileName}`, 'info');
+    return { fileName: f.fileName, base64: f.base64, mimeType: f.mimeType, fileSize: f.fileSize, lastModified: f.lastModified, status: 'pending' as const, date: f.date, fromCache: false };
+  });
 }
 
 interface Props {
@@ -35,10 +34,10 @@ interface Props {
 export function useManualPairingHandlers(p: Props) {
   const { lang, addLog, setIsProcessing, setErrorMsg, setSuccessMsg, setPhotos, setStats, setInitialLayout, setShowPreview, setManualPairingPhotos, setShowManualPairing, setInitialInstruction, setActiveInstruction, initialInstruction, activeInstruction } = p;
 
-  const handleStartManualPairing = useCallback(async (files: File[], inst: string, skipPairingUI = false) => {
+  const handleStartManualPairing = useCallback((files: ProcessedFile[], inst: string, skipPairingUI = false) => {
     setIsProcessing(true); setErrorMsg(null); addLog('手動入力モード開始...', 'info'); setInitialInstruction(inst); setActiveInstruction(inst);
     try {
-      const r = await loadFiles(files, addLog);
+      const r = toPhotoRecords(files, addLog);
       if (skipPairingUI) {
         const loc = extractLocationName(inst);
         const records = r.map((rec, i) => ({

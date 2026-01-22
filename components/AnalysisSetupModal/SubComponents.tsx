@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Check, MousePointer, Play, MessageCircle, Database, Trash2, Key, AlertCircle, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
-import { SortPolicy, SORT_POLICIES, PostProcessType, POST_PROCESS_OPTIONS } from '../../types';
+import { SortPolicy, SORT_POLICIES, PostProcessType, POST_PROCESS_OPTIONS, ProcessedFile } from '../../types';
 import { AVAILABLE_MODELS, ModelType } from '../../services/geminiService';
 import { formatCostJPY } from '../../services/usageTracker';
 import { loadRuleSettings, rulesToPromptText } from '../../utils/analysisRules';
 
 export interface FileEntry {
-  file: File;
+  file: ProcessedFile;
   selected: boolean;
-  thumbnail: string | null;
   hasCache?: boolean;
 }
 
@@ -26,8 +25,8 @@ export const PhotoGridItem: React.FC<PhotoGridItemProps> = ({ entry, onToggle, o
       entry.selected ? 'border-blue-500' : 'border-gray-200 opacity-50'
     }`}
   >
-    {entry.thumbnail && (
-      <img src={entry.thumbnail} alt="" className="w-full h-full object-cover" />
+    {entry.file.base64 && (
+      <img src={entry.file.base64} alt="" className="w-full h-full object-cover" />
     )}
     <button
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
