@@ -3,6 +3,7 @@ import { PhotoRecord, AppMode, SortPolicy, AnalysisStep, AnalysisStepId, Analysi
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 import { fileToBase64 } from './utils/fileHandlers';
+import { checkServerHealth, SERVER_NOT_RUNNING_MESSAGE } from './services/localApiService';
 
 // Hooks
 import {
@@ -53,10 +54,22 @@ const LoadingFallback = () => (
 );
 
 export default function App() {
+  // Server Connection State (null = checking, true = connected, false = not connected)
+  const [serverConnected, setServerConnected] = useState<boolean | null>(null);
+
   // Language & App Mode
   const [lang] = useState<'en' | 'ja'>(() => navigator.language.startsWith('en') ? 'en' : 'ja');
   const txt = TRANS[lang];
   const [appMode, setAppMode] = useState<AppMode>('construction');
+
+  // Check server connection on mount
+  useEffect(() => {
+    const checkConnection = async () => {
+      const isHealthy = await checkServerHealth();
+      setServerConnected(isHealthy);
+    };
+    checkConnection();
+  }, []);
 
   // Interactive Analysis Target
   const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
@@ -195,6 +208,46 @@ export default function App() {
   }, [analysisHandlers]);
 
   // Render
+
+  // Server connection check (blocks entire app until connected)
+  if (serverConnected === null) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">サーバー接続を確認中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (serverConnected === false) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-lg">
+          <div className="text-center mb-6">
+            <div className="text-red-500 text-5xl mb-4">⚠️</div>
+            <h1 className="text-xl font-bold text-gray-800 mb-2">サーバー未接続</h1>
+            <p className="text-gray-600">ローカルAPIサーバーに接続できません。</p>
+          </div>
+          <div className="bg-gray-50 rounded p-4 mb-6">
+            <p className="text-sm text-gray-700 whitespace-pre-wrap font-mono">{SERVER_NOT_RUNNING_MESSAGE}</p>
+          </div>
+          <button
+            onClick={async () => {
+              setServerConnected(null);
+              const isHealthy = await checkServerHealth();
+              setServerConnected(isHealthy);
+            }}
+            className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            再接続を試す
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       {modals.showPdfLoadDialog && (
