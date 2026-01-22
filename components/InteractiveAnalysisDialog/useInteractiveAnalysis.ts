@@ -15,6 +15,7 @@ export const useInteractiveAnalysis = (
   apiKey: string,
   backend: AnalysisBackend | null,
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void,
+  onRequireBackend?: () => void,
   onLog?: (message: string, type?: string) => void
 ): UseInteractiveAnalysisReturn => {
   const [state, setState] = useState<InteractiveAnalysisState>(INITIAL_STATE);
@@ -24,6 +25,10 @@ export const useInteractiveAnalysis = (
   // ダイアログを開く
   const openDialog = useCallback(async (photo: PhotoRecord) => {
     if (backend !== 'gemini') {
+      if (onRequireBackend) {
+        onRequireBackend();
+        return;
+      }
       setState(prev => ({
         ...prev,
         isOpen: true,
@@ -98,7 +103,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [apiKey, onConfirm, backend]);
+  }, [apiKey, onConfirm, backend, onRequireBackend]);
 
   // ダイアログを閉じる
   const closeDialog = useCallback(() => {
@@ -111,6 +116,10 @@ export const useInteractiveAnalysis = (
   const sendMessage = useCallback(async (text: string) => {
     if (!state.targetPhoto || !text.trim()) return;
     if (backend !== 'gemini') {
+      if (onRequireBackend) {
+        onRequireBackend();
+        return;
+      }
       setState(prev => ({
         ...prev,
         isProcessing: false,
@@ -190,7 +199,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [state.targetPhoto, apiKey, onConfirm, backend]);
+  }, [state.targetPhoto, apiKey, onConfirm, backend, onRequireBackend]);
 
   // 選択肢を選択
   const selectChoice = useCallback(async (choice: DialogChoice) => {

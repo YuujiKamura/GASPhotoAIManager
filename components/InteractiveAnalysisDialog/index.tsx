@@ -12,6 +12,7 @@ interface InteractiveAnalysisDialogProps {
   backend: AnalysisBackend | null;
   lang?: 'ja' | 'en';
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void;
+  onRequireBackend?: () => void;
   onClose: () => void;
 }
 
@@ -21,6 +22,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
   backend,
   lang = 'ja',
   onConfirm,
+  onRequireBackend,
   onClose,
 }) => {
   const txt = TRANSLATIONS[lang];
@@ -35,7 +37,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
     acceptAnalysis,
     setInputText,
     toggleTextInput,
-  } = useInteractiveAnalysis(apiKey, backend, onConfirm);
+  } = useInteractiveAnalysis(apiKey, backend, onConfirm, onRequireBackend);
 
   // 写真が設定されたらダイアログを開く
   useEffect(() => {

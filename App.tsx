@@ -94,6 +94,10 @@ export default function App() {
 
   // Interactive Analysis Target
   const [interactiveAnalysisTarget, setInteractiveAnalysisTarget] = useState<PhotoRecord | null>(null);
+  const handleRequireBackend = useCallback(() => {
+    resetBackend();
+    setInteractiveAnalysisTarget(null);
+  }, [resetBackend]);
 
   // Pending Upload Files (managed at App level to survive modal transitions)
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
@@ -487,7 +491,7 @@ export default function App() {
 
       <Suspense fallback={<LoadingFallback />}>
         <InteractiveAnalysisDialog photo={interactiveAnalysisTarget} apiKey={apiKeyState.apiKey || ''} backend={backend} lang={lang}
-          onConfirm={projectHandlers.handleInteractiveAnalysisConfirm} onClose={() => setInteractiveAnalysisTarget(null)} />
+          onConfirm={projectHandlers.handleInteractiveAnalysisConfirm} onRequireBackend={handleRequireBackend} onClose={() => setInteractiveAnalysisTarget(null)} />
       </Suspense>
     </>
   );
