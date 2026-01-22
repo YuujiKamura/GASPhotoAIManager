@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId } from '../types';
+import { PhotoRecord, AIAnalysisResult, AppMode, SortPolicy, LogEntry, AnalysisStep, AnalysisStepId, PostProcessType } from '../types';
 import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 import { analyzePhotoBatch, getNormalizationProposals, getSelectedModel, NormalizationCorrection } from '../services/geminiService';
 import { getCachedAnalysis, cacheAnalysis, saveAnalysisHistory } from '../utils/storage';
@@ -150,17 +150,26 @@ export function useAnalysisPipeline(p: Props) {
 
       let cur: PhotoRecord[] = []; setPhotos(prev => { cur = prev; return prev; }); await new Promise(r => setTimeout(r, 0));
       const newly = cur.filter(x => !x.fromCache && x.status === 'done');
-      // 正規化処理（オプション）
-      if (preInfo?.runNormalization !== false && newly.length > 0 && apiKey) {
+      const postProcessType: PostProcessType = preInfo?.postProcessType || 'relay_only';
+
+      // 後処理（タイプに応じた処理）
+      if (postProcessType !== 'none' && newly.length > 0 && apiKey) {
         onStepUpdate?.('normalize', { status: 'running' });
-        const nr = await getNormalizationProposals(newly, apiKey, undefined, addLog, () => abortRef.current);
-        if (nr.corrections.length > 0) {
-          onStepUpdate?.('normalize', { status: 'done', result: `${nr.corrections.length}件提案` });
-          setNormalizationProposals(nr.corrections);
-          setNormalizationOriginals(newly.map(x => ({ fileName: x.fileName, workType: x.analysis?.workType || '', variety: x.analysis?.variety || '', detail: x.analysis?.detail || '', station: x.analysis?.station || '', remarks: x.analysis?.remarks || '' })));
-          setPhotosForNormalization(newly); setShowNormalizationModal(true); setIsProcessing(false); setCurrentStep(""); return;
+        // TODO: postProcessTypeに応じたサジェスト生成を実装
+        // 現時点では従来の正規化処理をrelay_only以外で実行
+        if (postProcessType === 'temperature_cycle' || postProcessType === 'dekigata') {
+          const nr = await getNormalizationProposals(newly, apiKey, undefined, addLog, () => abortRef.current);
+          if (nr.corrections.length > 0) {
+            onStepUpdate?.('normalize', { status: 'done', result: `${nr.corrections.length}件提案` });
+            setNormalizationProposals(nr.corrections);
+            setNormalizationOriginals(newly.map(x => ({ fileName: x.fileName, workType: x.analysis?.workType || '', variety: x.analysis?.variety || '', detail: x.analysis?.detail || '', station: x.analysis?.station || '', remarks: x.analysis?.remarks || '' })));
+            setPhotosForNormalization(newly); setShowNormalizationModal(true); setIsProcessing(false); setCurrentStep(""); return;
+          }
+          onStepUpdate?.('normalize', { status: 'done', result: '変更なし' });
+        } else {
+          // relay_only: 前ならえ処理のみ（applyContextRelayで既に適用済み）
+          onStepUpdate?.('normalize', { status: 'done', result: '前ならえ適用済み' });
         }
-        onStepUpdate?.('normalize', { status: 'done', result: '変更なし' });
       } else {
         onStepUpdate?.('normalize', { status: 'skipped' });
       }

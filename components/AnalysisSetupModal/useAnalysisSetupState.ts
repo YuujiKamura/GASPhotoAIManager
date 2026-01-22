@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { SortPolicy } from '../../types';
+import { SortPolicy, PostProcessType } from '../../types';
 import { ModelType, getSelectedModel } from '../../services/geminiService';
 import { fileToBase64 } from '../../utils/fileHandlers';
 import { estimateQuickCost } from '../../services/usageTracker';
@@ -11,7 +11,7 @@ const ENABLED_WORK_TYPES_KEY = 'construction_enabled_work_types';
 export interface PreAnalysisInfo {
   workType: string;
   station: string;
-  runNormalization: boolean;
+  postProcessType: PostProcessType;
 }
 
 export function useAnalysisSetupState(files: File[]) {
@@ -21,7 +21,7 @@ export function useAnalysisSetupState(files: File[]) {
   const [enabledWorkTypes, setEnabledWorkTypes] = useState<string[]>([]);
   const [workType, setWorkType] = useState<string>('');
   const [station, setStation] = useState<string>('');
-  const [runNormalization, setRunNormalization] = useState(true);
+  const [postProcessType, setPostProcessType] = useState<PostProcessType>('relay_only');
 
   // Load thumbnails and check cache status
   useEffect(() => {
@@ -82,8 +82,8 @@ export function useAnalysisSetupState(files: File[]) {
   const preInfo: PreAnalysisInfo = useMemo(() => ({
     workType,
     station,
-    runNormalization,
-  }), [workType, station, runNormalization]);
+    postProcessType,
+  }), [workType, station, postProcessType]);
 
   return {
     entries,
@@ -103,8 +103,8 @@ export function useAnalysisSetupState(files: File[]) {
     setWorkType,
     station,
     setStation,
-    runNormalization,
-    setRunNormalization,
+    postProcessType,
+    setPostProcessType,
     preInfo,
   };
 }

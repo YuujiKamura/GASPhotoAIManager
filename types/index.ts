@@ -34,7 +34,11 @@ export type {
   AnalysisExample,
   AnalysisSession,
   AnalysisHistoryEntry,
+  PostProcessType,
+  PostProcessOption,
 } from './analysis';
+
+export { POST_PROCESS_OPTIONS } from './analysis';
 
 // Learning types
 export type {

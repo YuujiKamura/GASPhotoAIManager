@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Check, MousePointer, Play, MessageCircle, Database, Trash2, Key, AlertCircle, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
-import { SortPolicy, SORT_POLICIES } from '../../types';
+import { SortPolicy, SORT_POLICIES, PostProcessType, POST_PROCESS_OPTIONS } from '../../types';
 import { AVAILABLE_MODELS, ModelType } from '../../services/geminiService';
 import { formatCostJPY } from '../../services/usageTracker';
 import { loadRuleSettings, rulesToPromptText } from '../../utils/analysisRules';
@@ -197,21 +197,21 @@ interface SettingsSectionProps {
   setModel: (m: ModelType) => void;
   sortPolicy: SortPolicy;
   setSortPolicy: (p: SortPolicy) => void;
-  runNormalization: boolean;
-  setRunNormalization: (v: boolean) => void;
+  postProcessType: PostProcessType;
+  setPostProcessType: (v: PostProcessType) => void;
   txt: {
     selected: string;
     cost: string;
     model: string;
     sort: string;
-    runNormalization: string;
+    postProcess: string;
   };
 }
 
 export const SettingsSection: React.FC<SettingsSectionProps> = ({
   selectedCount, totalCount, cost, model, setModel,
   sortPolicy, setSortPolicy,
-  runNormalization, setRunNormalization, txt
+  postProcessType, setPostProcessType, txt
 }) => (
   <div className="px-4 py-3 border-t bg-gray-50 space-y-3">
     <div className="flex items-center justify-between text-sm">
@@ -233,11 +233,19 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
       </div>
     </div>
     {/* 後処理オプション */}
-    <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-      <label className="flex items-center gap-1.5 cursor-pointer">
-        <input type="checkbox" checked={runNormalization} onChange={e => setRunNormalization(e.target.checked)} />
-        {txt.runNormalization}
-      </label>
+    <div className="flex-1">
+      <div className="text-[10px] text-gray-500 mb-1">{txt.postProcess}</div>
+      <select
+        value={postProcessType}
+        onChange={e => setPostProcessType(e.target.value as PostProcessType)}
+        className="w-full py-1.5 px-2 text-xs border rounded bg-white"
+      >
+        {POST_PROCESS_OPTIONS.map(opt => (
+          <option key={opt.id} value={opt.id} title={opt.description}>
+            {opt.name}
+          </option>
+        ))}
+      </select>
     </div>
   </div>
 );

@@ -81,6 +81,27 @@ export interface AnalysisIssue {
   notes?: string;                  // メモ
 }
 
+// 後処理の種類
+export type PostProcessType =
+  | 'none'              // 後処理なし
+  | 'temperature_cycle' // 温度管理サイクル（到着→敷均し→初期締固めの9枚サイクルで情報統一）
+  | 'dekigata'          // 出来形管理（ボードアップの測定値を全景に展開）
+  | 'relay_only';       // 前ならえのみ（前の写真から空欄を継承）
+
+// 後処理の表示情報
+export interface PostProcessOption {
+  id: PostProcessType;
+  name: string;
+  description: string;
+}
+
+export const POST_PROCESS_OPTIONS: PostProcessOption[] = [
+  { id: 'none', name: 'なし', description: '後処理を実行しない' },
+  { id: 'temperature_cycle', name: '温度管理サイクル', description: '到着→敷均し→初期締固めの9枚サイクルで情報統一' },
+  { id: 'dekigata', name: '出来形管理', description: 'ボードアップの測定値を全景に展開' },
+  { id: 'relay_only', name: '前ならえのみ', description: '前の写真から空欄を継承' },
+];
+
 // 問題の種類
 export type IssueType =
   | 'wrong_classification'   // 分類が間違い

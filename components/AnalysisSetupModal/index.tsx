@@ -30,7 +30,7 @@ const getTexts = (lang: 'ja' | 'en') => ({
   cost: lang === 'ja' ? '推定コスト' : 'Est. Cost',
   model: lang === 'ja' ? 'モデル' : 'Model',
   sort: lang === 'ja' ? '並び替え' : 'Sort',
-  runNormalization: lang === 'ja' ? '前後の写真で情報を補完' : 'Fill from nearby photos',
+  postProcess: lang === 'ja' ? '後処理' : 'Post-processing',
   all: lang === 'ja' ? '全選択' : 'All',
   none: lang === 'ja' ? '解除' : 'None',
   cancel: lang === 'ja' ? 'キャンセル' : 'Cancel',
@@ -101,14 +101,14 @@ const AnalysisSetupModalInner: React.FC<Props> = ({ files, lang, apiKey, actions
           setModel={state.setModel}
           sortPolicy={state.sortPolicy}
           setSortPolicy={state.setSortPolicy}
-          runNormalization={state.runNormalization}
-          setRunNormalization={state.setRunNormalization}
+          postProcessType={state.postProcessType}
+          setPostProcessType={state.setPostProcessType}
           txt={{
             selected: txt.selected,
             cost: txt.cost,
             model: txt.model,
             sort: txt.sort,
-            runNormalization: txt.runNormalization,
+            postProcess: txt.postProcess,
           }}
         />
         <PreAnalysisInfoSection
