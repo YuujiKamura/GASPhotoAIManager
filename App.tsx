@@ -310,6 +310,13 @@ export default function App() {
                     このアドレスで開始
                   </button>
                 </div>
+                <div className="text-xs text-gray-500 whitespace-pre-line">
+                  ローカルAPIの起動例:
+                  {"\n"}  npm run build:server && npm run server
+                  {"\n"}別ターミナルで:
+                  {"\n"}  cd GASPhotoAIManager
+                  {"\n"}  npm run server
+                </div>
               </div>
               <button
                 onClick={() => setBackend('none')}
