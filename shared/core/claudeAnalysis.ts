@@ -5,6 +5,7 @@
  * Step2: マスタ照合 (Text) - 階層マスタとの照合で分類
  *
  * ## 変更履歴
+ * - 2026-01-22: Claude Code SDKに移行（Issue #169）
  * - 2026-01-17: Step1キャッシュ機能追加（再実行時の高速化）
  * - 2026-01-17: Windowsコマンドライン制限対策（stdin経由）
  * - 2026-01-17: YOLO前処理統合（解析速度29%向上）
@@ -12,6 +13,7 @@
  */
 
 import { execSync, spawnSync } from 'child_process';
+import { runClaudeCodeSDK, cleanupTempImages as sdkCleanupTempImages } from './claudeSDK';
 import * as fs from 'fs/promises';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from 'fs';
 import * as path from 'path';
@@ -164,6 +166,9 @@ export interface AnalyzeOptions {
   // Step1キャッシュオプション
   step1CachePath?: string;     // Step1結果のキャッシュファイルパス
   useStep1Cache?: boolean;     // キャッシュを使用するか (default: false)
+  // SDK オプション
+  useSDK?: boolean;            // SDK を使用するか (default: true)
+  sessionId?: string;          // セッションID（セッション維持用）
 }
 
 // ============================================
@@ -262,7 +267,38 @@ function cleanupTempImages(): void {
   }
 }
 
-function runClaudeCode(
+// SDK使用フラグ（環境変数で制御可能）
+const USE_SDK_DEFAULT = process.env.GASPM_USE_SDK !== 'false';
+
+/**
+ * Claude Code SDKを使用してクエリ実行
+ */
+async function runClaudeCodeWithSDK(
+  prompt: string,
+  imagePaths?: string[],
+  onLog?: LogFunction,
+  sessionId?: string
+): Promise<string> {
+  onLog?.(`SDK: ${imagePaths?.length || 0}枚の画像を解析`, 'info');
+
+  try {
+    const response = await runClaudeCodeSDK(prompt, imagePaths, {
+      cwd: process.cwd(),
+      sessionId,
+      permissionMode: 'bypassPermissions',
+    });
+    return response;
+  } catch (error: unknown) {
+    const err = error as Error;
+    onLog?.(`SDK error: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
+/**
+ * 従来のspawnSync/execSyncを使用（フォールバック用）
+ */
+function runClaudeCodeLegacy(
   prompt: string,
   imagePaths?: string[],
   onLog?: LogFunction
@@ -291,7 +327,7 @@ function runClaudeCode(
     const imageList = localPaths.join(', ');
     fullPrompt = `Read the following image files and analyze them: ${imageList}\n\n${prompt}`;
     console.log('DEBUG paths:', localPaths);
-    onLog?.(`Claude CLI: ${localPaths.length}枚の画像を解析`, 'info');
+    onLog?.(`Claude CLI (legacy): ${localPaths.length}枚の画像を解析`, 'info');
   } else {
     onLog?.(`Step2: claude [text only]`, 'info');
   }
@@ -352,6 +388,22 @@ function runClaudeCode(
       throw new Error(`claude failed (code ${err.status}): ${err.stderr || err.message}`);
     }
   }
+}
+
+/**
+ * Claude Code呼び出し（SDK優先、フォールバックあり）
+ */
+function runClaudeCode(
+  prompt: string,
+  imagePaths?: string[],
+  onLog?: LogFunction,
+  useSDK: boolean = USE_SDK_DEFAULT,
+  sessionId?: string
+): string | Promise<string> {
+  if (useSDK) {
+    return runClaudeCodeWithSDK(prompt, imagePaths, onLog, sessionId);
+  }
+  return runClaudeCodeLegacy(prompt, imagePaths, onLog);
 }
 
 // ============================================
@@ -439,12 +491,14 @@ ${photoInfoList}
 async function executeStep1(
   photos: PhotoInput[],
   onLog?: LogFunction,
-  yoloConfThreshold: number = 0.5
+  yoloConfThreshold: number = 0.5,
+  useSDK: boolean = USE_SDK_DEFAULT,
+  sessionId?: string
 ): Promise<RawImageData[]> {
   const imagePaths = photos.map(p => p.filePath).filter(Boolean) as string[];
   const prompt = buildStep1Prompt(photos, yoloConfThreshold);
 
-  const response = runClaudeCode(prompt, imagePaths, onLog);
+  const response = await runClaudeCode(prompt, imagePaths, onLog, useSDK, sessionId);
   return parseJsonResponse<RawImageData>(response, photos.length, onLog);
 }
 
@@ -503,10 +557,12 @@ ${rawDataStr}
 async function executeStep2(
   rawData: RawImageData[],
   hierarchy: Record<string, unknown>,
-  onLog?: LogFunction
+  onLog?: LogFunction,
+  useSDK: boolean = USE_SDK_DEFAULT,
+  sessionId?: string
 ): Promise<Partial<AnalysisResult>[]> {
   const prompt = buildStep2Prompt(rawData, hierarchy);
-  const response = runClaudeCode(prompt, undefined, onLog);
+  const response = await runClaudeCode(prompt, undefined, onLog, useSDK, sessionId);
   return parseJsonResponse<Partial<AnalysisResult>>(response, rawData.length, onLog);
 }
 
@@ -631,7 +687,12 @@ export async function analyzePhotos(
     yoloConfThreshold = 0.5,
     step1CachePath,
     useStep1Cache = false,
+    useSDK = USE_SDK_DEFAULT,
+    sessionId: initialSessionId,
   } = options;
+
+  // セッションIDの管理（同一セッション内でStep1/Step2を実行）
+  let currentSessionId: string | undefined = initialSessionId;
 
   const analysisStart = Date.now();
 
@@ -763,7 +824,7 @@ export async function analyzePhotos(
 
       // Step1実行
       onMetrics?.({ type: 'step_start', step: 1, batchIndex });
-      const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold);
+      const rawData = await executeStep1WithMetrics(batch, batchIndex, rawResponses, onLog, onMetrics, yoloConfThreshold, useSDK, currentSessionId);
       const duration = Date.now() - batchStart;
 
       // 新規結果をキャッシュに追加
@@ -809,7 +870,7 @@ export async function analyzePhotos(
     onMetrics?.({ type: 'step_start', step: 2, batchIndex: 0 });
 
     const step2Start = Date.now();
-    const classified = await executeStep2WithMetrics(allRawData, hierarchy, 0, rawResponses, onLog, onMetrics);
+    const classified = await executeStep2WithMetrics(allRawData, hierarchy, 0, rawResponses, onLog, onMetrics, useSDK, currentSessionId);
     step2TotalTime = Date.now() - step2Start;
 
     onLog?.(`Step2完了: ${formatDuration(step2TotalTime)}`, 'success');
@@ -924,13 +985,15 @@ async function executeStep1WithMetrics(
   rawResponses: AnalysisMetrics['rawResponses'],
   onLog?: LogFunction,
   onMetrics?: MetricsCallback,
-  yoloConfThreshold: number = 0.5
+  yoloConfThreshold: number = 0.5,
+  useSDK: boolean = USE_SDK_DEFAULT,
+  sessionId?: string
 ): Promise<RawImageData[]> {
   const imagePaths = photos.map(p => p.filePath).filter(Boolean) as string[];
   const prompt = buildStep1Prompt(photos, yoloConfThreshold);
 
   const start = Date.now();
-  const response = runClaudeCode(prompt, imagePaths, onLog);
+  const response = await runClaudeCode(prompt, imagePaths, onLog, useSDK, sessionId);
   const duration = Date.now() - start;
 
   let parseSuccess = true;
@@ -955,12 +1018,14 @@ async function executeStep2WithMetrics(
   batchIndex: number,
   rawResponses: AnalysisMetrics['rawResponses'],
   onLog?: LogFunction,
-  onMetrics?: MetricsCallback
+  onMetrics?: MetricsCallback,
+  useSDK: boolean = USE_SDK_DEFAULT,
+  sessionId?: string
 ): Promise<Partial<AnalysisResult>[]> {
   const prompt = buildStep2Prompt(rawData, hierarchy);
 
   const start = Date.now();
-  const response = runClaudeCode(prompt, undefined, onLog);
+  const response = await runClaudeCode(prompt, undefined, onLog, useSDK, sessionId);
   const duration = Date.now() - start;
 
   let parseSuccess = true;
