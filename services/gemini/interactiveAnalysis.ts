@@ -10,10 +10,7 @@ import { PhotoRecord, AIAnalysisResult } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
 import { sanitizeErrorMessage } from './apiKey';
 import { getSelectedModel } from './models';
-import { getSystemInstruction } from './systemPrompts';
-import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from '../learningService';
-import { getRelevantExamples } from '../../utils/storage';
-import { formatExamplesForPrompt } from './helpers';
+import { buildSystemPrompt } from './promptBuilder';
 
 // ============================================
 // 型定義
@@ -101,33 +98,8 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
   }
 
   try {
-    // === 通常解析と同じシステムプロンプトを構築 ===
-    // 1. ベースのシステム指示（階層マスタ含む）
-    const baseSystemPrompt = getSystemInstruction('construction');
-
-    // 2. お手本（例示）を取得
-    let examplesPrompt = '';
-    try {
-      const examples = await getRelevantExamples(undefined, undefined, 3);
-      if (examples.length > 0) {
-        examplesPrompt = formatExamplesForPrompt(examples);
-      }
-    } catch (e) {
-      console.warn('Failed to load examples for interactive:', e);
-    }
-
-    // 3. 学習済みルールを取得
-    let learnedRulesPrompt = '';
-    try {
-      const learnedSettings = await getLearnedSettings();
-      if (learnedSettings.rules.length > 0 || learnedSettings.aliases.length > 0) {
-        learnedRulesPrompt = learnedRulesToPromptText(learnedSettings);
-      }
-    } catch (e) {
-      console.warn('Failed to load learned settings for interactive:', e);
-    }
-
-    // 4. 対話モード固有の追加ルール
+    // === 共通モジュールでシステムプロンプトを構築 ===
+    // 対話モード固有の追加ルール
     const interactiveRules = `
 ## 対話モード追加ルール
 - 敬語は使わず、フランクに話す（「～だね」「～しよう」）
@@ -154,10 +126,12 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
   }
 }`;
 
-    // システム指示を結合（通常解析と同じ構造）
-    const systemInstruction = [baseSystemPrompt, examplesPrompt, learnedRulesPrompt, interactiveRules]
-      .filter(Boolean)
-      .join('\n\n');
+    // 共通モジュールでシステムプロンプトを構築（工種フィルタ適用）
+    const { systemPrompt: systemInstruction } = await buildSystemPrompt({
+      appMode: 'construction',
+      workType: photo.analysis?.workType,  // 既存解析結果から工種を取得してフィルタ
+      additionalPrompt: interactiveRules,
+    });
 
     const result = await genAI.models.generateContentStream({
       model: modelToUse,

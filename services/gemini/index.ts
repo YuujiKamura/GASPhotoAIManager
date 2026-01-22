@@ -88,3 +88,13 @@ export {
   askWhyResult,
   askWhyResultsBatch,
 } from './explainService';
+
+// ============================================
+// プロンプト構築 (promptBuilder.ts)
+// ============================================
+export {
+  buildSystemPrompt,
+  buildSystemPromptWithMultipleWorkTypes,
+} from './promptBuilder';
+
+export type { PromptBuildOptions, PromptBuildResult } from './promptBuilder';

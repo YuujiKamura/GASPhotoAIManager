@@ -15,11 +15,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { PhotoRecord, AIAnalysisResult, AppMode } from "../../types";
 import { extractBase64Data } from "../../utils/imageUtils";
-import { loadMasterCsv, toChainRecordsJson, getWorkTypesFromMaster, ChainRecord } from "../../utils/masterCsvParser";
 import { trackUsage } from "../usageTracker";
-import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
 import { RuleSettings } from "../../utils/analysisRules";
-import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
+import { buildSystemPromptWithMultipleWorkTypes } from "./promptBuilder";
 // Core module - サブモジュールを統合
 import {
   hasApiKey,
@@ -157,7 +155,7 @@ export const analyzePhotoBatch = async (
     }
   }
 
-  const { inputs, examplesPrompt, systemPrompt, workTypes } = await prepareAnalysisInputs(records, appMode, instruction, selectedWorkTypes, ruleSettings, onLog);
+  const { inputs, systemPrompt, workTypes } = await prepareAnalysisInputs(records, appMode, instruction, selectedWorkTypes, ruleSettings, onLog);
   const prompt = buildBatchPrompt(records);
 
   // 工種一覧がある場合は動的スキーマを生成（workType を enum 化）
@@ -222,78 +220,20 @@ async function prepareAnalysisInputs(
   ruleSettings: RuleSettings | undefined,
   onLog?: LogFunction
 ) {
+  // 画像データを準備
   const inputs = records.map(r => ({
     inlineData: { data: extractBase64Data(r.base64), mimeType: r.mimeType }
   }));
 
-  let examplesPrompt = "";
-  let chainRecords: ChainRecord[] = [];
-  let workTypes: string[] = [];
+  // 共通モジュールでシステムプロンプトを構築
+  const { systemPrompt, workTypes } = await buildSystemPromptWithMultipleWorkTypes({
+    appMode,
+    selectedWorkTypes,
+    instruction,
+    ruleSettings,
+  }, onLog);
 
-  if (appMode === 'construction') {
-    // CSVマスタからチェーンレコードと工種一覧を読み込み
-    try {
-      const masterRows = await loadMasterCsv();
-      if (masterRows.length > 0) {
-        let allChainRecords = toChainRecordsJson(masterRows);
-        workTypes = getWorkTypesFromMaster(masterRows);
-
-        // 工種でフィルタリング（指定がある場合）
-        if (selectedWorkTypes && selectedWorkTypes.length > 0) {
-          chainRecords = allChainRecords.filter(r => selectedWorkTypes.includes(r.workType));
-          // フィルタ後の工種一覧を使用
-          workTypes = selectedWorkTypes;
-          onLog?.(`[MASTER] CSVから${allChainRecords.length}件 → ${chainRecords.length}件にフィルタ (工種: ${selectedWorkTypes.join(', ')})`, "info");
-        } else {
-          chainRecords = allChainRecords;
-          onLog?.(`[MASTER] CSVから${masterRows.length}件のマスタレコード、${workTypes.length}件の工種を読み込み`, "info");
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load master CSV:', e);
-    }
-
-    try {
-      // セッションベースのお手本をチェック
-      const activeSession = await getActiveSession();
-      if (activeSession) {
-        onLog?.(`[EXAMPLES] お手本セッション適用中: "${activeSession.name}" (${activeSession.photoCount}枚)`, "info");
-      }
-
-      // 履歴ベースのお手本をチェック（新機能）
-      const activeHistoryId = getActiveExampleHistoryId();
-      if (activeHistoryId && !activeSession) {
-        const historyEntry = await getAnalysisHistoryEntry(activeHistoryId);
-        if (historyEntry && historyEntry.isExampleSession) {
-          onLog?.(`[EXAMPLES] 履歴お手本適用中: "${historyEntry.name}" (${historyEntry.photoCount}枚)`, "info");
-        }
-      }
-
-      const examples = await getRelevantExamples(undefined, undefined, 5);
-      if (examples.length > 0) {
-        examplesPrompt = formatExamplesForPrompt(examples);
-        onLog?.(`[EXAMPLES] ${examples.length}件のお手本をプロンプトに適用`, "success");
-      }
-    } catch (e) {
-      console.warn('Failed to load examples:', e);
-    }
-  }
-
-  const baseSystemPrompt = getSystemInstruction(appMode, instruction, ruleSettings, chainRecords);
-
-  let learnedRulesPrompt = "";
-  try {
-    const learnedSettings = await getLearnedSettings();
-    if (learnedSettings.rules.length > 0 || learnedSettings.aliases.length > 0) {
-      learnedRulesPrompt = learnedRulesToPromptText(learnedSettings);
-      onLog?.(`[LEARNING] ${learnedSettings.rules.length}件のルール、${learnedSettings.aliases.length}件のエイリアスを適用`, "success");
-    }
-  } catch (e) {
-    console.warn('Failed to load learned settings:', e);
-  }
-
-  const systemPrompt = [baseSystemPrompt, examplesPrompt, learnedRulesPrompt].filter(Boolean).join('\n\n');
-  return { inputs, examplesPrompt, systemPrompt, workTypes };
+  return { inputs, systemPrompt, workTypes };
 }
 
 function buildBatchPrompt(records: PhotoRecord[]): string {

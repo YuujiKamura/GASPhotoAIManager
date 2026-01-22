@@ -54,3 +54,9 @@ export { getSystemInstruction, REMARKS_CATEGORIES } from './systemPrompts';
 // Work Type Selector (workTypeSelector.ts)
 // ============================================
 export { selectWorkTypes } from './workTypeSelector';
+
+// ============================================
+// Prompt Builder (promptBuilder.ts)
+// ============================================
+export { buildSystemPrompt, buildSystemPromptWithMultipleWorkTypes } from './promptBuilder';
+export type { PromptBuildOptions, PromptBuildResult } from './promptBuilder';
