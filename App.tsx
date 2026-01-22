@@ -222,7 +222,7 @@ export default function App() {
   return (
     <>
       {backend === null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
             <h1 className="text-lg font-bold text-gray-800 mb-2">解析エンジンを選択</h1>
             <p className="text-sm text-gray-600 mb-4">
