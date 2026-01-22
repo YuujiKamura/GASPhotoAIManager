@@ -8,8 +8,43 @@
  * - 2026-01-22: WebSocket対応追加（SDK連携用）
  */
 
-const API_BASE = 'http://localhost:3001';
-const WS_BASE = 'ws://localhost:3001/ws';
+const DEFAULT_API_BASE = 'http://localhost:3001';
+const LOCAL_API_STORAGE_KEY = 'local_api_base';
+
+function normalizeApiBase(input: string): string {
+  const raw = input.trim();
+  if (!raw) return DEFAULT_API_BASE;
+
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : `http://${raw}`;
+  const url = new URL(withScheme);
+
+  if (url.protocol === 'ws:') {
+    url.protocol = 'http:';
+  } else if (url.protocol === 'wss:') {
+    url.protocol = 'https:';
+  }
+
+  return url.origin;
+}
+
+export function getLocalApiBase(): string {
+  const stored = localStorage.getItem(LOCAL_API_STORAGE_KEY);
+  return normalizeApiBase(stored || DEFAULT_API_BASE);
+}
+
+export function setLocalApiBase(input: string): string {
+  const normalized = normalizeApiBase(input);
+  localStorage.setItem(LOCAL_API_STORAGE_KEY, normalized);
+  return normalized;
+}
+
+export function getLocalWsBase(): string {
+  const apiBase = getLocalApiBase();
+  if (apiBase.startsWith('https://')) {
+    return apiBase.replace('https://', 'wss://') + '/ws';
+  }
+  return apiBase.replace('http://', 'ws://') + '/ws';
+}
 
 export interface PhotoInput {
   fileName: string;
@@ -54,7 +89,8 @@ export interface AnalyzeResponse {
  */
 export async function checkServerHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/api/health`, {
+    const apiBase = getLocalApiBase();
+    const res = await fetch(`${apiBase}/api/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(3000),
     });
@@ -75,7 +111,8 @@ export async function analyzeFolder(
     batchSize?: number;
   }
 ): Promise<AnalyzeResponse> {
-  const res = await fetch(`${API_BASE}/api/analyze`, {
+  const apiBase = getLocalApiBase();
+  const res = await fetch(`${apiBase}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -101,7 +138,8 @@ export async function analyzePhotos(
     workType?: string;
   }
 ): Promise<AnalyzeResponse> {
-  const res = await fetch(`${API_BASE}/api/analyze`, {
+  const apiBase = getLocalApiBase();
+  const res = await fetch(`${apiBase}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -122,7 +160,8 @@ export async function analyzePhotos(
 export async function listFolder(
   folderPath: string
 ): Promise<{ items: Array<{ name: string; isDirectory: boolean; path: string }> }> {
-  const res = await fetch(`${API_BASE}/api/folder?path=${encodeURIComponent(folderPath)}`);
+  const apiBase = getLocalApiBase();
+  const res = await fetch(`${apiBase}/api/folder?path=${encodeURIComponent(folderPath)}`);
   return res.json();
 }
 
@@ -179,7 +218,7 @@ export class LocalServerWebSocket {
       }
 
       try {
-        this.ws = new WebSocket(WS_BASE);
+        this.ws = new WebSocket(getLocalWsBase());
 
         this.ws.onopen = () => {
           console.log('[WS] Connected to local server');

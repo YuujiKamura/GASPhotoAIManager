@@ -3,7 +3,7 @@ import { PhotoRecord, AppMode, SortPolicy, AnalysisStep, AnalysisStepId, Analysi
 import { generateExcel } from './utils/excelGenerator';
 import { TRANS } from './utils/translations';
 import { fileToBase64 } from './utils/fileHandlers';
-import { checkServerHealth, SERVER_NOT_RUNNING_MESSAGE } from './services/localApiService';
+import { checkServerHealth, SERVER_NOT_RUNNING_MESSAGE, getLocalApiBase, setLocalApiBase } from './services/localApiService';
 import { useAnalysisBackend } from './hooks/useAnalysisBackend';
 
 // Hooks
@@ -58,6 +58,9 @@ export default function App() {
   // Server Connection State (null = checking, true = connected, false = not connected)
   const [serverConnected, setServerConnected] = useState<boolean | null>(null);
   const { backend, setBackend, resetBackend } = useAnalysisBackend();
+  const [localApiUrl, setLocalApiUrl] = useState<string>(() => getLocalApiBase());
+  const [localApiStatus, setLocalApiStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
+  const [localApiError, setLocalApiError] = useState<string>('');
 
   // Language & App Mode
   const [lang] = useState<'en' | 'ja'>(() => navigator.language.startsWith('en') ? 'en' : 'ja');
@@ -78,6 +81,14 @@ export default function App() {
       setServerConnected(true);
     } else {
       setServerConnected(null);
+    }
+  }, [backend]);
+
+  useEffect(() => {
+    if (backend === null) {
+      setLocalApiUrl(getLocalApiBase());
+      setLocalApiStatus('idle');
+      setLocalApiError('');
     }
   }, [backend]);
 
@@ -235,12 +246,71 @@ export default function App() {
               >
                 Gemini API（クラウド）
               </button>
-              <button
-                onClick={() => setBackend('local')}
-                className="w-full py-3 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors"
-              >
-                ローカルAPI（Claude Code）
-              </button>
+              <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                <div className="text-sm font-medium text-gray-800">ローカルAPI（Claude Code）</div>
+                <input
+                  type="text"
+                  value={localApiUrl}
+                  onChange={(e) => setLocalApiUrl(e.target.value)}
+                  placeholder="http://localhost:3001"
+                  className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                />
+                {localApiStatus === 'ok' && (
+                  <div className="text-xs text-green-600">接続OK</div>
+                )}
+                {localApiStatus === 'error' && (
+                  <div className="text-xs text-red-600">{localApiError || '接続できませんでした'}</div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      setLocalApiStatus('checking');
+                      setLocalApiError('');
+                      try {
+                        const normalized = setLocalApiBase(localApiUrl);
+                        setLocalApiUrl(normalized);
+                        const isHealthy = await checkServerHealth();
+                        setLocalApiStatus(isHealthy ? 'ok' : 'error');
+                        if (!isHealthy) {
+                          setLocalApiError('接続できませんでした');
+                        }
+                      } catch {
+                        setLocalApiStatus('error');
+                        setLocalApiError('URLが無効です');
+                      }
+                    }}
+                    className="flex-1 py-2 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm transition-colors"
+                    disabled={localApiStatus === 'checking'}
+                  >
+                    {localApiStatus === 'checking' ? '接続中...' : '接続テスト'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setLocalApiStatus('checking');
+                      setLocalApiError('');
+                      try {
+                        const normalized = setLocalApiBase(localApiUrl);
+                        setLocalApiUrl(normalized);
+                        const isHealthy = await checkServerHealth();
+                        if (isHealthy) {
+                          setLocalApiStatus('ok');
+                          setBackend('local');
+                        } else {
+                          setLocalApiStatus('error');
+                          setLocalApiError('接続できませんでした');
+                        }
+                      } catch {
+                        setLocalApiStatus('error');
+                        setLocalApiError('URLが無効です');
+                      }
+                    }}
+                    className="flex-1 py-2 rounded bg-slate-700 text-white hover:bg-slate-800 text-sm transition-colors"
+                    disabled={localApiStatus === 'checking'}
+                  >
+                    このアドレスで開始
+                  </button>
+                </div>
+              </div>
               <button
                 onClick={() => setBackend('none')}
                 className="w-full py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
