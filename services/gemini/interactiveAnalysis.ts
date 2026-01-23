@@ -157,6 +157,11 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
     let parsed: any;
     try {
       parsed = JSON.parse(fullText);
+      // 配列の場合は最初の要素を使用
+      if (Array.isArray(parsed)) {
+        console.log('[InteractiveAnalysis] Response is array, using first element');
+        parsed = parsed[0] || {};
+      }
     } catch {
       // JSONパース失敗: テキストからJSON部分を抽出して再試行
       const jsonMatch = fullText.match(/\{[\s\S]*\}/);
