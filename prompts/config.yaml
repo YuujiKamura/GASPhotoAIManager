@@ -1,0 +1,23 @@
+# Prompt Configuration
+# アクティブプロンプト設定
+
+# 使用するプロンプトバージョン
+active:
+  construction: v1_baseline
+  general: v1_baseline
+  interactive: v1_baseline
+
+# フォールバック設定（YAMLロード失敗時）
+fallback:
+  enabled: true
+  useHardcoded: true
+
+# キャッシュ設定
+cache:
+  enabled: true
+  ttlSeconds: 300  # 5分
+
+# デバッグ設定
+debug:
+  logPromptSize: true
+  logVariables: false

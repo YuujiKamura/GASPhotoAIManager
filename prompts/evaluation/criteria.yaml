@@ -1,0 +1,17 @@
+# Evaluation Criteria
+criteria:
+  - id: field_accuracy
+    description: "フィールド抽出の正確さ"
+    weight: 0.4
+
+  - id: hierarchy_match
+    description: "マスタデータとの整合性"
+    weight: 0.3
+
+  - id: consistency
+    description: "同一シーンでの一貫性"
+    weight: 0.2
+
+  - id: token_efficiency
+    description: "トークン効率"
+    weight: 0.1

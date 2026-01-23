@@ -18,7 +18,9 @@
     "build:server": "node -e \"require('child_process').execSync('npx esbuild cli/server.ts --bundle --platform=node --target=node18 --outfile=dist-cli/server.js --format=esm --packages=external', {stdio: 'inherit'})\"",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prompt:test": "npx tsx scripts/prompt-test.ts",
+    "prompt:eval": "npx tsx scripts/evaluate.ts"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

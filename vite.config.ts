@@ -33,6 +33,8 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       base: '/GASPhotoAIManager/',
+      // YAMLファイルをアセットとして認識（import.meta.globのフォールバック用）
+      assetsInclude: ['**/*.yaml'],
       server: {
         port: 3000,
         host: '0.0.0.0',

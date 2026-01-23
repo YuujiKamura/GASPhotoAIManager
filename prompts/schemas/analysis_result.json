@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gasphotoaimanager.example.com/schemas/analysis_result.json",
+  "title": "AIAnalysisResult",
+  "description": "AI写真解析結果のスキーマ",
+  "type": "object",
+  "properties": {
+    "workType": {
+      "type": "string",
+      "description": "工種（例: 舗装工, 道路土工, 構造物撤去工）"
+    },
+    "variety": {
+      "type": "string",
+      "description": "種別（例: 舗装打換え工, 未舗装部舗装工）"
+    },
+    "detail": {
+      "type": "string",
+      "description": "細別（例: 表層工, 上層路盤工, 舗装版破砕）"
+    },
+    "station": {
+      "type": "string",
+      "description": "測点（形式: 地名 No.整数, 例: 小峯2丁目 No.4）"
+    },
+    "remarksCategory": {
+      "type": "string",
+      "description": "備考カテゴリ（enumから選択）",
+      "enum": [
+        "到着温度",
+        "敷均し温度",
+        "初期締固め前温度",
+        "開放温度",
+        "アスファルト混合物温度測定",
+        "現場密度測定",
+        "転圧状況",
+        "敷均し状況",
+        "舗設状況",
+        "初期転圧状況",
+        "2次転圧状況",
+        "乳剤散布状況",
+        "端部乳剤塗布状況",
+        "養生砂散布状況",
+        "清掃状況",
+        "掘削状況",
+        "積込状況",
+        "取壊し状況",
+        "据付状況",
+        "設置状況",
+        "剥取状況",
+        "既設舗装厚さ確認",
+        "アスファルト塊処分施設",
+        "As塊処分施設許可票",
+        "アスファルト塊計量状況",
+        "アスファルト塊処分状況",
+        "着手前",
+        "完了",
+        "竣工",
+        "施工完了",
+        "既済部分",
+        "不陸整正出来形",
+        "路盤厚出来形",
+        "表層厚出来形",
+        "幅員出来形",
+        "朝礼実施状況",
+        "朝礼・KYミーティング実施状況",
+        "朝礼状況",
+        "KY活動状況",
+        "危険予知活動状況",
+        "KYミーティング実施状況",
+        "新規入場者教育状況",
+        "新規入場者教育実施状況",
+        "保安施設設置状況",
+        "点灯確認状況",
+        "安全巡視状況",
+        "安全訓練実施状況",
+        "避難訓練実施状況",
+        "災害発生状況",
+        "事故発生状況",
+        "被害状況",
+        "環境対策状況",
+        "騒音対策状況",
+        "粉塵対策状況",
+        "その他"
+      ]
+    },
+    "photoCategory": {
+      "type": "string",
+      "description": "写真区分（9区分から選択）",
+      "enum": [
+        "着手前及び完成写真",
+        "施工状況写真",
+        "安全管理写真",
+        "使用材料写真",
+        "品質管理写真",
+        "出来形管理写真",
+        "災害写真",
+        "事故写真",
+        "その他"
+      ]
+    },
+    "measurements": {
+      "type": "string",
+      "description": "測定値・数値データ（改行区切り形式）"
+    },
+    "description": {
+      "type": "string",
+      "description": "記事（黒板の内容、測定値、作業内容など）"
+    },
+    "hasBoard": {
+      "type": "boolean",
+      "description": "黒板の有無"
+    },
+    "detectedText": {
+      "type": "string",
+      "description": "OCRで検出したテキスト"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "判断根拠（対話型モードで使用）"
+    },
+    "fileName": {
+      "type": "string",
+      "description": "ファイル名（対話型モードで使用）"
+    }
+  },
+  "required": [
+    "workType",
+    "variety",
+    "detail",
+    "station",
+    "remarksCategory",
+    "photoCategory",
+    "measurements",
+    "description",
+    "hasBoard",
+    "detectedText"
+  ],
+  "additionalProperties": false
+}
