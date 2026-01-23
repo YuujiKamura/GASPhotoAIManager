@@ -31,7 +31,7 @@ const PHOTO_CATEGORY_LIST: PhotoCategory[] = [
   "事故写真",
   "その他",
 ];
-const formatChainRecordsHierarchy = (records: ChainRecord[]): string => {
+export const formatChainRecordsHierarchy = (records: ChainRecord[]): string => {
   const byWorkType = new Map<string, Map<string, Map<string, Map<string, Set<string>>>>>();
 
   for (const r of records) {
@@ -420,3 +420,72 @@ export const REMARKS_CATEGORIES = [
 ];
 
 export const PHOTO_CATEGORIES = PHOTO_CATEGORY_LIST;
+
+// ============================================
+// YAML ベースのプロンプト取得（新システム）
+// ============================================
+
+import { getExpandedPrompt, getActivePrompt } from '../../utils/promptLoader';
+
+/**
+ * YAMLファイルからシステム指示を取得（新方式）
+ * フォールバック: 失敗時は従来のgetSystemInstructionを使用
+ */
+export async function getSystemInstructionFromYaml(
+  options: SystemInstructionOptions
+): Promise<string> {
+  const { appMode, customInstruction, ruleSettings, chainRecords } = options;
+
+  try {
+    const mode = appMode === 'general' ? 'general' : 'construction';
+
+    // 変数を準備
+    const variables: Record<string, string> = {};
+
+    if (chainRecords && chainRecords.length > 0) {
+      variables.chainRecordsHierarchy = formatChainRecordsHierarchy(chainRecords);
+    } else {
+      variables.chainRecordsHierarchy = '(マスタデータなし - 自由入力可)';
+    }
+
+    if (ruleSettings) {
+      variables.ruleSettings = rulesToPromptText(ruleSettings);
+    } else {
+      const rules = loadRuleSettings();
+      variables.ruleSettings = rulesToPromptText(rules);
+    }
+
+    if (customInstruction) {
+      variables.customInstruction = `USER OVERRIDE INSTRUCTION: ${customInstruction}`;
+    }
+
+    // YAMLから取得
+    const result = await getExpandedPrompt(mode, variables);
+
+    if (result) {
+      return result;
+    }
+  } catch (e) {
+    console.warn('[SystemPrompts] YAML load failed, using fallback:', e);
+  }
+
+  // フォールバック: 従来の関数を使用
+  return getSystemInstruction(appMode, customInstruction, ruleSettings, chainRecords);
+}
+
+/**
+ * 対話型解析用のシステムプロンプトをYAMLから取得
+ */
+export async function getInteractivePromptFromYaml(): Promise<string> {
+  try {
+    const result = await getExpandedPrompt('interactive', {});
+    if (result) {
+      return result;
+    }
+  } catch (e) {
+    console.warn('[SystemPrompts] Interactive YAML load failed, using fallback:', e);
+  }
+
+  // フォールバック
+  return INTERACTIVE_SYSTEM_PROMPT;
+}
