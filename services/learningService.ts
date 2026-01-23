@@ -219,20 +219,60 @@ export const pushToGitHub = async (): Promise<{ success: boolean; error?: string
 };
 
 /**
+ * 工種でルールをフィルタリング
+ */
+export const filterRulesByWorkTypes = (
+  settings: LearnedSettings,
+  workTypes: string[]
+): LearnedSettings => {
+  if (!workTypes || workTypes.length === 0) {
+    return settings;
+  }
+
+  const filteredRules = settings.rules.filter(rule => {
+    // workType条件がないルールは全工種適用
+    if (!rule.condition.workType) return true;
+    // 指定工種にマッチするルールのみ
+    return workTypes.some(wt => rule.condition.workType?.includes(wt));
+  });
+
+  const filteredAliases = settings.aliases.filter(alias => {
+    // context がないエイリアスは全工種適用
+    if (!alias.context) return true;
+    // 指定工種にマッチするエイリアスのみ
+    return workTypes.some(wt => alias.context?.includes(wt));
+  });
+
+  return {
+    ...settings,
+    rules: filteredRules,
+    aliases: filteredAliases
+  };
+};
+
+/**
  * 学習ルールをプロンプトに変換
  */
-export const rulesToPromptText = (settings: LearnedSettings): string => {
-  if (settings.rules.length === 0 && settings.aliases.length === 0) {
+export const rulesToPromptText = (
+  settings: LearnedSettings,
+  workTypes?: string[]
+): string => {
+  // workTypes が指定されている場合はフィルタリング
+  const filteredSettings = workTypes
+    ? filterRulesByWorkTypes(settings, workTypes)
+    : settings;
+
+  if (filteredSettings.rules.length === 0 && filteredSettings.aliases.length === 0) {
     return '';
   }
 
   const lines: string[] = ['\n--- LEARNED CORRECTIONS (学習済み修正) ---'];
 
   // ルール
-  if (settings.rules.length > 0) {
+  if (filteredSettings.rules.length > 0) {
     lines.push('\n**Correction Rules:**');
     // 最新の10件のみ
-    const recentRules = settings.rules.slice(-10);
+    const recentRules = filteredSettings.rules.slice(-10);
     recentRules.forEach(rule => {
       const conditions = Object.entries(rule.condition)
         .filter(([_, v]) => v)
@@ -247,10 +287,10 @@ export const rulesToPromptText = (settings: LearnedSettings): string => {
   }
 
   // エイリアス
-  if (settings.aliases.length > 0) {
+  if (filteredSettings.aliases.length > 0) {
     lines.push('\n**Term Mappings (Do NOT use left side, use right side):**');
     // 最新の20件のみ
-    const recentAliases = settings.aliases.slice(-20);
+    const recentAliases = filteredSettings.aliases.slice(-20);
     recentAliases.forEach(alias => {
       const context = alias.context ? ` (in ${alias.context})` : '';
       lines.push(`- "${alias.from}" → "${alias.to}"${context}`);
