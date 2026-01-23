@@ -116,30 +116,58 @@ export const clearExamples = async (): Promise<void> => {
 };
 
 /**
+ * Options for filtering examples
+ */
+export interface ExampleFilterOptions {
+  workType?: string;
+  workTypes?: string[];  // 複数工種対応
+  category?: PhotoCategory;
+  limit?: number;
+}
+
+/**
+ * Filter examples by workTypes
+ * Returns all examples if workTypes is undefined or empty
+ */
+const filterByWorkTypes = (examples: AnalysisExample[], workTypes?: string[]): AnalysisExample[] => {
+  if (!workTypes || workTypes.length === 0) {
+    return examples;
+  }
+  return examples.filter(ex =>
+    ex.analysis.workType && workTypes.includes(ex.analysis.workType)
+  );
+};
+
+/**
  * Get relevant examples for analysis
  * Checks both session examples and history-based examples
  */
 export const getRelevantExamples = async (
   workType?: string,
   category?: PhotoCategory,
-  limit: number = 3
+  limit: number = 3,
+  workTypes?: string[]  // 複数工種でのフィルタリング
 ): Promise<AnalysisExample[]> => {
   // 1. まずセッションベースのお手本をチェック
   const activeSessionId = getActiveSessionId();
   if (activeSessionId) {
     const session = await getSession(activeSessionId);
     if (session && session.examples.length > 0) {
-      const scored = session.examples.map(ex => {
-        let score = 0;
-        if (category && ex.category === category) score += 3;
-        if (workType && ex.analysis.workType === workType) score += 2;
-        score += 1;
-        return { example: ex, score };
-      });
-      return scored
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit)
-        .map(s => s.example);
+      // workTypesでフィルタリング
+      const filtered = filterByWorkTypes(session.examples, workTypes);
+      if (filtered.length > 0) {
+        const scored = filtered.map(ex => {
+          let score = 0;
+          if (category && ex.category === category) score += 3;
+          if (workType && ex.analysis.workType === workType) score += 2;
+          score += 1;
+          return { example: ex, score };
+        });
+        return scored
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit)
+          .map(s => s.example);
+      }
     }
   }
 
@@ -169,17 +197,21 @@ export const getRelevantExamples = async (
 
       if (examplesFromHistory.length > 0) {
         console.log(`[EXAMPLES] 履歴お手本から${examplesFromHistory.length}件取得: "${historyEntry.name}"`);
-        const scored = examplesFromHistory.map(ex => {
-          let score = 0;
-          if (category && ex.category === category) score += 3;
-          if (workType && ex.analysis.workType === workType) score += 2;
-          score += 1;
-          return { example: ex, score };
-        });
-        return scored
-          .sort((a, b) => b.score - a.score)
-          .slice(0, limit)
-          .map(s => s.example);
+        // workTypesでフィルタリング
+        const filtered = filterByWorkTypes(examplesFromHistory, workTypes);
+        if (filtered.length > 0) {
+          const scored = filtered.map(ex => {
+            let score = 0;
+            if (category && ex.category === category) score += 3;
+            if (workType && ex.analysis.workType === workType) score += 2;
+            score += 1;
+            return { example: ex, score };
+          });
+          return scored
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit)
+            .map(s => s.example);
+        }
       }
     }
   }
@@ -188,7 +220,11 @@ export const getRelevantExamples = async (
   const all = await getExamples();
   if (all.length === 0) return [];
 
-  const scored = all.map(ex => {
+  // workTypesでフィルタリング
+  const filtered = filterByWorkTypes(all, workTypes);
+  if (filtered.length === 0) return [];
+
+  const scored = filtered.map(ex => {
     let score = 0;
     if (category && ex.category === category) score += 3;
     if (workType && ex.analysis.workType === workType) score += 2;
