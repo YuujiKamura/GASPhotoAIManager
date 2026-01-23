@@ -16,7 +16,7 @@ GASPhotoAIManagerにEngram的な「知識参照」と「論理推論」の分離
 
 ---
 
-## Level 1: 軽量版 - 連動フィルタ拡張 🔄 In Progress
+## Level 1: 軽量版 - 連動フィルタ拡張 ✅ Complete
 
 ### 概要
 工種フィルタをお手本・学習ルールにも連動させる。
@@ -28,7 +28,7 @@ GASPhotoAIManagerにEngram的な「知識参照」と「論理推論」の分離
 - [x] `services/engram/index.ts` - エントリポイント
 - [x] `utils/storage/examples.ts` - workTypeFilterオプション追加
 - [x] `services/learningService.ts` - filterRulesByWorkTypes()追加
-- [x] `services/gemini/analysis.ts` - 統合フィルタ使用
+- [x] `services/gemini/promptBuilder.ts` - 統合フィルタ使用
 
 ### 期待効果
 - トークン削減: **35-50%**
