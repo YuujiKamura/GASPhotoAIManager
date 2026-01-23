@@ -205,8 +205,14 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
       // 解析成功時: 結果を簡潔に表示
       responseText = `工種: ${analysis.workType}${analysis.variety ? ` > ${analysis.variety}` : ''}${analysis.detail ? ` > ${analysis.detail}` : ''}\n測点: ${analysis.station || '-'}\n\n内容を確認して、OKなら確定を押してね。`;
     } else if (!responseText) {
-      // 何も返ってこなかった場合（稀）
-      responseText = '写真を確認中...';
+      // 何も返ってこなかった場合: 返ってきた内容をそのまま表示
+      console.warn('[InteractiveAnalysis] Unexpected response structure:', JSON.stringify(parsed, null, 2));
+      const keys = Object.keys(parsed);
+      if (keys.length > 0) {
+        responseText = `予期しないレスポンス形式です。\nキー: ${keys.join(', ')}\n\n生データは左パネルの「Gemini回答（生）」を確認してください。`;
+      } else {
+        responseText = '空のレスポンスが返されました。APIキーの設定を確認してください。';
+      }
     }
 
     return {
