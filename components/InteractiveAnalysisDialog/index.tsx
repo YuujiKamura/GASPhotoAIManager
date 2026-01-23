@@ -47,6 +47,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
   // インラインでAPIキーを設定
   const handleInlineApiKeySubmit = () => {
     if (inlineApiKey.trim()) {
+      console.log('[InteractiveAnalysis] Setting API key, length:', inlineApiKey.trim().length);
       setApiKey(inlineApiKey.trim());
       onApiKeySet?.(inlineApiKey.trim());
       setInlineApiKey('');
@@ -56,7 +57,9 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
 
   // APIキーが設定されたらリトライ
   useEffect(() => {
+    console.log('[InteractiveAnalysis] Retry useEffect:', { pendingRetry, apiKeyLength: apiKey?.length || 0, hasPhoto: !!photo });
     if (pendingRetry && apiKey && photo) {
+      console.log('[InteractiveAnalysis] Retrying with new API key');
       setPendingRetry(false);
       openDialog(photo);
     }

@@ -24,6 +24,19 @@ export const useInteractiveAnalysis = (
 
   // ダイアログを開く
   const openDialog = useCallback(async (photo: PhotoRecord) => {
+    console.log('[InteractiveAnalysis] openDialog called, apiKey length:', apiKey?.length || 0);
+
+    if (!apiKey) {
+      setState(prev => ({
+        ...prev,
+        isOpen: true,
+        targetPhoto: photo,
+        isProcessing: false,
+        error: 'APIキーが設定されていません。',
+      }));
+      return;
+    }
+
     if (backend !== 'gemini') {
       if (onRequireBackend) {
         onRequireBackend();
