@@ -31,6 +31,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
   const txt = TRANSLATIONS[lang];
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [inlineApiKey, setInlineApiKey] = useState('');
+  const [pendingRetry, setPendingRetry] = useState(false);
 
   const {
     state,
@@ -49,12 +50,17 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
       setApiKey(inlineApiKey.trim());
       onApiKeySet?.(inlineApiKey.trim());
       setInlineApiKey('');
-      // 再度解析を試行
-      if (photo) {
-        openDialog(photo);
-      }
+      setPendingRetry(true);
     }
   };
+
+  // APIキーが設定されたらリトライ
+  useEffect(() => {
+    if (pendingRetry && apiKey && photo) {
+      setPendingRetry(false);
+      openDialog(photo);
+    }
+  }, [pendingRetry, apiKey, photo, openDialog]);
 
   // 写真が設定されたらダイアログを開く
   useEffect(() => {
