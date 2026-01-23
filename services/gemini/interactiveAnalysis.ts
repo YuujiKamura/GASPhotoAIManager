@@ -149,27 +149,19 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
         throw new Error('処理が中断されました');
       }
       const chunkText = chunk.text;
-      fullText += chunkText;
-      onStream?.(fullText);
+      if (chunkText) {
+        fullText += chunkText;
+        onStream?.(fullText);
+      }
     }
 
     // JSONをパース
     let parsed: any;
     try {
       parsed = JSON.parse(fullText);
-      // 配列の場合は最初の要素を使用
-      if (Array.isArray(parsed)) {
-        console.log('[InteractiveAnalysis] Response is array, using first element');
-        parsed = parsed[0] || {};
-      }
-      // analysisがネストされてない場合（workTypeが直接ある場合）、analysisとしてラップ
-      if (parsed.workType && !parsed.analysis) {
-        console.log('[InteractiveAnalysis] Flat response format, wrapping as analysis');
-        parsed = { analysis: parsed, response: '' };
-      }
     } catch {
       // JSONパース失敗: テキストからJSON部分を抽出して再試行
-      const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+      const jsonMatch = fullText.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           parsed = JSON.parse(jsonMatch[0]);
@@ -188,6 +180,17 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
           analysis: null,
         };
       }
+    }
+
+    // 配列の場合は最初の要素を使用
+    if (Array.isArray(parsed)) {
+      console.log('[InteractiveAnalysis] Response is array, using first element');
+      parsed = parsed[0] || {};
+    }
+    // analysisがネストされてない場合（workTypeが直接ある場合）、analysisとしてラップ
+    if (parsed.workType && !parsed.analysis) {
+      console.log('[InteractiveAnalysis] Flat response format, wrapping as analysis');
+      parsed = { analysis: parsed, response: '' };
     }
 
     const analysis: AIAnalysisResult | null = parsed.analysis
