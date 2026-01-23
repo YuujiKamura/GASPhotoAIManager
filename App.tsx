@@ -522,7 +522,7 @@ export default function App() {
       <Suspense fallback={<LoadingFallback />}>
         <InteractiveAnalysisDialog photo={interactiveAnalysisTarget} apiKey={apiKeyState.apiKey || ''} backend={backend} lang={lang}
           onConfirm={projectHandlers.handleInteractiveAnalysisConfirm} onRequireBackend={handleRequireBackend}
-          onRequireApiKey={() => modals.setShowApiKeySetup(true)} onClose={() => setInteractiveAnalysisTarget(null)} />
+          onApiKeySet={(key) => apiKeyState.handleApiKeyInput(key)} onClose={() => setInteractiveAnalysisTarget(null)} />
       </Suspense>
     </>
   );

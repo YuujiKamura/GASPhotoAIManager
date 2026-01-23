@@ -1,10 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain, Key } from 'lucide-react';
+import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain, Key, ExternalLink } from 'lucide-react';
 import { AIAnalysisResult, PhotoRecord } from '../../types';
 import { useInteractiveAnalysis } from './useInteractiveAnalysis';
 import { AnalysisBackend } from '../../services/analysisBackend';
 import { TRANSLATIONS, DialogChoice } from './types';
+import { setApiKey } from '../../services/gemini/apiKey';
 
 interface InteractiveAnalysisDialogProps {
   photo: PhotoRecord | null;
@@ -13,7 +14,7 @@ interface InteractiveAnalysisDialogProps {
   lang?: 'ja' | 'en';
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void;
   onRequireBackend?: () => void;
-  onRequireApiKey?: () => void;
+  onApiKeySet?: (key: string) => void;
   onClose: () => void;
 }
 
@@ -24,11 +25,12 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
   lang = 'ja',
   onConfirm,
   onRequireBackend,
-  onRequireApiKey,
+  onApiKeySet,
   onClose,
 }) => {
   const txt = TRANSLATIONS[lang];
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [inlineApiKey, setInlineApiKey] = useState('');
 
   const {
     state,
@@ -39,7 +41,20 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
     acceptAnalysis,
     setInputText,
     toggleTextInput,
-  } = useInteractiveAnalysis(apiKey, backend, onConfirm, onRequireBackend, onRequireApiKey);
+  } = useInteractiveAnalysis(apiKey, backend, onConfirm, onRequireBackend);
+
+  // インラインでAPIキーを設定
+  const handleInlineApiKeySubmit = () => {
+    if (inlineApiKey.trim()) {
+      setApiKey(inlineApiKey.trim());
+      onApiKeySet?.(inlineApiKey.trim());
+      setInlineApiKey('');
+      // 再度解析を試行
+      if (photo) {
+        openDialog(photo);
+      }
+    }
+  };
 
   // 写真が設定されたらダイアログを開く
   useEffect(() => {
@@ -204,18 +219,43 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
 
               {/* エラー表示 */}
               {state.error && (
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-3 max-w-md mx-auto">
                   <div className="px-4 py-2 rounded-lg bg-red-900/50 text-red-300 text-sm">
                     {state.error}
                   </div>
-                  {!apiKey && onRequireApiKey && (
-                    <button
-                      onClick={() => { onRequireApiKey(); onClose(); }}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
-                    >
-                      <Key className="w-4 h-4" />
-                      APIキーを設定する
-                    </button>
+                  {!apiKey && (
+                    <div className="w-full bg-gray-800 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-gray-300 text-sm">
+                        <Key className="w-4 h-4" />
+                        <span>APIキーを入力してください</span>
+                      </div>
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Google AI Studioでキーを取得
+                      </a>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={inlineApiKey}
+                          onChange={(e) => setInlineApiKey(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleInlineApiKeySubmit()}
+                          placeholder="AIza..."
+                          className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                        />
+                        <button
+                          onClick={handleInlineApiKeySubmit}
+                          disabled={!inlineApiKey.trim()}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm"
+                        >
+                          設定
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

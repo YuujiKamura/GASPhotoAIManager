@@ -16,7 +16,6 @@ export const useInteractiveAnalysis = (
   backend: AnalysisBackend | null,
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void,
   onRequireBackend?: () => void,
-  onRequireApiKey?: () => void,
   onLog?: (message: string, type?: string) => void
 ): UseInteractiveAnalysisReturn => {
   const [state, setState] = useState<InteractiveAnalysisState>(INITIAL_STATE);
