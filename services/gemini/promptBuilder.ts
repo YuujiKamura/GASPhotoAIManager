@@ -7,13 +7,16 @@
  * 両方で使用する共通モジュール
  */
 
-import { AppMode } from "../../types";
+import { AppMode, AnalysisExample } from "../../types";
 import { ChainRecord, loadMasterCsv, toChainRecordsJson, getWorkTypesFromMaster } from "../../utils/masterCsvParser";
 import { RuleSettings } from "../../utils/analysisRules";
-import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry } from "../../utils/storage";
+import { getRelevantExamples, getActiveSession, getActiveExampleHistoryId, getAnalysisHistoryEntry, getExamples } from "../../utils/storage";
 import { getLearnedSettings, rulesToPromptText as learnedRulesToPromptText } from "../learningService";
 import { getSystemInstruction } from "./systemPrompts";
 import { formatExamplesForPrompt, LogFunction } from "./helpers";
+// Engram Level 2: 類似画像検索
+import { selectOptimalExamples, SimilaritySearchOptions } from "../engram/similaritySearch";
+import { getHashIndexStats } from "../engram/hashIndex";
 
 // ============================================
 // 型定義
@@ -258,5 +261,168 @@ export async function buildSystemPromptWithMultipleWorkTypes(
     workTypes,
     examplesCount,
     learnedRulesCount,
+  };
+}
+
+// ============================================
+// Engram Level 2: 類似画像ベースのお手本選択
+// ============================================
+
+export interface SimilarityPromptOptions extends Omit<PromptBuildOptions, 'workType'> {
+  selectedWorkTypes?: string[];
+  images?: Array<{ fileName: string; base64: string }>;  // 解析対象画像
+  useSimilaritySearch?: boolean;  // 類似検索を使用するか（default: auto）
+  maxSimilarExamples?: number;    // 類似検索で選択するお手本数（default: 3）
+}
+
+export interface SimilarityPromptResult extends PromptBuildResult {
+  similarityUsed: boolean;        // 類似検索が使用されたか
+  similarityCoverage?: number;    // カバレッジ（0-1）
+}
+
+/**
+ * 類似画像検索を使用したプロンプト構築
+ *
+ * Engram Level 2: pHashで類似画像を検索し、最適なお手本1-3件のみ注入
+ * - ハッシュインデックスがある場合は類似検索を使用
+ * - ない場合は Level 1 にフォールバック
+ */
+export async function buildSystemPromptWithSimilarity(
+  options: SimilarityPromptOptions,
+  onLog?: LogFunction
+): Promise<SimilarityPromptResult> {
+  const {
+    appMode,
+    selectedWorkTypes,
+    instruction,
+    ruleSettings,
+    includeExamples = true,
+    includeLearned = true,
+    additionalPrompt,
+    images,
+    useSimilaritySearch,
+    maxSimilarExamples = 3,
+  } = options;
+
+  let chainRecords: ChainRecord[] = [];
+  let workTypes: string[] = [];
+  let examplesPrompt = "";
+  let learnedRulesPrompt = "";
+  let examplesCount = 0;
+  let learnedRulesCount = 0;
+  let similarityUsed = false;
+  let similarityCoverage: number | undefined;
+
+  if (appMode === 'construction') {
+    // 1. マスタCSV読み込み
+    try {
+      const masterRows = await loadMasterCsv();
+      if (masterRows.length > 0) {
+        const allChainRecords = toChainRecordsJson(masterRows);
+        workTypes = getWorkTypesFromMaster(masterRows);
+
+        if (selectedWorkTypes && selectedWorkTypes.length > 0) {
+          chainRecords = allChainRecords.filter(r => selectedWorkTypes.includes(r.workType));
+          workTypes = selectedWorkTypes;
+          onLog?.(`[PROMPT] マスタフィルタ: ${allChainRecords.length}件 → ${chainRecords.length}件`, "info");
+        } else {
+          chainRecords = allChainRecords;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load master CSV:', e);
+    }
+
+    // 2. お手本取得（Level 2: 類似検索 or Level 1: 工種フィルタ）
+    if (includeExamples) {
+      try {
+        // ハッシュインデックスの状態を確認
+        const hashStats = await getHashIndexStats();
+        const shouldUseSimilarity = useSimilaritySearch ?? (
+          hashStats.totalEntries > 0 && images && images.length > 0
+        );
+
+        if (shouldUseSimilarity && images && images.length > 0) {
+          // Engram Level 2: 類似検索
+          onLog?.(`[ENGRAM L2] 類似検索開始: ${images.length}画像, ${hashStats.totalEntries}エントリ`, "info");
+
+          const allExamples = await getExamples();
+          const searchOptions: SimilaritySearchOptions = {
+            workTypes: selectedWorkTypes,
+            limit: 2,
+            minSimilarity: 0.75
+          };
+
+          const { examples: similarExamples, coverage } = await selectOptimalExamples(
+            images,
+            allExamples,
+            maxSimilarExamples,
+            searchOptions
+          );
+
+          if (similarExamples.length > 0) {
+            examplesPrompt = formatExamplesForPrompt(similarExamples);
+            examplesCount = similarExamples.length;
+            similarityUsed = true;
+            similarityCoverage = coverage;
+            onLog?.(`[ENGRAM L2] 類似お手本: ${examplesCount}件選択 (カバレッジ: ${(coverage * 100).toFixed(1)}%)`, "success");
+          } else {
+            onLog?.(`[ENGRAM L2] 類似お手本なし → Level 1にフォールバック`, "info");
+          }
+        }
+
+        // フォールバック: Level 1（工種フィルタ）
+        if (!similarityUsed) {
+          const examples = await getRelevantExamples(undefined, undefined, 5, selectedWorkTypes);
+          if (examples.length > 0) {
+            examplesPrompt = formatExamplesForPrompt(examples);
+            examplesCount = examples.length;
+            onLog?.(`[PROMPT] お手本: ${examplesCount}件適用 (Level 1)`, "success");
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load examples with similarity:', e);
+        // エラー時はLevel 1にフォールバック
+        try {
+          const examples = await getRelevantExamples(undefined, undefined, 5, selectedWorkTypes);
+          if (examples.length > 0) {
+            examplesPrompt = formatExamplesForPrompt(examples);
+            examplesCount = examples.length;
+          }
+        } catch (e2) {
+          console.warn('Fallback also failed:', e2);
+        }
+      }
+    }
+
+    // 3. 学習ルール取得
+    if (includeLearned) {
+      try {
+        const learnedSettings = await getLearnedSettings();
+        if (learnedSettings.rules.length > 0 || learnedSettings.aliases.length > 0) {
+          learnedRulesPrompt = learnedRulesToPromptText(learnedSettings, selectedWorkTypes);
+          learnedRulesCount = learnedSettings.rules.length + learnedSettings.aliases.length;
+          onLog?.(`[PROMPT] 学習ルール: ${learnedRulesCount}件適用`, "success");
+        }
+      } catch (e) {
+        console.warn('Failed to load learned settings:', e);
+      }
+    }
+  }
+
+  // 4. システムプロンプト結合
+  const baseSystemPrompt = getSystemInstruction(appMode, instruction, ruleSettings, chainRecords);
+  const systemPrompt = [baseSystemPrompt, examplesPrompt, learnedRulesPrompt, additionalPrompt]
+    .filter(Boolean)
+    .join('\n\n');
+
+  return {
+    systemPrompt,
+    chainRecords,
+    workTypes,
+    examplesCount,
+    learnedRulesCount,
+    similarityUsed,
+    similarityCoverage,
   };
 }

@@ -1,7 +1,7 @@
 // Database core - constants and openDB function
 
 export const DB_NAME = 'ConstructionPhotoManagerDB';
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 export const STORE_SESSION = 'projectData';
 export const STORE_CACHE = 'analysisCache';
 export const STORE_RULES = 'analysisRules';
@@ -10,6 +10,7 @@ export const STORE_SESSIONS = 'analysisSessions';
 export const STORE_HISTORY = 'analysisHistory';
 export const STORE_ISSUES = 'analysisIssues';
 export const STORE_LEARNED = 'learnedRules';
+export const STORE_IMAGE_HASH = 'imageHashIndex';
 export const KEY_SESSION = 'currentSession';
 export const KEY_ACTIVE_SESSION = 'activeExampleSession';
 export const MAX_HISTORY_ENTRIES = 20;
@@ -58,6 +59,16 @@ export const openDB = (): Promise<IDBDatabase> => {
 
       if (!db.objectStoreNames.contains(STORE_LEARNED)) {
         db.createObjectStore(STORE_LEARNED, { keyPath: 'id' });
+      }
+
+      // 画像ハッシュインデックス (Engram Level 2)
+      if (!db.objectStoreNames.contains(STORE_IMAGE_HASH)) {
+        const hashStore = db.createObjectStore(STORE_IMAGE_HASH, { keyPath: 'id' });
+        hashStore.createIndex('hash', 'hash', { unique: false });
+        hashStore.createIndex('workType', 'workType', { unique: false });
+        hashStore.createIndex('category', 'category', { unique: false });
+        hashStore.createIndex('exampleId', 'exampleId', { unique: false });
+        hashStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
