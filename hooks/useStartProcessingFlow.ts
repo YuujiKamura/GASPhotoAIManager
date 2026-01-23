@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { SortPolicy, ProcessedFile } from '../types';
-import { processImageForAI, getPhotoDate } from '../utils/imageUtils';
 
 const MAX_PHOTOS = 30;
 
