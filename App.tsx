@@ -104,7 +104,15 @@ export default function App() {
   // ProcessedFile[] に変換済みで保持することで、モバイルのGCによるFile無効化を回避
   const [pendingUploadFiles, setPendingUploadFiles] = useState<ProcessedFile[] | null>(null);
 
-  // 画像選択時に即座にBase64変換を行うハンドラ
+  // Core Hooks
+  const apiKeyState = useApiKey();
+  const modals = useAppModals(backend);
+  const processing = useProcessingState();
+  const normalization = useNormalizationFlow();
+  const fsCacheState = useFsCache(processing.addLog);
+  const pending = usePendingState();
+
+  // 画像選択時に即座にBase64変換を行うハンドラ（processing定義後に配置）
   const handleFilesSelected = useCallback(async (files: File[]) => {
     try {
       const processed = await Promise.all(
@@ -129,14 +137,6 @@ export default function App() {
       processing.addLog('画像の処理に失敗しました', 'error');
     }
   }, [processing]);
-
-  // Core Hooks
-  const apiKeyState = useApiKey();
-  const modals = useAppModals(backend);
-  const processing = useProcessingState();
-  const normalization = useNormalizationFlow();
-  const fsCacheState = useFsCache(processing.addLog);
-  const pending = usePendingState();
 
   // Analysis Steps Progress (with pause/resume for interactive mode)
   const {
