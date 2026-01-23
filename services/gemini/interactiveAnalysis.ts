@@ -162,6 +162,11 @@ ${photo.analysis ? `現在の解析結果:\n工種: ${photo.analysis.workType}\n
         console.log('[InteractiveAnalysis] Response is array, using first element');
         parsed = parsed[0] || {};
       }
+      // analysisがネストされてない場合（workTypeが直接ある場合）、analysisとしてラップ
+      if (parsed.workType && !parsed.analysis) {
+        console.log('[InteractiveAnalysis] Flat response format, wrapping as analysis');
+        parsed = { analysis: parsed, response: '' };
+      }
     } catch {
       // JSONパース失敗: テキストからJSON部分を抽出して再試行
       const jsonMatch = fullText.match(/\{[\s\S]*\}/);
