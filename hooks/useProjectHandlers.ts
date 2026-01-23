@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { PhotoRecord, AIAnalysisResult } from '../types';
+import { saveAnalysisHistory } from '../utils/storage';
 
 interface UseProjectHandlersProps {
   txt: { resetConfirm: string };
@@ -63,7 +64,14 @@ export function useProjectHandlers({
 
   // インタラクティブ解析を確定
   const handleInteractiveAnalysisConfirm = useCallback((fileName: string, analysis: AIAnalysisResult) => {
-    setPhotos(prev => prev.map(p => p.fileName === fileName ? { ...p, analysis, status: 'done' } : p));
+    setPhotos(prev => {
+      const updated = prev.map(p => p.fileName === fileName ? { ...p, analysis, status: 'done' as const } : p);
+      // キャッシュに保存
+      saveAnalysisHistory(updated, '対話型解析', 'gemini').catch(err => {
+        console.error('Failed to save analysis history:', err);
+      });
+      return updated;
+    });
     setSuccessMsg("Photo analyzed successfully.");
   }, [setPhotos, setSuccessMsg]);
 
