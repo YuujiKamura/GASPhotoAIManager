@@ -156,6 +156,8 @@ export async function buildSystemPrompt(
 /**
  * 複数工種でフィルタリングするバリアント
  * analysis.ts の selectWorkTypes 結果（複数工種）に対応
+ *
+ * Engram Level 1: 工種フィルタをお手本・学習ルールにも連動
  */
 export async function buildSystemPromptWithMultipleWorkTypes(
   options: Omit<PromptBuildOptions, 'workType'> & { selectedWorkTypes?: string[] },
@@ -200,7 +202,7 @@ export async function buildSystemPromptWithMultipleWorkTypes(
       console.warn('Failed to load master CSV:', e);
     }
 
-    // 3. お手本取得
+    // 3. お手本取得 (Engram Level 1: 工種フィルタ連動)
     if (includeExamples) {
       try {
         const activeSession = await getActiveSession();
@@ -216,25 +218,27 @@ export async function buildSystemPromptWithMultipleWorkTypes(
           }
         }
 
-        const examples = await getRelevantExamples(undefined, undefined, 5);
+        // Engram Level 1: 工種フィルタをお手本にも連動
+        const examples = await getRelevantExamples(undefined, undefined, 5, selectedWorkTypes);
         if (examples.length > 0) {
           examplesPrompt = formatExamplesForPrompt(examples);
           examplesCount = examples.length;
-          onLog?.(`[PROMPT] お手本: ${examplesCount}件適用`, "success");
+          onLog?.(`[PROMPT] お手本: ${examplesCount}件適用${selectedWorkTypes?.length ? ` (工種フィルタ: ${selectedWorkTypes.join(', ')})` : ''}`, "success");
         }
       } catch (e) {
         console.warn('Failed to load examples:', e);
       }
     }
 
-    // 4. 学習ルール取得
+    // 4. 学習ルール取得 (Engram Level 1: 工種フィルタ連動)
     if (includeLearned) {
       try {
         const learnedSettings = await getLearnedSettings();
         if (learnedSettings.rules.length > 0 || learnedSettings.aliases.length > 0) {
-          learnedRulesPrompt = learnedRulesToPromptText(learnedSettings);
+          // Engram Level 1: 工種フィルタを学習ルールにも連動
+          learnedRulesPrompt = learnedRulesToPromptText(learnedSettings, selectedWorkTypes);
           learnedRulesCount = learnedSettings.rules.length + learnedSettings.aliases.length;
-          onLog?.(`[PROMPT] 学習ルール: ${learnedRulesCount}件適用`, "success");
+          onLog?.(`[PROMPT] 学習ルール: ${learnedRulesCount}件適用${selectedWorkTypes?.length ? ` (工種フィルタ適用)` : ''}`, "success");
         }
       } catch (e) {
         console.warn('Failed to load learned settings:', e);
