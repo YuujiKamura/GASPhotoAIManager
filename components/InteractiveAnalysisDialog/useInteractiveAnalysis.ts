@@ -7,9 +7,19 @@ import {
   DialogChoice,
   DEFAULT_CHOICES,
   INITIAL_STATE,
+  INTERACTIVE_STEPS,
+  InteractiveStepId,
 } from './types';
 import { analyzePhotoInteractive } from '../../services/geminiService';
 import { AnalysisBackend } from '../../services/analysisBackend';
+import { useStepProgress, Step } from '../../hooks/useStepProgress';
+
+/**
+ * useInteractiveAnalysisの拡張された戻り値
+ */
+export interface UseInteractiveAnalysisReturnExtended extends UseInteractiveAnalysisReturn {
+  steps: Step<InteractiveStepId>[];
+}
 
 export const useInteractiveAnalysis = (
   apiKey: string,
@@ -17,14 +27,26 @@ export const useInteractiveAnalysis = (
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void,
   onRequireBackend?: () => void,
   onLog?: (message: string, type?: string) => void
-): UseInteractiveAnalysisReturn => {
+): UseInteractiveAnalysisReturnExtended => {
   const [state, setState] = useState<InteractiveAnalysisState>(INITIAL_STATE);
   const abortRef = useRef(false);
   const conversationRef = useRef<DialogMessage[]>([]);
 
+  // ステップ進捗管理
+  const {
+    steps,
+    startStep,
+    completeStep,
+    errorStep,
+    resetSteps,
+  } = useStepProgress<InteractiveStepId>(INTERACTIVE_STEPS);
+
   // ダイアログを開く
   const openDialog = useCallback(async (photo: PhotoRecord) => {
     console.log('[InteractiveAnalysis] openDialog called, apiKey length:', apiKey?.length || 0);
+
+    // ステップをリセット
+    resetSteps();
 
     if (!apiKey) {
       setState(prev => ({
@@ -62,8 +84,15 @@ export const useInteractiveAnalysis = (
       currentAnalysis: photo.analysis || null,
     });
 
+    // Step 1: 画像読込
+    startStep('read');
+
     // 初期解析を開始
     try {
+      // 画像読込完了、黒板読取開始
+      completeStep('read');
+      startStep('ocr');
+
       const result = await analyzePhotoInteractive(
         photo,
         [],
@@ -74,11 +103,20 @@ export const useInteractiveAnalysis = (
             streamingText: streamText,
             isStreaming: true,
           }));
+          // ストリーミング中は工種判定ステップへ
+          if (streamText.length > 50) {
+            completeStep('ocr');
+            startStep('classify');
+          }
         },
         () => abortRef.current
       );
 
       if (abortRef.current) return;
+
+      // 工種判定完了、結果整理開始
+      completeStep('classify');
+      startStep('format');
 
       // AIメッセージを追加
       const aiMessage: DialogMessage = {
@@ -91,6 +129,9 @@ export const useInteractiveAnalysis = (
       conversationRef.current.push(aiMessage);
 
       const newAnalysis = result.analysis || null;
+
+      // 結果整理完了
+      completeStep('format', newAnalysis ? '完了' : '結果なし');
 
       setState(prev => ({
         ...prev,
@@ -109,6 +150,11 @@ export const useInteractiveAnalysis = (
       }
     } catch (error: any) {
       if (!abortRef.current) {
+        // エラー時は現在のステップをエラー状態に
+        const currentRunning = steps.find(s => s.status === 'running');
+        if (currentRunning) {
+          errorStep(currentRunning.id, error.message || 'エラー');
+        }
         setState(prev => ({
           ...prev,
           isProcessing: false,
@@ -117,14 +163,15 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [apiKey, onConfirm, backend, onRequireBackend]);
+  }, [apiKey, onConfirm, backend, onRequireBackend, resetSteps, startStep, completeStep, errorStep, steps]);
 
   // ダイアログを閉じる
   const closeDialog = useCallback(() => {
     abortRef.current = true;
     setState(INITIAL_STATE);
     conversationRef.current = [];
-  }, []);
+    resetSteps();
+  }, [resetSteps]);
 
   // メッセージ送信
   const sendMessage = useCallback(async (text: string) => {
@@ -160,6 +207,10 @@ export const useInteractiveAnalysis = (
       showTextInput: false,
     }));
 
+    // 追加メッセージ送信時はステップをリセットして再実行
+    resetSteps();
+    startStep('ocr');
+
     try {
       const result = await analyzePhotoInteractive(
         state.targetPhoto,
@@ -171,11 +222,20 @@ export const useInteractiveAnalysis = (
             streamingText: streamText,
             isStreaming: true,
           }));
+          // ストリーミング中は工種判定ステップへ
+          if (streamText.length > 50) {
+            completeStep('ocr');
+            startStep('classify');
+          }
         },
         () => abortRef.current
       );
 
       if (abortRef.current) return;
+
+      // 工種判定完了、結果整理開始
+      completeStep('classify');
+      startStep('format');
 
       // AIメッセージを追加
       const aiMessage: DialogMessage = {
@@ -188,6 +248,9 @@ export const useInteractiveAnalysis = (
       conversationRef.current.push(aiMessage);
 
       const newAnalysis = result.analysis || null;
+
+      // 結果整理完了
+      completeStep('format', newAnalysis ? '更新' : '結果なし');
 
       setState(prev => ({
         ...prev,
@@ -206,6 +269,10 @@ export const useInteractiveAnalysis = (
       }
     } catch (error: any) {
       if (!abortRef.current) {
+        const currentRunning = steps.find(s => s.status === 'running');
+        if (currentRunning) {
+          errorStep(currentRunning.id, error.message || 'エラー');
+        }
         setState(prev => ({
           ...prev,
           isProcessing: false,
@@ -214,7 +281,7 @@ export const useInteractiveAnalysis = (
         }));
       }
     }
-  }, [state.targetPhoto, apiKey, onConfirm, backend, onRequireBackend]);
+  }, [state.targetPhoto, apiKey, onConfirm, backend, onRequireBackend, resetSteps, startStep, completeStep, errorStep, steps]);
 
   // 選択肢を選択
   const selectChoice = useCallback(async (choice: DialogChoice) => {
@@ -275,6 +342,7 @@ export const useInteractiveAnalysis = (
 
   return {
     state,
+    steps,
     openDialog,
     closeDialog,
     sendMessage,

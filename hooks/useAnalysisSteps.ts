@@ -1,11 +1,15 @@
 import { useState, useCallback, useRef } from 'react';
-import type { AnalysisStep, AnalysisStepId, AnalysisMode, AnalysisPauseState } from '../types';
+import { useStepProgress, StepConfig } from './useStepProgress';
+import type { AnalysisStepId, AnalysisMode, AnalysisPauseState } from '../types';
 
-const INITIAL_STEPS: AnalysisStep[] = [
-  { id: 'prepare', name: '画像準備', status: 'pending' },
-  { id: 'detect', name: '黒板判定', status: 'pending' },
-  { id: 'analyze', name: 'AI解析', status: 'pending' },
-  { id: 'normalize', name: '正規化', status: 'pending' },
+/**
+ * バッチ解析用のステップ定義
+ */
+const BATCH_ANALYSIS_STEPS: StepConfig<AnalysisStepId>[] = [
+  { id: 'prepare', name: '画像準備' },
+  { id: 'detect', name: '黒板判定' },
+  { id: 'analyze', name: 'AI解析' },
+  { id: 'normalize', name: '正規化' },
 ];
 
 const INITIAL_PAUSE_STATE: AnalysisPauseState = {
@@ -13,66 +17,50 @@ const INITIAL_PAUSE_STATE: AnalysisPauseState = {
   canResume: false,
 };
 
+/**
+ * バッチ解析用のステップ管理フック
+ *
+ * 汎用のuseStepProgressをベースに、pause/resume機能を追加。
+ */
 export function useAnalysisSteps() {
-  const [steps, setSteps] = useState<AnalysisStep[]>(INITIAL_STEPS);
+  // 汎用ステップ進捗管理を使用
+  const {
+    steps,
+    startStep,
+    completeStep,
+    updateProgress,
+    skipStep,
+    errorStep,
+    resetSteps: resetBaseSteps,
+  } = useStepProgress<AnalysisStepId>(BATCH_ANALYSIS_STEPS);
+
+  // バッチ解析固有の状態
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('auto');
   const [pauseState, setPauseState] = useState<AnalysisPauseState>(INITIAL_PAUSE_STATE);
 
   // 再開用のPromise resolve関数を保持
   const resumeResolverRef = useRef<(() => void) | null>(null);
 
-  const startStep = useCallback((id: AnalysisStepId) => {
-    setSteps(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'running' } : s
-    ));
-  }, []);
-
-  const completeStep = useCallback((id: AnalysisStepId, result?: string) => {
-    setSteps(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'done', result } : s
-    ));
-  }, []);
-
-  const updateProgress = useCallback((id: AnalysisStepId, progress: number, subProgress?: string) => {
-    setSteps(prev => prev.map(s =>
-      s.id === id ? { ...s, progress, subProgress } : s
-    ));
-  }, []);
-
-  const skipStep = useCallback((id: AnalysisStepId) => {
-    setSteps(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'skipped' } : s
-    ));
-  }, []);
-
-  const errorStep = useCallback((id: AnalysisStepId, result?: string) => {
-    setSteps(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'error', result } : s
-    ));
-  }, []);
-
+  // ステップをリセット（pause状態も含む）
   const resetSteps = useCallback(() => {
-    setSteps(INITIAL_STEPS.map(s => ({ ...s })));
+    resetBaseSteps();
     setPauseState(INITIAL_PAUSE_STATE);
     resumeResolverRef.current = null;
-  }, []);
+  }, [resetBaseSteps]);
 
   // 一時停止をリクエスト（ユーザーがボタンを押した時）
   const requestPause = useCallback(() => {
     // 現在実行中のステップを探す
-    setSteps(prev => {
-      const runningStep = prev.find(s => s.status === 'running');
-      if (runningStep) {
-        setPauseState({
-          isPaused: true,
-          pausedAtStep: runningStep.id,
-          pauseReason: 'user',
-          canResume: true,
-        });
-      }
-      return prev;
-    });
-  }, []);
+    const runningStep = steps.find(s => s.status === 'running');
+    if (runningStep) {
+      setPauseState({
+        isPaused: true,
+        pausedAtStep: runningStep.id,
+        pauseReason: 'user',
+        canResume: true,
+      });
+    }
+  }, [steps]);
 
   // パイプラインから呼ばれる: 一時停止が必要かチェックし、必要なら待機
   const checkPausePoint = useCallback(async (stepId: AnalysisStepId): Promise<boolean> => {

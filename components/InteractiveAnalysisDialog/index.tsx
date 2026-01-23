@@ -4,8 +4,9 @@ import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain, Key, Exter
 import { AIAnalysisResult, PhotoRecord } from '../../types';
 import { useInteractiveAnalysis } from './useInteractiveAnalysis';
 import { AnalysisBackend } from '../../services/analysisBackend';
-import { TRANSLATIONS, DialogChoice } from './types';
+import { TRANSLATIONS, DialogChoice, InteractiveStepId } from './types';
 import { setApiKey } from '../../services/gemini/apiKey';
+import { StepProgressCore } from '../StepProgress';
 
 interface InteractiveAnalysisDialogProps {
   photo: PhotoRecord | null;
@@ -35,6 +36,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
 
   const {
     state,
+    steps,
     openDialog,
     closeDialog,
     sendMessage,
@@ -207,21 +209,16 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                 </div>
               ))}
 
-              {/* ストリーミング中のテキスト */}
-              {state.isStreaming && state.streamingText && (
+              {/* 処理中はステップ進捗を表示（ストリーミングテキストは隠す） */}
+              {state.isProcessing && (
                 <div className="flex justify-start">
-                  <div className="max-w-[80%] px-4 py-2 rounded-lg bg-gray-700 text-gray-100">
-                    <div className="whitespace-pre-wrap">{state.streamingText}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* 処理中インジケータ */}
-              {state.isProcessing && !state.streamingText && (
-                <div className="flex justify-start">
-                  <div className="px-4 py-2 rounded-lg bg-gray-700 text-gray-400 flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {txt.analyzing}
+                  <div className="max-w-[80%]">
+                    <StepProgressCore<InteractiveStepId>
+                      steps={steps}
+                      compact={true}
+                      title="解析中..."
+                      titleIcon={<Loader2 className="w-3 h-3 animate-spin text-amber-400" />}
+                    />
                   </div>
                 </div>
               )}

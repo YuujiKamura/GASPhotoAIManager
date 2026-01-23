@@ -22,3 +22,5 @@ export { useModelValidationState } from './useModelValidationState';
 export { useBiometricAuth } from './useBiometricAuth';
 export { usePreviewViewState } from './usePreviewViewState';
 export { useAnalysisSteps } from './useAnalysisSteps';
+export { useStepProgress } from './useStepProgress';
+export type { Step, StepConfig, StepStatus, UseStepProgressReturn } from './useStepProgress';
