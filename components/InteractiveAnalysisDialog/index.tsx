@@ -208,7 +208,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
                   <div className="px-4 py-2 rounded-lg bg-red-900/50 text-red-300 text-sm">
                     {state.error}
                   </div>
-                  {(state.error.includes('APIキー') || state.error.toLowerCase().includes('api key')) && onRequireApiKey && (
+                  {!apiKey && onRequireApiKey && (
                     <button
                       onClick={() => { onRequireApiKey(); onClose(); }}
                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
