@@ -84,20 +84,40 @@ export const useInteractiveAnalysis = (
       currentAnalysis: photo.analysis || null,
     });
 
-    // Step 1: 画像読込
-    startStep('read');
+    // Step 1: API接続
+    startStep('connect');
 
     // 初期解析を開始
     try {
-      // 画像読込完了、黒板読取開始
-      completeStep('read');
-      startStep('ocr');
+      let connected = false;
 
       const result = await analyzePhotoInteractive(
         photo,
         [],
         apiKey,
         (streamText) => {
+          // 最初のレスポンスでAPI接続完了を確認
+          if (!connected) {
+            connected = true;
+            completeStep('connect', '接続OK');
+            // 挨拶メッセージを追加
+            const greetingMessage: DialogMessage = {
+              id: `system-${Date.now()}`,
+              role: 'system',
+              content: '📡 Gemini APIに接続しました。写真を解析中...',
+              timestamp: Date.now(),
+            };
+            conversationRef.current.push(greetingMessage);
+            setState(prev => ({
+              ...prev,
+              messages: [...conversationRef.current],
+            }));
+            // 画像読込開始
+            startStep('read');
+            completeStep('read');
+            startStep('ocr');
+          }
+
           setState(prev => ({
             ...prev,
             streamingText: streamText,

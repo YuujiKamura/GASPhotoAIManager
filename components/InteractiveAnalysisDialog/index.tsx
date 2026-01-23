@@ -189,12 +189,17 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
               {state.messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${
+                    msg.role === 'user' ? 'justify-end' :
+                    msg.role === 'system' ? 'justify-center' : 'justify-start'
+                  }`}
                 >
                   <div
                     className={`max-w-[80%] px-4 py-2 rounded-lg ${
                       msg.role === 'user'
                         ? 'bg-emerald-700 text-white'
+                        : msg.role === 'system'
+                        ? 'bg-blue-900/50 text-blue-200 text-sm border border-blue-700'
                         : 'bg-gray-700 text-gray-100'
                     }`}
                   >

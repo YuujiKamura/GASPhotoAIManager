@@ -4,12 +4,13 @@ import type { StepConfig } from '../../hooks/useStepProgress';
 /**
  * 対話型解析用のステップID
  */
-export type InteractiveStepId = 'read' | 'ocr' | 'classify' | 'format';
+export type InteractiveStepId = 'connect' | 'read' | 'ocr' | 'classify' | 'format';
 
 /**
  * 対話型解析用のステップ定義
  */
 export const INTERACTIVE_STEPS: StepConfig<InteractiveStepId>[] = [
+  { id: 'connect', name: 'API接続' },
   { id: 'read', name: '画像読込' },
   { id: 'ocr', name: '黒板読取' },
   { id: 'classify', name: '工種判定' },
