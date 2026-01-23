@@ -4,6 +4,7 @@
  *
  * Level 1: 工種フィルタ連動
  * Level 2: 類似画像ハッシュ
+ * Level 3: 知識DB・コンテキスト検索
  */
 
 // Level 1: 基本フィルタリング
@@ -14,3 +15,8 @@ export * from './knowledgeFilter';
 export * from './imageHash';
 export * from './hashIndex';
 export * from './similaritySearch';
+
+// Level 3: 知識DB・コンテキスト検索
+export * from './knowledgeDB';
+export * from './engramMemory';
+export * from './contextRetrieval';

@@ -17,6 +17,10 @@ import { formatExamplesForPrompt, LogFunction } from "./helpers";
 // Engram Level 2: 類似画像検索
 import { selectOptimalExamples, SimilaritySearchOptions } from "../engram/similaritySearch";
 import { getHashIndexStats } from "../engram/hashIndex";
+// Engram Level 3: 知識DB・コンテキスト検索
+import { retrieveContext, retrieveByWorkTypes, summarizeContext, RetrievedContext } from "../engram/contextRetrieval";
+import { buildReasoningPrompt, estimatePromptTokens } from "../engram/reasoningPrompt";
+import { getMemoryStats } from "../engram/engramMemory";
 
 // ============================================
 // 型定義
@@ -424,5 +428,156 @@ export async function buildSystemPromptWithSimilarity(
     learnedRulesCount,
     similarityUsed,
     similarityCoverage,
+  };
+}
+
+// ============================================
+// Engram Level 3: 知識DB統合プロンプト構築
+// ============================================
+
+export interface EngramV3PromptOptions {
+  appMode: AppMode;
+  selectedWorkTypes?: string[];
+  instruction?: string;
+  ruleSettings?: RuleSettings;
+  images?: Array<{ fileName: string; base64: string }>;
+  useSimilarity?: boolean;
+  maxMasters?: number;
+  maxExamples?: number;
+  maxRules?: number;
+}
+
+export interface EngramV3PromptResult extends PromptBuildResult {
+  engramUsed: boolean;
+  retrievedContext?: RetrievedContext;
+  estimatedTokens: number;
+}
+
+/**
+ * Engram V3: 知識DBを使用した最適化プロンプト構築
+ *
+ * - 知識は外部メモリ（IndexedDB）から動的に取得
+ * - プロンプトは推論ルールのみ（最小化）
+ * - 工種・類似画像でコンテキスト検索
+ */
+export async function buildEngramV3Prompt(
+  options: EngramV3PromptOptions,
+  onLog?: LogFunction
+): Promise<EngramV3PromptResult> {
+  const {
+    appMode,
+    selectedWorkTypes = [],
+    instruction,
+    ruleSettings,
+    images,
+    useSimilarity,
+    maxMasters = 30,
+    maxExamples = 3,
+    maxRules = 10,
+  } = options;
+
+  let engramUsed = false;
+  let retrievedContext: RetrievedContext | undefined;
+  let systemPrompt = '';
+  let chainRecords: ChainRecord[] = [];
+  let workTypes: string[] = [];
+  let examplesCount = 0;
+  let learnedRulesCount = 0;
+
+  if (appMode === 'construction') {
+    try {
+      // 1. メモリ統計を確認
+      const memStats = await getMemoryStats();
+      onLog?.(`[ENGRAM V3] メモリ状態: ${memStats.total}エントリ, 初期化=${memStats.initialized}`, "info");
+
+      // 2. 知識DBが利用可能かチェック
+      if (memStats.total > 0 || memStats.initialized) {
+        engramUsed = true;
+
+        // 3. コンテキスト検索
+        if (images && images.length > 0) {
+          // 画像ベースの検索
+          const photoRecords = images.map(img => ({
+            fileName: img.fileName,
+            base64: img.base64,
+            mimeType: 'image/jpeg' as const,
+            date: Date.now()
+          }));
+
+          retrievedContext = await retrieveContext(photoRecords, {
+            workTypes: selectedWorkTypes,
+            useSimilarity,
+            maxMasters,
+            maxExamples,
+            maxRules,
+          });
+        } else if (selectedWorkTypes.length > 0) {
+          // 工種ベースの検索
+          retrievedContext = await retrieveByWorkTypes(selectedWorkTypes, {
+            maxMasters,
+            maxExamples,
+            maxRules,
+          });
+        }
+
+        if (retrievedContext) {
+          onLog?.(`[ENGRAM V3] ${summarizeContext(retrievedContext)}`, "info");
+
+          // 4. 推論専用プロンプトを構築
+          systemPrompt = buildReasoningPrompt({
+            appMode,
+            instruction,
+            masters: retrievedContext.masters,
+            examples: retrievedContext.examples,
+            rules: retrievedContext.rules,
+            aliases: retrievedContext.aliases,
+          });
+
+          examplesCount = retrievedContext.examples.length;
+          learnedRulesCount = retrievedContext.rules.length + retrievedContext.aliases.length;
+          workTypes = selectedWorkTypes;
+        }
+      }
+    } catch (e) {
+      console.warn('[ENGRAM V3] Failed, falling back:', e);
+      engramUsed = false;
+    }
+
+    // フォールバック: Level 2を使用
+    if (!engramUsed) {
+      onLog?.(`[ENGRAM V3] フォールバック → Level 2`, "info");
+      const level2Result = await buildSystemPromptWithSimilarity({
+        appMode,
+        selectedWorkTypes,
+        instruction,
+        ruleSettings,
+        images,
+        useSimilaritySearch: useSimilarity,
+        maxSimilarExamples: maxExamples,
+      }, onLog);
+
+      return {
+        ...level2Result,
+        engramUsed: false,
+        estimatedTokens: estimatePromptTokens(level2Result.systemPrompt),
+      };
+    }
+  } else {
+    // 非constructionモードはシンプルなプロンプト
+    systemPrompt = getSystemInstruction(appMode, instruction, ruleSettings, []);
+  }
+
+  const estimatedTokens = estimatePromptTokens(systemPrompt);
+  onLog?.(`[ENGRAM V3] プロンプト生成完了: 推定${estimatedTokens}トークン`, "success");
+
+  return {
+    systemPrompt,
+    chainRecords,
+    workTypes,
+    examplesCount,
+    learnedRulesCount,
+    engramUsed,
+    retrievedContext,
+    estimatedTokens,
   };
 }
