@@ -54,16 +54,18 @@ pHash（知覚ハッシュ）で類似画像を検索し、最適なお手本1-2
 
 ---
 
-## Level 3: 本格版 - 外部メモリDB (将来)
+## Level 3: 本格版 - 外部メモリDB ✅ Complete
 
 ### 概要
 知識を完全にDB化、ハッシュベース検索。プロンプトは推論ルールのみ。
 
-### 新規ファイル
-- `services/engram/knowledgeDB.ts` - 知識DB
-- `services/engram/engramMemory.ts` - Engram外部メモリ
-- `services/engram/reasoningPrompt.ts` - 推論専用プロンプト
-- `services/engram/contextRetrieval.ts` - コンテキスト検索
+### タスク
+- [x] `services/engram/knowledgeDB.ts` - 統合知識DB（マスタ/お手本/ルール/エイリアス）
+- [x] `services/engram/engramMemory.ts` - 外部メモリ管理・キャッシュ・同期
+- [x] `services/engram/reasoningPrompt.ts` - 推論専用プロンプト生成
+- [x] `services/engram/contextRetrieval.ts` - 画像/工種ベースのコンテキスト検索
+- [x] `utils/storage/dbCore.ts` - knowledgeDBストア追加（DB_VERSION=12）
+- [x] `services/gemini/promptBuilder.ts` - buildEngramV3Prompt()追加
 
 ### 期待効果
 - トークン削減: **50-55%** (Level2比)
