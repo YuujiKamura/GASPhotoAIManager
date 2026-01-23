@@ -36,15 +36,17 @@ GASPhotoAIManagerにEngram的な「知識参照」と「論理推論」の分離
 
 ---
 
-## Level 2: 中間版 - 類似画像ハッシュ (将来)
+## Level 2: 中間版 - 類似画像ハッシュ ✅ Complete
 
 ### 概要
 pHash（知覚ハッシュ）で類似画像を検索し、最適なお手本1-2件のみ注入。
 
-### 新規ファイル
-- `services/engram/imageHash.ts` - pHash計算
-- `services/engram/hashIndex.ts` - ハッシュインデックス
-- `services/engram/similaritySearch.ts` - 類似検索
+### タスク
+- [x] `services/engram/imageHash.ts` - pHash計算（DCT + 64ビットハッシュ）
+- [x] `services/engram/hashIndex.ts` - IndexedDBハッシュインデックス
+- [x] `services/engram/similaritySearch.ts` - 類似検索ロジック
+- [x] `utils/storage/dbCore.ts` - imageHashIndexストア追加
+- [x] `services/gemini/promptBuilder.ts` - buildSystemPromptWithSimilarity()追加
 
 ### 期待効果
 - トークン削減: **20-25%** (Level1比)
