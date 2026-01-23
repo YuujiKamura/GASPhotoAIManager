@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain } from 'lucide-react';
+import { X, Send, MessageCircle, Check, ChevronRight, Loader2, Brain, Key } from 'lucide-react';
 import { AIAnalysisResult, PhotoRecord } from '../../types';
 import { useInteractiveAnalysis } from './useInteractiveAnalysis';
 import { AnalysisBackend } from '../../services/analysisBackend';
@@ -13,6 +13,7 @@ interface InteractiveAnalysisDialogProps {
   lang?: 'ja' | 'en';
   onConfirm: (fileName: string, analysis: AIAnalysisResult) => void;
   onRequireBackend?: () => void;
+  onRequireApiKey?: () => void;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
   lang = 'ja',
   onConfirm,
   onRequireBackend,
+  onRequireApiKey,
   onClose,
 }) => {
   const txt = TRANSLATIONS[lang];
@@ -37,7 +39,7 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
     acceptAnalysis,
     setInputText,
     toggleTextInput,
-  } = useInteractiveAnalysis(apiKey, backend, onConfirm, onRequireBackend);
+  } = useInteractiveAnalysis(apiKey, backend, onConfirm, onRequireBackend, onRequireApiKey);
 
   // 写真が設定されたらダイアログを開く
   useEffect(() => {
@@ -202,10 +204,19 @@ export const InteractiveAnalysisDialog: React.FC<InteractiveAnalysisDialogProps>
 
               {/* エラー表示 */}
               {state.error && (
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center gap-2">
                   <div className="px-4 py-2 rounded-lg bg-red-900/50 text-red-300 text-sm">
                     {state.error}
                   </div>
+                  {state.error.includes('APIキー') && onRequireApiKey && (
+                    <button
+                      onClick={() => { onRequireApiKey(); onClose(); }}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+                    >
+                      <Key className="w-4 h-4" />
+                      APIキーを設定する
+                    </button>
+                  )}
                 </div>
               )}
 

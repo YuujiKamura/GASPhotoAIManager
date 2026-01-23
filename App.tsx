@@ -49,6 +49,9 @@ const AIFrameworkDashboard = lazy(() => import('./components/AIFrameworkDashboar
 
 const MAX_PHOTOS = 30;
 
+// GitHub Pages判定（ローカルAPI選択肢の表示制御用）
+const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
 const LoadingFallback = () => (
   <div className="flex items-center justify-center p-8">
     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -275,6 +278,7 @@ export default function App() {
               >
                 Gemini API（クラウド）
               </button>
+              {!isGitHubPages && (
               <div className="rounded-lg border border-slate-200 p-3 space-y-2">
                 <div className="text-sm font-medium text-gray-800">ローカルAPI（Claude Code）</div>
                 <input
@@ -347,6 +351,7 @@ export default function App() {
                   {"\n"}  npm run server
                 </div>
               </div>
+              )}
               <button
                 onClick={() => setBackend('none')}
                 className="w-full py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
@@ -516,7 +521,8 @@ export default function App() {
 
       <Suspense fallback={<LoadingFallback />}>
         <InteractiveAnalysisDialog photo={interactiveAnalysisTarget} apiKey={apiKeyState.apiKey || ''} backend={backend} lang={lang}
-          onConfirm={projectHandlers.handleInteractiveAnalysisConfirm} onRequireBackend={handleRequireBackend} onClose={() => setInteractiveAnalysisTarget(null)} />
+          onConfirm={projectHandlers.handleInteractiveAnalysisConfirm} onRequireBackend={handleRequireBackend}
+          onRequireApiKey={() => modals.setShowApiKeySetup(true)} onClose={() => setInteractiveAnalysisTarget(null)} />
       </Suspense>
     </>
   );
