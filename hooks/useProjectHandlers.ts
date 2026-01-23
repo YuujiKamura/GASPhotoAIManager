@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { PhotoRecord, AIAnalysisResult } from '../types';
-import { saveAnalysisHistory } from '../utils/storage';
+import { saveAnalysisHistory, cacheAnalysis } from '../utils/storage';
 
 interface UseProjectHandlersProps {
   txt: { resetConfirm: string };
@@ -65,8 +65,18 @@ export function useProjectHandlers({
   // インタラクティブ解析を確定
   const handleInteractiveAnalysisConfirm = useCallback((fileName: string, analysis: AIAnalysisResult) => {
     setPhotos(prev => {
-      const updated = prev.map(p => p.fileName === fileName ? { ...p, analysis, status: 'done' as const } : p);
-      // キャッシュに保存
+      const updated = prev.map(p => {
+        if (p.fileName === fileName) {
+          const updatedPhoto = { ...p, analysis, status: 'done' as const };
+          // 個別キャッシュにも保存（getCachedAnalysisで使用される）
+          cacheAnalysis(updatedPhoto, analysis).catch(err => {
+            console.error('Failed to cache analysis:', err);
+          });
+          return updatedPhoto;
+        }
+        return p;
+      });
+      // 履歴に保存
       saveAnalysisHistory(updated, '対話型解析', 'gemini').catch(err => {
         console.error('Failed to save analysis history:', err);
       });
