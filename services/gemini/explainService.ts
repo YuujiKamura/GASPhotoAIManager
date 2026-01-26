@@ -45,15 +45,17 @@ export const askWhyResult = async (
 - 測定値 (measurements): ${analysis.measurements || '(空)'}
 - 黒板有無 (hasBoard): ${analysis.hasBoard ? 'あり' : 'なし'}
 - 検出テキスト (detectedText): ${analysis.detectedText || '(空)'}
+- 判断根拠 (reasoning): ${analysis.reasoning || '(記録なし)'}
 `;
 
   const userQuestion = question?.trim() || 'この写真がなぜこの解析結果になったのか、理由を説明してください。';
+
+  const hasReasoning = analysis.reasoning && analysis.reasoning.trim();
 
   const prompt = `
 あなたは工事写真の解析結果を説明するアシスタントです。
 
 以下の写真と現在の解析結果について、ユーザーの質問に答えてください。
-「なぜこの結果になったのか」を、写真から読み取れる情報に基づいて説明してください。
 
 ${currentResult}
 
@@ -61,8 +63,15 @@ ${currentResult}
 ${userQuestion}
 
 ## 回答のルール
+${hasReasoning ? `
+- 上記の「判断根拠 (reasoning)」に記録された内容を元に、より詳しく説明する
+- 元の判断根拠を補足・展開する形で回答する
+- 写真から見える具体的な情報を追加で挙げて説明を補強する
+` : `
+- この写真にはAIの判断根拠が記録されていないため、写真を見て推測する
+- 「記録がないため推測になるが」と前置きしてから説明する
+`}
 - 簡潔に、要点を絞って回答する（3-5文程度）
-- 写真から実際に見える情報を根拠にする
 - もし結果に誤りがありそうなら、正しい可能性も提示する
 - 「〜すべき」「〜が正しい」という断定的な表現は避け、「〜と思われる」「〜の可能性がある」など柔らかく表現する
 `;
