@@ -7,6 +7,9 @@ import { useUploadViewState } from '../hooks/useUploadViewState';
 import ConsolePanel from './ConsolePanel';
 import AnalysisSetupModal, { PreAnalysisInfo } from './AnalysisSetupModal';
 
+// GitHub Pages判定（ローカルAPI選択肢の表示制御用）
+const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
 // --- Grouped interfaces ---
 
 /** Core data props */
@@ -90,7 +93,7 @@ const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const menuItems = [
-    ...(onSelectBackend ? [{ label: '解析エンジン選択', icon: <Server className="w-4 h-4" />, onClick: onSelectBackend }] : []),
+    ...((onSelectBackend && !isGitHubPages) ? [{ label: '解析エンジン選択', icon: <Server className="w-4 h-4" />, onClick: onSelectBackend }] : []),
     ...(onOpenSettings ? [{ label: apiKey ? `API設定 (${getSelectedModel()})` : 'API設定 (未設定)', icon: <Settings className="w-4 h-4" />, onClick: onOpenSettings, warning: !apiKey }] : []),
     ...(onOpenMasterEditor ? [{ label: 'マスタ管理', icon: <FolderTree className="w-4 h-4" />, onClick: onOpenMasterEditor }] : []),
     { divider: true },

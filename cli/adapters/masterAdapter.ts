@@ -428,5 +428,3 @@ export async function resetCustomMaster(): Promise<void> {
   }
 }
 
-// デフォルト階層もエクスポート
-export { CONSTRUCTION_HIERARCHY };

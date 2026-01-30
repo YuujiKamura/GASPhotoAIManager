@@ -14,7 +14,7 @@
     "cli": "node dist-cli/index.js",
     "a": "node dist-cli/index.js analyze",
     "aw": "node dist-cli/index.js analyze:web",
-    "server": "node dist-cli/server.js",
+    "server": "npm run build:server && node dist-cli/server.js",
     "build:server": "node -e \"require('child_process').execSync('npx esbuild cli/server.ts --bundle --platform=node --target=node18 --outfile=dist-cli/server.js --format=esm --packages=external', {stdio: 'inherit'})\"",
     "preview": "vite preview",
     "test": "vitest run",
@@ -42,10 +42,9 @@
     "ws": "^8.18.0"
   },
   "optionalDependencies": {
-    "@anthropic-ai/claude-code-sdk": "^0.0.48"
+    "@anthropic-ai/claude-code-sdk": "npm:null@^0.0.48"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.13",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -54,6 +53,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.14.0",
+    "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.0.0",
     "adm-zip": "^0.5.16",
     "esbuild": "^0.27.2",

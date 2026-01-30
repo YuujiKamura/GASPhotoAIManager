@@ -1,6 +1,9 @@
 import React, { useRef, useEffect, ReactNode } from 'react';
 import { MoreVertical, GitCompare, MousePointer, ArrowUpDown, Wand2, Star, Settings, Github, Layers, Download, Upload, Activity, Brain, FileText, Trash2, Plus, ImagePlus, Server } from 'lucide-react';
 
+// GitHub Pages判定（ローカルAPI選択肢の表示制御用）
+const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
 // Grouped action props
 interface PairingActions {
   onAutoPair: () => void;
@@ -235,7 +238,7 @@ const PreviewToolsMenuInner: React.FC<PreviewToolsMenuProps> = ({
           label: { ja: '解析エンジン選択', en: 'Select Backend' },
           title: { ja: '解析エンジンを選び直す', en: 'Choose analysis backend' },
           onClick: () => { systemActions.onSelectBackend?.(); setShowMenu(false); },
-          show: !!systemActions.onSelectBackend
+          show: !!systemActions.onSelectBackend && !isGitHubPages
         },
         {
           icon: <Settings className="w-4 h-4 text-gray-400" />,

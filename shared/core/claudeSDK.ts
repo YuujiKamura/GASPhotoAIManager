@@ -8,8 +8,19 @@
  * - 2026-01-22: 初期実装（Issue #169）
  */
 
-import { query } from '@anthropic-ai/claude-code-sdk';
 import * as path from 'path';
+
+// SDK動的インポート（esbuild回避用に変数化）
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let query: any = null;
+const SDK_PACKAGE = '@anthropic-ai/claude-code-sdk';
+async function loadQuery() {
+  if (query) return query;
+  // 動的パスでesbuildのバンドル対象から除外
+  const sdk = await import(/* @vite-ignore */ SDK_PACKAGE);
+  query = sdk.query;
+  return query;
+}
 import { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 
 // ============================================
@@ -199,7 +210,8 @@ export async function analyzeWithSDK(
   }
 
   // クエリ実行
-  const queryInstance = query({
+  const queryFn = await loadQuery();
+  const queryInstance = queryFn({
     prompt: finalPrompt,
     options: sdkOptions,
   });
@@ -292,7 +304,8 @@ export async function* analyzeWithSDKStream(
     sdkOptions.model = options.model;
   }
 
-  const queryInstance = query({
+  const queryFn = await loadQuery();
+  const queryInstance = queryFn({
     prompt: finalPrompt,
     options: sdkOptions,
   });

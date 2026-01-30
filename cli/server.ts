@@ -25,10 +25,18 @@ import {
   type AnalysisResult,
   type AppMode
 } from '../shared/core/claudeAnalysis';
-import {
-  analyzeWithSDKStream,
-  type SDKMessage
-} from '../shared/core/claudeSDK';
+// SDK動的インポート（オプショナル）
+let analyzeWithSDKStream: typeof import('../shared/core/claudeSDK').analyzeWithSDKStream | null = null;
+async function loadSDK() {
+  if (analyzeWithSDKStream) return true;
+  try {
+    const sdk = await import('../shared/core/claudeSDK');
+    analyzeWithSDKStream = sdk.analyzeWithSDKStream;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const app = express();
 const PORT = 3001;
@@ -337,6 +345,13 @@ async function handleWSAnalyze(
   }
 
   try {
+    // SDK読み込みチェック
+    const sdkAvailable = await loadSDK();
+    if (!sdkAvailable || !analyzeWithSDKStream) {
+      send({ type: 'error', message: 'Claude Code SDK is not available' });
+      return;
+    }
+
     send({ type: 'analysis-start' });
 
     const stream = analyzeWithSDKStream(prompt, imagePaths, {
