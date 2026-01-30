@@ -1,95 +1,70 @@
-# GASPhotoAIManager プロジェクト設定
+# GASPhotoAIManager
 
-## 自動化ルール
+工事写真のAI自動分類・写真台帳生成ツール。
 
-### コード変更後の必須手順
-1. **ビルド確認**: `npm run build` を必ず実行し、エラーがないことを確認
-2. **変更をコミット**: ビルド成功後、適切なコミットメッセージでコミット
-3. **プッシュ**: mainブランチに直接プッシュ（PRは不要）
+## 技術スタック
 
-### PRについて
-- **PRは作成しない**: mainブランチに直接プッシュすること
-- 別ブランチでの作業が必要な場合のみPRを使用
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS
+- **AI**: Google Gemini 2.5 Flash（メイン）、Claude Code SDK（ローカル専用）
+- **出力**: ExcelJS、pdf-lib、html2pdf
+- **ストレージ**: IndexedDB（履歴）、LocalStorage（設定）
 
-### テストについて
-- ビルド（`npm run build`）が通ればOK
-- 型エラーがないことを確認
+## 動作モード
 
-## 許可されたコマンド
+| モード | 説明 | AI |
+|--------|------|-----|
+| Web (GitHub Pages) | https://yuujikamura.github.io/GASPhotoAIManager/ | Gemini API |
+| Web (ローカル) | `npm run dev` | Gemini or Claude SDK |
+| CLI | `npm run cli` | Gemini or Claude SDK |
+| Server | `npm run server` (WebSocket on :3001) | Claude SDK |
 
-```
-Write(*)
-Edit(*)
-Read(*)
-Bash(mkdir:*)
-Bash(rm:*)
-Bash(mv:*)
-Bash(cp:*)
-Bash(ls:*)
-Bash(cat:*)
-Bash(head:*)
-Bash(tail:*)
-Bash(which:*)
-Bash(echo:*)
-Bash(grep:*)
-Bash(find:*)
-Bash(wc:*)
-Bash(sort:*)
-Bash(uniq:*)
-Bash(sed:*)
-Bash(awk:*)
-Bash(curl:*)
-Bash(wget:*)
-Bash(git:*)
-Bash(git add:*)
-Bash(git commit:*)
-Bash(git push:*)
-Bash(git checkout:*)
-Bash(git branch:*)
-Bash(git merge:*)
-Bash(git stash:*)
-Bash(git rm:*)
-Bash(git log:*)
-Bash(git status:*)
-Bash(git diff:*)
-Bash(npm:*)
-Bash(npm install:*)
-Bash(npm run:*)
-Bash(npm test:*)
-Bash(node:*)
-Bash(npx:*)
-Bash(tsc:*)
-Bash(esbuild:*)
-Bash(cmd:*)
+## 主要機能
+
+- **黒板OCR**: 工事黒板から工種・種別・細別・測点・備考を抽出
+- **景観ペアリング**: 着手前/完了写真の自動マッチング
+- **Engramトークン最適化**: 解析結果を圧縮してトークン消費75-80%削減
+- **スマートPDF**: セッションデータ埋め込み、後から復元可能
+
+## コマンド
+
+```bash
+npm run dev          # 開発サーバー
+npm run build        # プロダクションビルド
+npm run test         # テスト実行
+npm run cli          # CLI解析ツール
+npm run server       # WebSocketサーバー
 ```
 
-## セキュリティルール
+## ワークフロー
 
-### コミット禁止
-以下をリポジトリに含めない：
+- **PR不要**: mainブランチに直接プッシュ
+- **ビルド確認**: `npm run build` 成功を確認してからコミット
+- **テスト**: ビルドが通ればOK
+
+## セキュリティ
+
+コミット禁止:
 - APIキー、認証情報
-- 個人情報（氏名、メール、電話番号）
-- 組織情報（会社名、工事名）
-- 単価表、見積データ
-- ログファイル、出力データ
+- 個人情報（氏名、住所、電話番号）
+- 工事固有情報（工事名、単価）
 
-## プロジェクト概要
-写真管理・AI解析ツール。Claude APIで工事写真の自動分類・ペアリングを行う。
+## アーキテクチャ
 
-## 設計要件
-
-### 最終出力形式
-**PDF または Excel が最終成果物**
-
-| 優先度 | 形式 | 用途 |
-|--------|------|------|
-| 1 | PDF | 写真台帳（印刷・提出用） |
-| 1 | Excel | 写真台帳（編集可能版） |
-| 2 | JSON/CSV | 中間ファイル（内部処理用） |
-
-### データフロー
 ```
-写真フォルダ → AI解析 → JSON（中間） → PDF/Excel（最終）
+写真 → AI解析(Gemini/Claude) → JSON → PDF/Excel
+         ↓
+    Engram圧縮 → 履歴保存(IndexedDB)
 ```
 
-**注意**: JSON/CSVは内部処理用の中間形式。ユーザーが最終的に必要とするのはPDF/Excel。
+**最終成果物**: PDF（印刷提出用）、Excel（編集用）
+
+## ディレクトリ構造
+
+```
+cli/              # CLIツール・サーバー
+components/       # Reactコンポーネント
+services/         # API・バックエンド接続
+shared/core/      # 解析ロジック（claudeSDK, engram等）
+hooks/            # React hooks
+types/            # TypeScript型定義
+```
