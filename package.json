@@ -20,7 +20,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prompt:test": "npx tsx scripts/prompt-test.ts",
-    "prompt:eval": "npx tsx scripts/evaluate.ts"
+    "prompt:eval": "npx tsx scripts/evaluate.ts",
+    "generate:ts": "npx tsx scripts/generate-layout-ts.ts",
+    "generate:rs": "npx tsx scripts/generate-layout-rs.ts",
+    "generate:js": "npx tsx scripts/generate-layout-js.ts",
+    "generate:all": "npm run generate:ts && npm run generate:rs && npm run generate:js",
+    "sync:to-rust": "npx tsx scripts/sync-to-rust.ts"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

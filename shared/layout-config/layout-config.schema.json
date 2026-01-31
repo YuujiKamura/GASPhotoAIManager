@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Layout Configuration",
+  "description": "Shared layout configuration for GAS and Rust projects",
+  "type": "object",
+  "required": ["version", "units", "page", "ratios", "excel", "pdf", "fields", "templates"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "units": {
+      "type": "object",
+      "required": ["MM_TO_PT", "PT_TO_PX", "PX_TO_PT", "PT_PER_EXCEL_COL", "PX_PER_EXCEL_COL", "EXCEL_COL_OFFSET_PX"],
+      "properties": {
+        "MM_TO_PT": { "type": "number", "description": "1mm = 72/25.4 pt" },
+        "PT_TO_PX": { "type": "number", "description": "1pt = 96/72 px (96dpi)" },
+        "PX_TO_PT": { "type": "number", "description": "1px = 72/96 pt" },
+        "PT_PER_EXCEL_COL": { "type": "number" },
+        "PX_PER_EXCEL_COL": { "type": "number" },
+        "EXCEL_COL_OFFSET_PX": { "type": "number" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["A4_WIDTH_MM", "A4_HEIGHT_MM", "MARGIN_MM", "PHOTO_GAP_MM"],
+      "properties": {
+        "A4_WIDTH_MM": { "type": "number" },
+        "A4_HEIGHT_MM": { "type": "number" },
+        "MARGIN_MM": { "type": "number" },
+        "PHOTO_GAP_MM": { "type": "number" }
+      }
+    },
+    "ratios": {
+      "type": "object",
+      "required": ["IMAGE_RATIO", "INFO_RATIO"],
+      "properties": {
+        "IMAGE_RATIO": { "type": "number", "minimum": 0, "maximum": 1 },
+        "INFO_RATIO": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "excel": {
+      "type": "object",
+      "required": ["SCALE", "ROW_HEIGHT_PT", "PHOTO_ROWS_3UP", "GAP_ROWS", "ROWS_PER_BLOCK_3UP"],
+      "properties": {
+        "SCALE": { "type": "number" },
+        "ROW_HEIGHT_PT": { "type": "number" },
+        "PHOTO_ROWS_3UP": { "type": "integer" },
+        "PHOTO_ROWS_2UP": { "type": "integer" },
+        "GAP_ROWS": { "type": "integer" },
+        "ROWS_PER_BLOCK_3UP": { "type": "integer" },
+        "ROWS_PER_BLOCK_2UP": { "type": "integer" },
+        "PHOTO_COL_WIDTH": { "type": "number" },
+        "LABEL_COL_WIDTH": { "type": "number" },
+        "VALUE_COL_WIDTH": { "type": "number" },
+        "INFO_COL_WIDTH": { "type": "number" },
+        "FONT_NAME": { "type": "string" },
+        "FONT_SIZE": { "type": "number" }
+      }
+    },
+    "pdf": {
+      "type": "object",
+      "required": ["GAP_PT", "BASE_FONT_SIZE"],
+      "properties": {
+        "GAP_PT": { "type": "number" },
+        "BASE_FONT_SIZE": { "type": "number" },
+        "LINE_HEIGHT_MULTIPLIER": { "type": "number" },
+        "TEXT_PADDING": { "type": "number" },
+        "TITLE_FONT_SIZE": { "type": "number" },
+        "PAGE_NUM_FONT_SIZE": { "type": "number" }
+      }
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "key", "label", "rowSpan"],
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "rustKey": { "type": "string" },
+          "label": { "type": "string" },
+          "labelKey": { "type": "string" },
+          "rowSpan": { "type": "integer", "minimum": 1 },
+          "heightClass": { "type": "string" },
+          "multiline": { "type": "boolean" },
+          "readOnly": { "type": "boolean" }
+        }
+      }
+    },
+    "templates": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "name", "blocksPerPage", "captionPosition", "photoRatio", "captionRatio", "visibleFields"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "blocksPerPage": { "type": "integer", "minimum": 1 },
+          "captionPosition": { "type": "string", "enum": ["left", "right", "top", "bottom"] },
+          "photoRatio": { "type": "number" },
+          "captionRatio": { "type": "number" },
+          "visibleFields": { "type": "array", "items": { "type": "string" } },
+          "isDefault": { "type": "boolean" }
+        }
+      }
+    },
+    "fieldLabels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "dateFormat": {
+      "type": "object",
+      "properties": {
+        "includeTime": { "type": "boolean" },
+        "locale": { "type": "string" },
+        "options": { "type": "object" }
+      }
+    }
+  }
+}

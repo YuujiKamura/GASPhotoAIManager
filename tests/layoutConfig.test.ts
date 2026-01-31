@@ -11,8 +11,10 @@ import {
 
 describe('DIMENSION constants', () => {
   it('has correct row height values', () => {
-    expect(DIMENSION.ROW_HEIGHT_PX).toBe(28);
-    expect(DIMENSION.ROW_HEIGHT_PT).toBe(21);
+    // SCALE=1.1, PHOTO_HEIGHT_PT/10 * 1.1 ≈ 26pt
+    expect(DIMENSION.ROW_HEIGHT_PT).toBe(26);
+    // 26pt * 1.333 ≈ 35px
+    expect(DIMENSION.ROW_HEIGHT_PX).toBe(35);
   });
 
   it('has correct conversion factors', () => {
@@ -24,12 +26,12 @@ describe('DIMENSION constants', () => {
 describe('conversion functions', () => {
   it('pxToPt converts pixels to points', () => {
     expect(pxToPt(96)).toBe(72);  // 96px = 72pt
-    expect(pxToPt(28)).toBe(21);  // row height
+    expect(pxToPt(35)).toBe(26);  // row height (35px → 26pt)
   });
 
   it('ptToPx converts points to pixels', () => {
     expect(ptToPx(72)).toBe(96);  // 72pt = 96px
-    expect(ptToPx(21)).toBe(28);  // row height
+    expect(ptToPx(26)).toBe(35);  // row height (26pt → 35px)
   });
 
   it('pxToExcelWidth converts pixels to Excel width units', () => {
@@ -44,8 +46,9 @@ describe('conversion functions', () => {
 });
 
 describe('LAYOUT_FIELDS', () => {
-  it('has 7 fields defined', () => {
-    expect(LAYOUT_FIELDS).toHaveLength(7);
+  it('has 8 fields defined', () => {
+    // date, photoCategory, workType, variety, detail, station, remarks, measurements
+    expect(LAYOUT_FIELDS).toHaveLength(8);
   });
 
   it('includes required fields', () => {
@@ -62,17 +65,16 @@ describe('LAYOUT_FIELDS', () => {
     }
   });
 
-  it('total rowSpan equals ROWS_PER_PHOTO', () => {
-    // date(1) + workType(1) + variety(1) + detail(1) + station(1) + remarks(2) + measurements(3) = 10
-    // Actually checking if total adds up to something reasonable
+  it('total rowSpan is within ROWS_PER_PHOTO', () => {
+    // date(1) + photoCategory(1) + workType(1) + variety(1) + detail(1) + station(1) + remarks(2) + measurements(2) = 10
     const totalSpan = LAYOUT_FIELDS.reduce((sum, f) => sum + f.rowSpan, 0);
-    // The total span should be less than or equal to ROWS_PER_PHOTO (12)
+    // The total span should be less than or equal to ROWS_PER_PHOTO (11)
     expect(totalSpan).toBeLessThanOrEqual(ROWS_PER_PHOTO);
   });
 });
 
 describe('ROWS_PER_PHOTO', () => {
-  it('is 12 for 3-up A4 layout', () => {
-    expect(ROWS_PER_PHOTO).toBe(12);
+  it('is 11 for 3-up A4 layout (10 photo rows + 1 gap row)', () => {
+    expect(ROWS_PER_PHOTO).toBe(11);
   });
 });

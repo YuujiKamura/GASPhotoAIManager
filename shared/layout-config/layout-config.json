@@ -1,0 +1,197 @@
+{
+  "$schema": "./layout-config.schema.json",
+  "version": "1.0.0",
+  "description": "Shared layout configuration - Single Source of Truth for GAS and Rust projects",
+
+  "units": {
+    "MM_TO_PT": 2.8346456693,
+    "PT_TO_PX": 1.3333333333,
+    "PX_TO_PT": 0.75,
+    "PT_PER_EXCEL_COL": 5.3,
+    "PX_PER_EXCEL_COL": 7.1,
+    "EXCEL_COL_OFFSET_PX": 5
+  },
+
+  "page": {
+    "A4_WIDTH_MM": 210,
+    "A4_HEIGHT_MM": 297,
+    "MARGIN_MM": 10,
+    "PHOTO_GAP_MM": 10
+  },
+
+  "ratios": {
+    "IMAGE_RATIO": 0.65,
+    "INFO_RATIO": 0.35
+  },
+
+  "excel": {
+    "SCALE": 1.1,
+    "ROW_HEIGHT_PT": 26,
+    "PHOTO_ROWS_3UP": 10,
+    "PHOTO_ROWS_2UP": 16,
+    "GAP_ROWS": 1,
+    "ROWS_PER_BLOCK_3UP": 11,
+    "ROWS_PER_BLOCK_2UP": 17,
+    "PHOTO_COL_WIDTH": 56.1,
+    "LABEL_COL_WIDTH": 11,
+    "VALUE_COL_WIDTH": 28.6,
+    "INFO_COL_WIDTH": 39.6,
+    "FONT_NAME": "MS Mincho",
+    "FONT_SIZE": 10
+  },
+
+  "pdf": {
+    "GAP_PT": 5.0,
+    "BASE_FONT_SIZE": 12,
+    "LINE_HEIGHT_MULTIPLIER": 1.4,
+    "TEXT_PADDING": 5,
+    "TITLE_FONT_SIZE": 14,
+    "PAGE_NUM_FONT_SIZE": 9
+  },
+
+  "fields": [
+    {
+      "id": "f_date",
+      "key": "date",
+      "rustKey": "date",
+      "label": "日時",
+      "labelKey": "labelDate",
+      "rowSpan": 1,
+      "heightClass": "h-[28px]",
+      "multiline": false,
+      "readOnly": true
+    },
+    {
+      "id": "f_photoCategory",
+      "key": "photoCategory",
+      "rustKey": "photoCategory",
+      "label": "区分",
+      "labelKey": "labelPhotoCategory",
+      "rowSpan": 1,
+      "heightClass": "h-[28px]",
+      "multiline": false,
+      "readOnly": false
+    },
+    {
+      "id": "f_workType",
+      "key": "workType",
+      "rustKey": "workType",
+      "label": "工種",
+      "labelKey": "labelWorkType",
+      "rowSpan": 1,
+      "heightClass": "h-[28px]",
+      "multiline": false,
+      "readOnly": false
+    },
+    {
+      "id": "f_variety",
+      "key": "variety",
+      "rustKey": "variety",
+      "label": "種別",
+      "labelKey": "labelVariety",
+      "rowSpan": 1,
+      "heightClass": "h-[28px]",
+      "multiline": false,
+      "readOnly": false
+    },
+    {
+      "id": "f_detail",
+      "key": "detail",
+      "rustKey": "subphase",
+      "label": "細別",
+      "labelKey": "labelDetail",
+      "rowSpan": 1,
+      "heightClass": "h-[28px]",
+      "multiline": false,
+      "readOnly": false
+    },
+    {
+      "id": "f_station",
+      "key": "station",
+      "rustKey": "station",
+      "label": "測点",
+      "labelKey": "labelStation",
+      "rowSpan": 1,
+      "heightClass": "h-[28px]",
+      "multiline": false,
+      "readOnly": false
+    },
+    {
+      "id": "f_remarks",
+      "key": "remarks",
+      "rustKey": "remarks",
+      "label": "備考",
+      "labelKey": "labelRemarks",
+      "rowSpan": 2,
+      "heightClass": "h-[56px]",
+      "multiline": true,
+      "readOnly": false
+    },
+    {
+      "id": "f_measurements",
+      "key": "measurements",
+      "rustKey": "measurements",
+      "label": "測定値",
+      "labelKey": "labelMeasurements",
+      "rowSpan": 3,
+      "heightClass": "flex-1",
+      "multiline": true,
+      "readOnly": false
+    }
+  ],
+
+  "templates": {
+    "standard-3up": {
+      "id": "standard-3up",
+      "name": "標準（3枚/ページ）",
+      "blocksPerPage": 3,
+      "captionPosition": "right",
+      "photoRatio": 65,
+      "captionRatio": 35,
+      "visibleFields": ["f_date", "f_photoCategory", "f_workType", "f_variety", "f_detail", "f_station", "f_remarks", "f_measurements"],
+      "isDefault": true
+    },
+    "simple-2up": {
+      "id": "simple-2up",
+      "name": "シンプル（2枚/ページ）",
+      "blocksPerPage": 2,
+      "captionPosition": "bottom",
+      "photoRatio": 85,
+      "captionRatio": 15,
+      "visibleFields": ["f_station", "f_remarks"],
+      "isDefault": false
+    }
+  },
+
+  "fieldLabels": {
+    "date": "日時",
+    "category": "区分",
+    "photoCategory": "区分",
+    "workType": "工種",
+    "variety": "種別",
+    "detail": "細別",
+    "station": "測点",
+    "remarks": "備考",
+    "measurements": "測定値",
+    "labelDate": "日時",
+    "labelPhotoCategory": "区分",
+    "labelWorkType": "工種",
+    "labelVariety": "種別",
+    "labelDetail": "細別",
+    "labelStation": "測点",
+    "labelRemarks": "備考",
+    "labelMeasurements": "測定値"
+  },
+
+  "dateFormat": {
+    "includeTime": true,
+    "locale": "ja-JP",
+    "options": {
+      "year": "numeric",
+      "month": "2-digit",
+      "day": "2-digit",
+      "hour": "2-digit",
+      "minute": "2-digit"
+    }
+  }
+}
