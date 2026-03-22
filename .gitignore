@@ -68,3 +68,4 @@ src/data/unit-price/
 .tmp/
 rust-app/target/
 tests/
+.specstory/

@@ -5,8 +5,8 @@ import puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const PDF_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
-const FOLDER_PATH = 'H:/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形/No2';
+const PDF_PATH = './test-data/sample.pdf';
+const FOLDER_PATH = './test-data/sample-images';
 
 async function main() {
   console.log('========================================');

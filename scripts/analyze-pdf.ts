@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PDFDocument } from 'pdf-lib';
 
-const pdfPath = process.argv[2] || '/h/マイドライブ/〇東区市道（2工区）舗装補修工事（水防等含）（単価契約）/20251117 小峯2丁目6-6付近　舗装打換/工事写真/路盤出来形、小峯2丁目No.2　2025-12-27.pdf';
+const pdfPath = process.argv[2] || './test-data/sample.pdf';
 
 async function analyzePdf() {
   console.log('=== PDF Analysis ===');

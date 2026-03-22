@@ -19,7 +19,7 @@
     },
     "station": {
       "type": "string",
-      "description": "測点（形式: 地名 No.整数, 例: 小峯2丁目 No.4）"
+      "description": "測点（形式: 地名 No.整数, 例: ○○町1丁目 No.4）"
     },
     "remarksCategory": {
       "type": "string",

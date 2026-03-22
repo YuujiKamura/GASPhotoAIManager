@@ -16,7 +16,7 @@ const mockPhotos: PhotoRecord[] = [
       workType: '舗装工',
       variety: '舗装打換え工',
       detail: '表層工',
-      station: '小峯2丁目 N-4',  // 正規化されていない形式
+      station: '○○町1丁目 N-4',  // 正規化されていない形式
       remarks: '着手前',
       description: '',
       hasBoard: true,
@@ -33,7 +33,7 @@ const mockPhotos: PhotoRecord[] = [
       workType: '舗装工',
       variety: '舗装打換え工',
       detail: '表層工',
-      station: '小峯2丁目 N-4',  // 同じ
+      station: '○○町1丁目 N-4',  // 同じ
       remarks: '完了',
       description: '',
       hasBoard: true,
@@ -50,7 +50,7 @@ const mockPhotos: PhotoRecord[] = [
       workType: '舗装工',
       variety: '舗装打換え工',
       detail: '表層工',
-      station: '小峯2丁目6-6付近',  // 別の形式
+      station: '○○町1丁目6-6付近',  // 別の形式
       remarks: '施工中',
       description: '',
       hasBoard: true,
@@ -67,7 +67,7 @@ const mockPhotos: PhotoRecord[] = [
       workType: '安全管理',
       variety: '',
       detail: '朝礼状況',
-      station: '小峯2丁目 No.4',  // 正規化済み形式
+      station: '○○町1丁目 No.4',  // 正規化済み形式
       remarks: '',
       description: '',
       hasBoard: false,
@@ -100,9 +100,9 @@ function testStationStats() {
 
   // 期待値
   const expected = [
-    { station: '小峯2丁目 N-4', count: 2 },
-    { station: '小峯2丁目6-6付近', count: 1 },
-    { station: '小峯2丁目 No.4', count: 1 }
+    { station: '○○町1丁目 N-4', count: 2 },
+    { station: '○○町1丁目6-6付近', count: 1 },
+    { station: '○○町1丁目 No.4', count: 1 }
   ];
 
   let passed = true;
@@ -159,12 +159,12 @@ function testReplacementPreview() {
     console.log(`  "${r.original}" → "${r.replaced}" (${r.fileNames.length}枚)`);
   });
 
-  // 期待値: "小峯2丁目 N-4" が "小峯2丁目 No.4" に置換される（2枚）
+  // 期待値: "○○町1丁目 N-4" が "○○町1丁目 No.4" に置換される（2枚）
   if (replacements.length !== 1) {
     console.log(`❌ FAIL: マッチ数が違う expected 1, got ${replacements.length}`);
     return false;
   }
-  if (replacements[0].original !== '小峯2丁目 N-4' || replacements[0].replaced !== '小峯2丁目 No.4') {
+  if (replacements[0].original !== '○○町1丁目 N-4' || replacements[0].replaced !== '○○町1丁目 No.4') {
     console.log(`❌ FAIL: 置換内容が違う`);
     return false;
   }
@@ -183,8 +183,8 @@ function testApplyReplacement() {
 
   // onReplaceに渡されるデータ
   const replacementsToApply = [
-    { fileName: 'DSC0001.jpg', newStation: '小峯2丁目 No.4' },
-    { fileName: 'DSC0002.jpg', newStation: '小峯2丁目 No.4' }
+    { fileName: 'DSC0001.jpg', newStation: '○○町1丁目 No.4' },
+    { fileName: 'DSC0002.jpg', newStation: '○○町1丁目 No.4' }
   ];
 
   // App.tsxのhandleStationReplaceと同じロジック
@@ -209,19 +209,19 @@ function testApplyReplacement() {
   const dsc0003 = updatedPhotos.find(p => p.fileName === 'DSC0003.jpg');
   const dsc0004 = updatedPhotos.find(p => p.fileName === 'DSC0004.jpg');
 
-  if (dsc0001?.analysis?.station !== '小峯2丁目 No.4') {
+  if (dsc0001?.analysis?.station !== '○○町1丁目 No.4') {
     console.log(`❌ FAIL: DSC0001の測点が更新されていない`);
     passed = false;
   }
-  if (dsc0002?.analysis?.station !== '小峯2丁目 No.4') {
+  if (dsc0002?.analysis?.station !== '○○町1丁目 No.4') {
     console.log(`❌ FAIL: DSC0002の測点が更新されていない`);
     passed = false;
   }
-  if (dsc0003?.analysis?.station !== '小峯2丁目6-6付近') {
+  if (dsc0003?.analysis?.station !== '○○町1丁目6-6付近') {
     console.log(`❌ FAIL: DSC0003の測点が意図せず変更された`);
     passed = false;
   }
-  if (dsc0004?.analysis?.station !== '小峯2丁目 No.4') {
+  if (dsc0004?.analysis?.station !== '○○町1丁目 No.4') {
     console.log(`❌ FAIL: DSC0004の測点が意図せず変更された`);
     passed = false;
   }

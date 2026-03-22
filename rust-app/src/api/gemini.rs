@@ -181,7 +181,7 @@ fn get_system_instruction(mode: AppMode, instruction: Option<&str>) -> String {
 - workType: 工種 (e.g., 舗装工, 道路土工)
 - variety: 種別 (e.g., 舗装打換え工)
 - detail: 細別 (e.g., 表層工, 舗装版破砕)
-- station: 測点 format "地名 No.整数" (e.g., "小峯2丁目 No.4")
+- station: 測点 format "地名 No.整数" (e.g., "○○町1丁目 No.4")
 - remarksCategory: Select from: {}
 - measurements: All numerical values with units
 - description: Important info from blackboard or scene

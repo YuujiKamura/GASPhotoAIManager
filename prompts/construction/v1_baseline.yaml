@@ -223,7 +223,7 @@ sections:
 
   step5_station: |
     **STEP 5: Station (測点) - FORMAT STANDARDIZATION**
-    *   **Standard Format**: 「地名 No.整数」 (e.g., "小峯2丁目 No.4", "南区桜町 No.12")
+    *   **Standard Format**: 「地名 No.整数」 (e.g., "○○町1丁目 No.4", "南区桜町 No.12")
     *   **Extraction Rules**:
         1. Extract location name (地名) from blackboard: 丁目, 町名, etc.
         2. Extract station number (No.X) - use INTEGER only, drop decimals and "+XX" suffixes.
@@ -232,7 +232,7 @@ sections:
            - "N-50" → "No.50"
         3. Combine: "地名 No.整数"
     *   **Examples**:
-        - Blackboard shows "小峯2丁目 No.4-" → Output: "小峯2丁目 No.4"
+        - Blackboard shows "○○町1丁目 No.4-" → Output: "○○町1丁目 No.4"
         - Blackboard shows "南区 N-3+15" → Output: "南区 No.3"
         - No station visible → Output: "" (empty string, NOT the filename)
     *   **Do NOT**:

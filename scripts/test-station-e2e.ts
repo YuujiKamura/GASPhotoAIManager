@@ -207,7 +207,7 @@ const testPhotos: PhotoRecord[] = [
       workType: '舗装工',
       variety: '舗装打換え工',
       detail: '表層工',
-      station: '小峯2丁目 N-4',
+      station: '○○町1丁目 N-4',
       remarks: '着手前',
       description: '',
       hasBoard: true,
@@ -224,7 +224,7 @@ const testPhotos: PhotoRecord[] = [
       workType: '舗装工',
       variety: '舗装打換え工',
       detail: '表層工',
-      station: '小峯2丁目 N-4',
+      station: '○○町1丁目 N-4',
       remarks: '完了',
       description: '',
       hasBoard: true,
@@ -241,7 +241,7 @@ const testPhotos: PhotoRecord[] = [
       workType: '舗装工',
       variety: '舗装打換え工',
       detail: '表層工',
-      station: '小峯2丁目 No.4',
+      station: '○○町1丁目 No.4',
       remarks: '施工中',
       description: '',
       hasBoard: true,
@@ -285,14 +285,14 @@ console.log('==========================================');
 let allPassed = true;
 app.photos.value.forEach(p => {
   if (p.fileName === 'DSC0001.jpg' || p.fileName === 'DSC0002.jpg') {
-    if (p.analysis?.station !== '小峯2丁目 No.4') {
+    if (p.analysis?.station !== '○○町1丁目 No.4') {
       console.log(`❌ FAIL: ${p.fileName} の測点が更新されていない: "${p.analysis?.station}"`);
       allPassed = false;
     } else {
       console.log(`✅ PASS: ${p.fileName} → "${p.analysis?.station}"`);
     }
   } else if (p.fileName === 'DSC0003.jpg') {
-    if (p.analysis?.station !== '小峯2丁目 No.4') {
+    if (p.analysis?.station !== '○○町1丁目 No.4') {
       console.log(`❌ FAIL: ${p.fileName} の測点が変わってしまった: "${p.analysis?.station}"`);
       allPassed = false;
     } else {
