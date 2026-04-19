@@ -1,21 +1,26 @@
 # Security Policy
 
-## Supported Versions
-
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
-
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+Please report security vulnerabilities privately via GitHub Security Advisories:
+https://github.com/YuujiKamura/GASPhotoAIManager/security/advisories/new
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Do NOT open a public issue for security problems.
+
+We aim to respond within 7 days.
+
+## Supported Versions
+
+Only the `main` branch is supported. This is a personal project with no versioned releases.
+
+## Threat Model
+
+This app is a browser-only BYOK (Bring Your Own Key) tool. Users provide their own Google AI Studio API key, stored in localStorage. The app has no backend that handles user keys.
+
+Primary risks we care about:
+- XSS / supply chain: any compromise that reads localStorage
+- Build-time key injection: keys embedded into client bundle at build time
+
+Out of scope:
+- DoS of the static site
+- Abuse of the user's own API key by themselves
