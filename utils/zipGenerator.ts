@@ -1,17 +1,11 @@
 import { PhotoRecord } from "../types";
 import { generatePhotoXML, getDtdContent } from "./xmlGenerator";
 import { extractBase64Data } from "./imageUtils";
-
-// Declare JSZip global
-declare const JSZip: any;
+import JSZip from 'jszip';
 
 export const generateZip = async (records: PhotoRecord[]): Promise<Blob> => {
-  if (typeof JSZip === 'undefined') {
-    throw new Error("JSZip library is not loaded.");
-  }
-
   const zip = new JSZip();
-  
+
   // Standard Folder Structure:
   // ROOT/
   //   PHOTO/
@@ -20,9 +14,11 @@ export const generateZip = async (records: PhotoRecord[]): Promise<Blob> => {
   //     PIC/
   //       IMAGE1.JPG
   //       IMAGE2.JPG
-  
+
   const photoDir = zip.folder("PHOTO");
+  if (!photoDir) throw new Error("Failed to create PHOTO folder in ZIP.");
   const picDir = photoDir.folder("PIC");
+  if (!picDir) throw new Error("Failed to create PIC folder in ZIP.");
 
   // 1. Add Images
   const validRecords = records.filter(r => r.status === 'done' && r.analysis);

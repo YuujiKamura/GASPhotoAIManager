@@ -2,10 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PhotoRecord, TemplateLayout } from '../types';
 import { generateZip } from '../utils/zipGenerator';
 import { getTemplateById, getDefaultTemplateId, BUILT_IN_TEMPLATES } from '../utils/layoutConfig';
+import { saveAs } from 'file-saver';
 
 const A4_WIDTH_PX = 794;
-
-declare const saveAs: any;
 
 interface PreviewLayoutState {
   scale: number;
