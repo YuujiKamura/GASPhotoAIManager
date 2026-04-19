@@ -13,10 +13,8 @@ import {
   CONVERSION
 } from "./layoutConfig";
 import { TRANS } from "./translations";
-
-// Declare global variables for loaded scripts
-declare const ExcelJS: any;
-declare const saveAs: any;
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 // Helper to get actual dimensions of the base64 image string
 const getImageDimensions = (base64: string): Promise<{ w: number; h: number }> => {
@@ -62,17 +60,7 @@ export const generateExcel = async (
 
   console.log('[ExcelExport] Starting export...', { recordCount: records.length, appMode, templateId });
 
-  // Check libraries
-  if (typeof ExcelJS === 'undefined') {
-    console.error('[ExcelExport] ExcelJS library not loaded');
-    alert("ExcelJS ライブラリが読み込まれていません。ページを再読み込みしてください。");
-    return;
-  }
-  if (typeof saveAs === 'undefined') {
-    console.error('[ExcelExport] FileSaver (saveAs) not loaded');
-    alert("FileSaver ライブラリが読み込まれていません。ページを再読み込みしてください。");
-    return;
-  }
+  // ExcelJS and file-saver are now bundled via npm — no runtime availability check needed.
   if (!records || records.length === 0) {
     console.warn('[ExcelExport] No records to export');
     alert("エクスポートするデータがありません。");
@@ -186,18 +174,20 @@ export const generateExcel = async (
           const { w: imgW, h: imgH } = await getImageDimensions(record.base64);
           console.log(`[ExcelExport] Image dimensions: ${imgW}x${imgH}`);
 
+          // Cast: ExcelJS accepts {col,row} anchors at runtime but the type
+          // requires the extended Anchor shape — see exceljs/exceljs#2001.
           sheet.addImage(imageId, {
             tl: { col: 0, row: startRow - 1 },
             br: { col: 1, row: photoEndRow },
             editAs: 'absolute'
-          });
+          } as unknown as ExcelJS.ImageRange);
         } catch (e) {
           console.warn("[ExcelExport] Could not calculate image dimensions, using fallback.", e);
           sheet.addImage(imageId, {
             tl: { col: 0, row: startRow - 1 },
             ext: { width: 500, height: 400 },
             editAs: 'absolute'
-          });
+          } as unknown as ExcelJS.ImageRange);
         }
 
         // キャプション配置（測点と備考を中央に）
@@ -264,7 +254,7 @@ export const generateExcel = async (
             tl: { col: 0, row: startRow - 1 },
             br: { col: 1, row: startRow - 1 + photoRows },
             editAs: 'absolute'
-          });
+          } as unknown as ExcelJS.ImageRange);
 
         } catch (e) {
           console.warn("[ExcelExport] Could not calculate image dimensions, using fallback.", e);
@@ -272,7 +262,7 @@ export const generateExcel = async (
             tl: { col: 0.02, row: startRow - 1 + 0.1 },
             ext: { width: 400, height: 300 },
             editAs: 'absolute'
-          });
+          } as unknown as ExcelJS.ImageRange);
         }
 
         // --- 2. Info Section (Columns B & C) ---

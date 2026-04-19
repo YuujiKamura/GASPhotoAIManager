@@ -1,5 +1,17 @@
 /// <reference types="vite/client" />
 
+// exif-js has no official types on DefinitelyTyped — declare minimal surface used by this app.
+declare module 'exif-js' {
+  const EXIF: {
+    getData: (file: File | Blob | HTMLImageElement, callback: (this: unknown) => void) => unknown;
+    getTag: (img: unknown, tag: string) => unknown;
+    getAllTags: (img: unknown) => Record<string, unknown>;
+    pretty: (img: unknown) => string;
+    readFromBinaryFile: (file: ArrayBuffer) => unknown;
+  };
+  export default EXIF;
+}
+
 interface ImportMetaEnv {
   readonly DEV: boolean;
   readonly PROD: boolean;

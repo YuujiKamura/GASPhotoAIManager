@@ -1,8 +1,7 @@
 import React, { useCallback } from 'react';
 import { PhotoRecord, ProcessingStats } from '../types';
 import { exportDataToJson, importDataFromJson, saveProjectData } from '../utils/storage';
-
-declare const saveAs: any;
+import { saveAs } from 'file-saver';
 
 interface UseExportHandlersProps {
   photos: PhotoRecord[];

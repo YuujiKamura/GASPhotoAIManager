@@ -3,15 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP: CDN script origins (jsdelivr/cdnjs) removed after P1 of #179.
+      All 3rd-party JS (ExcelJS / file-saver / JSZip / exif-js) is now bundled
+      via npm+Vite. html2pdf.js is no longer shipped at runtime (only referenced
+      by offline puppeteer test scripts under scripts/).
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://generativelanguage.googleapis.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:;">
     <title>工事写真帳メーカー - Construction Album Maker</title>
     <!-- Tailwind CSS is bundled via PostCSS -->
-    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
-      // Polyfill for process.env
+      // Minimal process polyfill retained for libraries that probe `process.env`
+      // at import time. Do not re-introduce runtime script tags from CDNs.
       window.process = window.process || { env: { NODE_ENV: 'production' } };
     </script>
     <style>

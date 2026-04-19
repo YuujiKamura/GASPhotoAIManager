@@ -1,18 +1,18 @@
-// Declare EXIF global from exif-js script
-declare const EXIF: any;
+// exif-js is now bundled via npm (no more CDN script tag).
+import EXIF from 'exif-js';
 
 export const getPhotoDate = (file: File): Promise<number> => {
   return new Promise((resolve) => {
     // Default to lastModified if EXIF fails
     const defaultDate = file.lastModified;
 
-    if (typeof EXIF === 'undefined') {
+    if (typeof EXIF === 'undefined' || !EXIF?.getData) {
       resolve(defaultDate);
       return;
     }
 
     EXIF.getData(file, function(this: any) {
-      const dateStr = EXIF.getTag(this, "DateTimeOriginal");
+      const dateStr = EXIF.getTag(this, "DateTimeOriginal") as string | undefined;
       if (dateStr) {
         // Format is usually "YYYY:MM:DD HH:MM:SS"
         // Needs conversion to be parsed by Date
