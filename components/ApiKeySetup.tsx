@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Key, Camera, ArrowLeft, Shield, Trash2, CheckCircle } from 'lucide-react';
+import { ExternalLink, Key, Camera, ArrowLeft, Shield, Trash2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useApiKeySetupState } from '../hooks/useApiKeySetupState';
 
 interface ApiKeySetupProps {
@@ -122,6 +122,70 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, onImpor
                   <div className="flex-1 h-px bg-slate-700"></div>
                 </div>
               )}
+
+              {/* セキュリティ警告: キー制限のお願い */}
+              <div className="bg-red-500/10 border border-red-500/40 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle size={18} className="text-red-400 shrink-0" />
+                  <span className="text-sm font-bold text-red-300">
+                    ⚠️ 安全のため、キーには必ず制限をかけてください
+                  </span>
+                </div>
+                <div className="text-xs text-slate-300 space-y-2">
+                  <p>
+                    キーが漏洩しても悪用されないよう、Google Cloud Console で以下の制限を設定してください：
+                  </p>
+                  <div className="bg-slate-900/60 rounded-lg p-3 space-y-2">
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <Shield size={12} className="text-amber-400" />
+                        <span className="text-[11px] font-bold text-amber-300">HTTP リファラー制限</span>
+                      </div>
+                      <code className="block text-[10px] text-slate-200 font-mono bg-slate-950/60 px-2 py-1 rounded break-all">
+                        https://yuujikamura.github.io/GASPhotoAIManager/*
+                      </code>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <Shield size={12} className="text-amber-400" />
+                        <span className="text-[11px] font-bold text-amber-300">API 制限</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        「Generative Language API」のみ許可
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <Shield size={12} className="text-amber-400" />
+                        <span className="text-[11px] font-bold text-amber-300">予算アラート（推奨）</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        月 $5 程度でアラートを設定しておくと安心です
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <a
+                      href="https://console.cloud.google.com/apis/credentials"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      <ExternalLink size={10} />
+                      Google Cloud Console 認証情報ページを開く
+                    </a>
+                    <a
+                      href="https://qiita.com/pythonista0328/items/f9eb8b7fb6a14087df35"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      <ExternalLink size={10} />
+                      設定方法の解説記事（Qiita）
+                    </a>
+                  </div>
+                </div>
+              </div>
 
               {/* ステップ1: キーを取得 */}
               <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
